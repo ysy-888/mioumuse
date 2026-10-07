@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-label="E">
+  <circle cx="16" cy="16" r="16" fill="#000000"/>
+  <text
+    x="16"
+    y="23.5"
+    text-anchor="middle"
+    font-family="system-ui, -apple-system, 'Segoe UI', sans-serif"
+    font-size="24"
+    font-weight="700"
+    fill="#e02424"
+  >E</text>
+</svg>
