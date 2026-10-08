@@ -1,21 +1,17 @@
 /**
  * View switching and the header menu.
  *
- * Views: "home" (calendar + upcoming tasks), "tradeShows" (list) →
- * "tradeShow" (full-page detail) → back.
- * The detail page is a real view swap, not a modal, so the whole frame
- * (toolbar included) hides with it.
+ * Views: "home" (calendar + upcoming tasks), "campaigns" and "tradeShows"
+ * (lists), and "platforms" (banners). A record opens in a side pane over
+ * whichever view is showing (js/item-pane.js, js/banners.js), not as a view
+ * of its own.
  */
 
-const APP_VIEWS = ["home", "tradeShows", "tradeShow"];
+const APP_VIEWS = ["home", "campaigns", "tradeShows", "platforms"];
 
 let currentAppView = "home";
 
-/**
- * Where the header's back button goes. Only view changes are recorded, so
- * moving between two shows stays one entry — going back from a show lands on
- * whatever you were looking at before you opened one.
- */
+/** Where the header's back button goes. Only view changes are recorded. */
 const appViewHistory = [];
 let navigatingBack = false;
 
@@ -48,12 +44,21 @@ function switchAppView(view) {
     // A session's worth of back steps is plenty; don't grow without bound.
     if (appViewHistory.length > 50) appViewHistory.shift();
   }
+  // The pane belongs to what you opened it from; a different section
+  // starts clean.
+  if (currentAppView !== view) {
+    closeItemPane();
+    closeBannerPane();
+  }
   currentAppView = view;
 
   const panes = {
+    campaignsToolbar: view === "campaigns",
+    campaignsTableWrap: view === "campaigns",
     tradeShowsToolbar: view === "tradeShows",
     tradeShowsTableWrap: view === "tradeShows",
-    tradeShowDetailView: view === "tradeShow",
+    platformsToolbar: view === "platforms",
+    bannersTableWrap: view === "platforms",
     calendarWrap: view === "home",
   };
   Object.entries(panes).forEach(([id, visible]) => {
@@ -61,11 +66,11 @@ function switchAppView(view) {
     if (el) el.hidden = !visible;
   });
 
-  // The Trade Shows tab stays selected while a show's page is open — the
-  // detail is a drill-down within that section.
   const tabs = {
     navLogoHome: view === "home",
-    navTabTradeShows: view === "tradeShows" || view === "tradeShow",
+    navTabCampaigns: view === "campaigns",
+    navTabTradeShows: view === "tradeShows",
+    navTabPlatforms: view === "platforms",
   };
   Object.entries(tabs).forEach(([id, active]) => {
     const el = document.getElementById(id);
@@ -76,7 +81,8 @@ function switchAppView(view) {
 
   // The grid needs real layout to size its rows, so render on entry.
   if (view === "home") renderCalendar();
-  if (view === "tradeShows") applyTradeShowFilters();
+  RECORD_LISTS[view]?.apply();
+  if (view === "platforms") applyBannerFilters();
   updateAppBackButton();
 }
 
@@ -113,16 +119,18 @@ function initHeaderMenu() {
 
   document.getElementById("headerMenuExportCsv")?.addEventListener("click", () => {
     closeHeaderMenu();
-    exportTradeShowsCsv();
+    exportScheduleCsv();
   });
 
   document.getElementById("headerMenuResetData")?.addEventListener("click", async () => {
     closeHeaderMenu();
-    if (!confirm("Permanently delete every trade show and completed task? This cannot be undone.")) return;
+    if (!confirm("Permanently delete every campaign, trade show, banner (with its image), and completed task? This cannot be undone.")) return;
     setAppLoading(true, "Clearing…");
     try {
       await clearAllData();
-      switchAppView("tradeShows");
+      switchAppView("home");
+      refreshItemPane();
+      refreshBannerViews();
       showIndicator("All data cleared", "success");
     } catch (err) {
       showIndicator(err.message || "Could not clear data.", "error");
@@ -146,45 +154,57 @@ function csvCell(value) {
   return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 
-/** Every trade show with its email dates and whether each one is done. */
-function exportTradeShowsCsv() {
-  const rows = [...getAllTradeShows()].sort((a, b) => a.startDate.localeCompare(b.startDate));
-  if (!rows.length) {
+/**
+ * One row per task across every campaign and trade show — what it belongs
+ * to, when it's due, and whether it's done. An item with no tasks still
+ * gets a row, so nothing scheduled goes missing from the export.
+ */
+function exportScheduleCsv() {
+  const items = getAllScheduleItems().sort((a, b) => a.startDate.localeCompare(b.startDate));
+  if (!items.length) {
     showIndicator("Nothing to export", "error");
     return;
   }
 
-  const header = [
-    "Show", "Start", "End",
-    ...TRADE_SHOW_EMAIL_TASKS.flatMap(email => [email.label, `${email.label} done`]),
-    "Notes",
-  ];
+  const header = ["Section", "Name", "Type", "Start", "End", "Task", "Due", "Done", "Notes"];
   const lines = [header.map(csvCell).join(",")];
 
-  rows.forEach(tradeShow => {
-    lines.push([
-      getTradeShowLabel(tradeShow.show),
-      tradeShow.startDate,
-      tradeShow.endDate,
-      ...buildTradeShowEmailTasks(tradeShow).flatMap(task => [task.dueDate, isTaskComplete(task.id) ? "Yes" : "No"]),
-      tradeShow.notes,
-    ].map(csvCell).join(","));
+  items.forEach(item => {
+    const base = [
+      item.type === ITEM_TYPE_CAMPAIGN ? "Campaign" : "Trade Show",
+      item.title,
+      item.type === ITEM_TYPE_CAMPAIGN ? getCampaignTypeLabel(item.record.type) : getTradeShowLabel(item.record.show),
+      item.startDate,
+      item.endDate,
+    ];
+    const tasks = item.tasks.length ? item.tasks : [null];
+    tasks.forEach(task => {
+      lines.push([
+        ...base,
+        task?.label ?? "",
+        task?.dueDate ?? "",
+        task ? (isTaskComplete(task.id) ? "Yes" : "No") : "",
+        item.record.notes,
+      ].map(csvCell).join(","));
+    });
   });
 
   const blob = new Blob([lines.join("\n")], { type: "text/csv;charset=utf-8;" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = `trade-shows-${todayYmd()}.csv`;
+  a.download = `mioumuse-schedule-${todayYmd()}.csv`;
   a.click();
   URL.revokeObjectURL(url);
-  showIndicator(`Exported ${rows.length} trade shows`, "success");
+  showIndicator(`Exported ${items.length} campaigns and shows`, "success");
 }
 
 // ── Nav ──────────────────────────────────────────────────────────────────────
 
 function initAppNav() {
+  document.getElementById("navTabCampaigns")?.addEventListener("click", () => switchAppView("campaigns"));
   document.getElementById("navTabTradeShows")?.addEventListener("click", () => switchAppView("tradeShows"));
+  document.getElementById("navTabPlatforms")?.addEventListener("click", () => switchAppView("platforms"));
   document.getElementById("navLogoHome")?.addEventListener("click", () => switchAppView("home"));
   document.getElementById("appBackBtn")?.addEventListener("click", () => goBackAppView("home"));
 
@@ -192,14 +212,11 @@ function initAppNav() {
     setAppLoading(true, "Refreshing…");
     try {
       await loadAppData();
-      // Re-enter the current view so it renders from the fresh data. A show
-      // that was deleted elsewhere falls back to the list.
-      if (getCurrentAppView() === "tradeShow" && !getTradeShowById(currentTradeShowId)) {
-        goBackAppView("tradeShows");
-      } else {
-        switchAppView(getCurrentAppView());
-        refreshTradeShowDetailIfActive();
-      }
+      // Re-render from the fresh data. A record in the pane that was deleted
+      // elsewhere closes the pane.
+      switchAppView(getCurrentAppView());
+      refreshItemPane();
+      refreshBannerViews();
       showIndicator("Refreshed", "success");
     } catch (err) {
       showIndicator(err.message || "Could not refresh.", "error");

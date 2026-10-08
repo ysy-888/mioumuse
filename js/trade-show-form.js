@@ -18,7 +18,7 @@ function fillTradeShowPicker() {
   row.replaceChildren(...TRADE_SHOWS.map(show => {
     const btn = document.createElement("button");
     btn.type = "button";
-    btn.className = "form-toggle-btn trade-show-toggle";
+    btn.className = "form-toggle-btn item-toggle";
     btn.dataset.value = show.key;
     btn.dataset.show = show.key;
     btn.textContent = show.label;
@@ -137,6 +137,8 @@ function openTradeShowForm(tradeShowId = null) {
     end.value = tradeShow?.endDate ?? "";
     end.min = tradeShow?.startDate ?? "";
   }
+  const notes = document.getElementById("tradeShowFormNotes");
+  if (notes) notes.value = tradeShow?.notes ?? "";
 
   renderTradeShowEmailPreview();
   clearTradeShowFormErrors();
@@ -164,6 +166,7 @@ async function saveTradeShowForm() {
     show: getTradeShowPickerValue(),
     startDate: document.getElementById("tradeShowFormStart")?.value ?? "",
     endDate: document.getElementById("tradeShowFormEnd")?.value ?? "",
+    notes: document.getElementById("tradeShowFormNotes")?.value ?? "",
   };
 
   const invalid = validateTradeShowForm(fields);
@@ -187,7 +190,7 @@ async function saveTradeShowForm() {
       closeTradeShowForm();
       refreshTaskViews();
       showIndicator(`${getTradeShowTitle(created)} added`, "success");
-      openTradeShowDetail(created.id);
+      openItemPane(ITEM_TYPE_TRADE_SHOW, created.id);
     }
   } catch (err) {
     setTradeShowFormMessage(err.message || "Could not save.", "error");
@@ -222,7 +225,7 @@ function initTradeShowForm() {
 
   // Enter saves from either date field.
   document.getElementById("tradeShowForm")?.addEventListener("keydown", e => {
-    if (e.key !== "Enter" || e.target.tagName === "BUTTON") return;
+    if (e.key !== "Enter" || e.target.tagName === "BUTTON" || e.target.tagName === "TEXTAREA") return;
     e.preventDefault();
     saveTradeShowForm();
   });

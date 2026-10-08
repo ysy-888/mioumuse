@@ -1,33 +1,45 @@
 /**
- * Trade show tasks and calendar events — derived, never stored.
+ * Schedule items — trade shows and campaigns in one shape, so the calendar,
+ * the task rails, and the side pane can treat them alike.
  *
- * Each show produces:
- *   - one "show" event per day it runs (Day 1 … Day N), for the calendar
- *   - the email tasks in TRADE_SHOW_EMAIL_TASKS, counted back from Day 1
+ * An item has a date range (drawn on the calendar one chip per day) and a
+ * list of tasks (drawn on their due dates, each one checkable):
  *
- * Email dates are exactly N days before Day 1 — a task that lands on a
- * weekend stays on the weekend.
+ *   Trade show  tasks derived from Day 1 — TRADE_SHOW_EMAIL_TASKS, counted
+ *               back exactly (a weekend date stays on the weekend)
+ *   Campaign    tasks chosen one by one, each with its own due date
  *
- * Also home to the pieces every task list shares: the status tabs, the task
- * checkbox, and the per-show card.
+ * Also home to the pieces every task list shares: the status buckets, the
+ * task checkbox, and the per-item card.
  */
 
-const TASK_KIND_EMAIL = "email";
 const EVENT_KIND_SHOW = "show";
-const TASK_ID_PREFIX_TRADE_SHOW = "ts";
+const EVENT_KIND_CAMPAIGN = "campaign";
+const TASK_KIND_EMAIL = "email";
+const TASK_KIND_BANNER = "banner";
+const TASK_KIND_SOCIAL = "social";
 
-/** e.g. "ts|ts-abc123|email-3w". No date in it, so moving a show keeps its checkmarks. */
+const TASK_ID_PREFIX_TRADE_SHOW = "ts";
+const TASK_ID_PREFIX_CAMPAIGN = "cp";
+
+const ITEM_TYPE_TRADE_SHOW = "tradeShow";
+const ITEM_TYPE_CAMPAIGN = "campaign";
+
+// ── Task ids ─────────────────────────────────────────────────────────────────
+//
+// No dates in any of these, so moving a show or a task keeps its checkmark.
+
+/** e.g. "ts|ts-abc123|email-3w". */
 function buildEmailTaskId(tradeShowId, emailKey) {
   return `${TASK_ID_PREFIX_TRADE_SHOW}|${tradeShowId}|${emailKey}`;
 }
 
-/**
- * What every day-chip of one show shares, so selecting the show lights up
- * its whole run on the calendar at once.
- */
-function buildShowGroupId(tradeShowId) {
-  return `${TASK_ID_PREFIX_TRADE_SHOW}|${tradeShowId}|show`;
+/** e.g. "cp|cp-abc123|t-def456". */
+function buildCampaignTaskId(campaignId, taskId) {
+  return `${TASK_ID_PREFIX_CAMPAIGN}|${campaignId}|${taskId}`;
 }
+
+// ── Tasks per record ─────────────────────────────────────────────────────────
 
 function buildTradeShowEmailTasks(tradeShow) {
   const dayOne = parseYmd(tradeShow?.startDate);
@@ -35,80 +47,164 @@ function buildTradeShowEmailTasks(tradeShow) {
   return TRADE_SHOW_EMAIL_TASKS.map(email => ({
     id: buildEmailTaskId(tradeShow.id, email.key),
     kind: TASK_KIND_EMAIL,
-    tradeShowId: tradeShow.id,
     dueDate: ymd(addDays(dayOne, -email.daysBefore)),
     label: email.label,
   }));
 }
 
-/** One event per day the show runs. */
-function buildTradeShowDayEvents(tradeShow) {
-  const start = parseYmd(tradeShow?.startDate);
-  const end = parseYmd(tradeShow?.endDate) ?? start;
-  if (!start) return [];
+/** In due-date order, so a campaign's run-up reads top to bottom. */
+function buildCampaignTasks(campaign) {
+  return (campaign?.tasks ?? [])
+    .filter(task => task.dueDate)
+    .map(task => ({
+      id: buildCampaignTaskId(campaign.id, task.id),
+      kind: task.category,
+      dueDate: task.dueDate,
+      label: getCampaignTaskCategoryLabel(task.category),
+    }))
+    .sort((a, b) => a.dueDate.localeCompare(b.dueDate));
+}
 
-  const dayCount = daysBetween(tradeShow.startDate, ymd(end)) + 1;
-  const events = [];
-  for (let i = 0; i < dayCount; i++) {
-    events.push({
-      id: buildShowGroupId(tradeShow.id),
-      kind: EVENT_KIND_SHOW,
-      tradeShowId: tradeShow.id,
-      dueDate: ymd(addDays(start, i)),
-      dayNumber: i + 1,
-      dayCount,
-    });
+// ── Items ────────────────────────────────────────────────────────────────────
+
+function tradeShowToItem(tradeShow) {
+  return {
+    type: ITEM_TYPE_TRADE_SHOW,
+    id: tradeShow.id,
+    record: tradeShow,
+    title: getTradeShowTitle(tradeShow),
+    chipLabel: getTradeShowLabel(tradeShow.show),
+    startDate: tradeShow.startDate,
+    endDate: tradeShow.endDate,
+    weekdays: [],
+    dayKind: EVENT_KIND_SHOW,
+    color: { attr: "show", value: tradeShow.show },
+    tasks: buildTradeShowEmailTasks(tradeShow),
+    groupId: `${TASK_ID_PREFIX_TRADE_SHOW}|${tradeShow.id}|days`,
+  };
+}
+
+function campaignToItem(campaign) {
+  return {
+    type: ITEM_TYPE_CAMPAIGN,
+    id: campaign.id,
+    record: campaign,
+    title: getCampaignTitle(campaign),
+    chipLabel: getCampaignTitle(campaign),
+    startDate: campaign.startDate,
+    endDate: campaign.endDate,
+    // Only these weekdays count as "on" between the dates; [] = every day.
+    weekdays: campaign.weekdays,
+    dayKind: EVENT_KIND_CAMPAIGN,
+    color: { attr: "campaignType", value: campaign.type },
+    tasks: buildCampaignTasks(campaign),
+    groupId: `${TASK_ID_PREFIX_CAMPAIGN}|${campaign.id}|days`,
+  };
+}
+
+function getAllScheduleItems() {
+  return [
+    ...getAllTradeShows().map(tradeShowToItem),
+    ...getAllCampaigns().map(campaignToItem),
+  ];
+}
+
+function getScheduleItem(type, id) {
+  if (type === ITEM_TYPE_CAMPAIGN) {
+    const campaign = getCampaignById(id);
+    return campaign ? campaignToItem(campaign) : null;
   }
-  return events;
+  const tradeShow = getTradeShowById(id);
+  return tradeShow ? tradeShowToItem(tradeShow) : null;
 }
 
-/** Every id a show's card covers — the show itself plus its emails. */
-function getTradeShowGroupIds(tradeShow) {
-  return [buildShowGroupId(tradeShow.id), ...buildTradeShowEmailTasks(tradeShow).map(t => t.id)];
+/** Tag an element so crm.css paints it in the item's colour. */
+function applyItemColor(el, item) {
+  el.dataset[item.color.attr] = item.color.value;
 }
 
-/** All emails ticked off. The show days themselves aren't checkable. */
-function isTradeShowComplete(tradeShow) {
-  const tasks = buildTradeShowEmailTasks(tradeShow);
-  return tasks.length > 0 && tasks.every(t => isTaskComplete(t.id));
+/** What a day chip says beyond the name: "Day 2" for a show, "Starts" for a campaign. */
+function describeItemDay(item, dayNumber, dayCount) {
+  if (item.type === ITEM_TYPE_TRADE_SHOW) return `Day ${dayNumber}`;
+  if (dayCount === 1) return "1 day";
+  if (dayNumber === 1) return "Starts";
+  if (dayNumber === dayCount) return "Ends";
+  return `Day ${dayNumber}`;
 }
 
-/** "2 of 3" — how far through its emails a show is. */
-function getTradeShowEmailProgress(tradeShow) {
-  const tasks = buildTradeShowEmailTasks(tradeShow);
-  return { done: tasks.filter(t => isTaskComplete(t.id)).length, total: tasks.length };
+/**
+ * One event per day the item is on — every day of its range, or only its
+ * chosen weekdays. Day numbers count the days it's on, so a weekends-only
+ * sale reads Starts, Day 2, Day 3 … Ends across its Saturdays and Sundays.
+ */
+function buildItemDayEvents(item) {
+  const days = listActiveDays(item);
+  return days.map((day, i) => ({
+    id: item.groupId,
+    kind: item.dayKind,
+    dueDate: day,
+    dayNumber: i + 1,
+    dayCount: days.length,
+  }));
 }
 
-/** The first email still open, or null once they're all done. */
-function getNextOpenEmailTask(tradeShow) {
-  return buildTradeShowEmailTasks(tradeShow).find(t => !isTaskComplete(t.id)) ?? null;
+/** How many days the item is on. */
+function countItemDays(item) {
+  return countActiveDays(item);
+}
+
+/** "18 days", plus the weekdays when it only runs on some of them. */
+function describeItemLength(item) {
+  const n = countItemDays(item);
+  const length = n === 1 ? "1 day" : `${n} days`;
+  return item.weekdays?.length ? `${length} · ${formatWeekdayList(item.weekdays)} only` : length;
+}
+
+/** Every id an item's card covers — its days plus its tasks. */
+function getItemGroupIds(item) {
+  return [item.groupId, ...item.tasks.map(t => t.id)];
+}
+
+/** All tasks ticked off. The days themselves aren't checkable. */
+function isItemComplete(item) {
+  return item.tasks.length > 0 && item.tasks.every(t => isTaskComplete(t.id));
+}
+
+/** "2 of 3" — how far through its tasks an item is. */
+function getItemTaskProgress(item) {
+  return { done: item.tasks.filter(t => isTaskComplete(t.id)).length, total: item.tasks.length };
+}
+
+/** The first task still open, or null once they're all done. */
+function getNextOpenTask(item) {
+  return item.tasks.find(t => !isTaskComplete(t.id)) ?? null;
 }
 
 /** Upcoming / In progress / Past, against today. */
-function getTradeShowTiming(tradeShow) {
+function getItemTiming(item) {
   const today = todayYmd();
-  if (!tradeShow?.startDate) return "upcoming";
-  if (tradeShow.endDate < today) return "past";
-  if (tradeShow.startDate <= today) return "live";
+  if (!item?.startDate) return "upcoming";
+  if (item.endDate < today) return "past";
+  if (item.startDate <= today) return "live";
   return "upcoming";
 }
 
-const TRADE_SHOW_TIMING_LABELS = {
+const ITEM_TIMING_LABELS = {
   upcoming: "Upcoming",
   live: "In progress",
   past: "Past",
 };
 
-// ── Task status tabs ─────────────────────────────────────────────────────────
+// ── Task status buckets ──────────────────────────────────────────────────────
 //
-// A card can sit in more than one tab at once — a show with one missed email
+// A card can sit in more than one tab at once — an item with one missed task
 // and two still to come is both overdue and upcoming:
 //
-//   Upcoming   any email still open and not yet due. The card shows all of
-//              its emails, missed ones with their date in red, so the whole
+//   Upcoming   any task still open and not yet due. The card shows all of
+//              its tasks, missed ones with their date in red, so the whole
 //              run-up reads in order.
-//   Overdue    any email open past its due date. The card shows only those.
-//   Completed  every email done.
+//   Overdue    any task open past its due date. The card shows only those.
+//   Completed  every task done.
 
 const TASK_STATUS_TABS = [
   { key: "upcoming", label: "Upcoming" },
@@ -164,13 +260,13 @@ function renderTaskStatusTabs(containerId, activeKey, counts, onChange) {
 // ── Refresh ──────────────────────────────────────────────────────────────────
 
 /**
- * Re-render whatever is on screen after a task is ticked or a show changes.
+ * Re-render whatever is on screen after a task is ticked or a record changes.
  * Each renderer is a cheap no-op when its view isn't the active one.
  */
 function refreshTaskViews() {
-  if (typeof refreshCalendarIfActive === "function") refreshCalendarIfActive();
-  if (typeof refreshTradeShowDetailIfActive === "function") refreshTradeShowDetailIfActive();
-  if (typeof applyTradeShowFilters === "function") applyTradeShowFilters();
+  refreshCalendarIfActive();
+  refreshItemPane();
+  refreshRecordListsIfActive();
 }
 
 // ── Task checkbox ────────────────────────────────────────────────────────────
@@ -232,9 +328,22 @@ function createTaskCheckbox(task, onChange) {
   return label;
 }
 
-// ── Calendar glyphs ──────────────────────────────────────────────────────────
+// ── Glyphs ───────────────────────────────────────────────────────────────────
 
-/** A glyph per kind, so show days and emails read apart at a glance. */
+const CAL_EVENT_ICON_PATHS = {
+  // Trade show — a booth / storefront awning.
+  [EVENT_KIND_SHOW]: ["M3 9h18l-2-5H5z", "M4 9v11h16V9", "M9 20v-6h6v6"],
+  // Campaign — a price tag.
+  [EVENT_KIND_CAMPAIGN]: ["M3 12V4a1 1 0 0 1 1-1h8l9 9-9 9z", "M7.5 7.5h.01"],
+  // Email — an envelope.
+  [TASK_KIND_EMAIL]: ["M3 5h18v14H3z", "m3 6 9 7 9-7"],
+  // Banner — a wide picture frame.
+  [TASK_KIND_BANNER]: ["M2 6h20v12H2z", "m2 16 6-5 4 3 3-2 7 5", "M16 9.5h.01"],
+  // Social media — a speech bubble.
+  [TASK_KIND_SOCIAL]: ["M21 12a8 8 0 0 1-11.6 7.1L3 21l1.9-6.4A8 8 0 1 1 21 12z"],
+};
+
+/** A glyph per kind, so days, emails, banners and posts read apart at a glance. */
 function createCalEventIcon(kind) {
   const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
   svg.setAttribute("class", "dash-event-icon");
@@ -246,14 +355,7 @@ function createCalEventIcon(kind) {
   svg.setAttribute("stroke-linejoin", "round");
   svg.setAttribute("aria-hidden", "true");
 
-  const paths = {
-    // Trade show — a booth / storefront awning.
-    [EVENT_KIND_SHOW]: ["M3 9h18l-2-5H5z", "M4 9v11h16V9", "M9 20v-6h6v6"],
-    // Email — an envelope.
-    [TASK_KIND_EMAIL]: ["M3 5h18v14H3z", "m3 6 9 7 9-7"],
-  }[kind] ?? [];
-
-  paths.forEach(d => {
+  (CAL_EVENT_ICON_PATHS[kind] ?? []).forEach(d => {
     const p = document.createElementNS("http://www.w3.org/2000/svg", "path");
     p.setAttribute("d", d);
     svg.appendChild(p);
@@ -261,19 +363,19 @@ function createCalEventIcon(kind) {
   return svg;
 }
 
-// ── Show card ────────────────────────────────────────────────────────────────
+// ── Item card ────────────────────────────────────────────────────────────────
 
 /**
- * One card per show: its name and dates up top, its emails as checkable rows.
- * `showName` is off on the show's own detail page, which already says whose
- * emails these are. `tasks` narrows the rows — the Overdue tab passes just
- * the missed emails.
+ * One card per item: its name and dates up top, its tasks as checkable rows.
+ * `showName` drops the name line where the context already says whose tasks
+ * these are. `tasks` narrows the rows — the Overdue tab passes just the
+ * missed ones.
  */
-function createTradeShowCard(tradeShow, { showName = true, onChange, tasks } = {}) {
-  const complete = isTradeShowComplete(tradeShow);
+function createScheduleCard(item, { showName = true, onChange, tasks } = {}) {
+  const complete = isItemComplete(item);
   const card = document.createElement("div");
-  card.className = "payroll-run trade-show-card" + (complete ? " is-complete" : "");
-  card.dataset.show = tradeShow.show;
+  card.className = "payroll-run schedule-card" + (complete ? " is-complete" : "");
+  applyItemColor(card, item);
 
   const head = document.createElement("div");
   head.className = "payroll-run-head";
@@ -282,8 +384,8 @@ function createTradeShowCard(tradeShow, { showName = true, onChange, tasks } = {
     const name = document.createElement("button");
     name.type = "button";
     name.className = "payroll-run-company";
-    name.textContent = getTradeShowTitle(tradeShow);
-    name.addEventListener("click", () => openTradeShowDetail(tradeShow.id));
+    name.textContent = item.title;
+    name.addEventListener("click", () => openItemPane(item.type, item.id));
     head.appendChild(name);
   }
 
@@ -291,9 +393,9 @@ function createTradeShowCard(tradeShow, { showName = true, onChange, tasks } = {
   meta.className = "payroll-run-meta";
 
   const pill = document.createElement("span");
-  pill.className = "schedule-pill trade-show-pill";
-  pill.dataset.show = tradeShow.show;
-  pill.textContent = formatDateRange(tradeShow.startDate, tradeShow.endDate);
+  pill.className = "schedule-pill schedule-card-pill";
+  applyItemColor(pill, item);
+  pill.textContent = formatDateRange(item.startDate, item.endDate);
   meta.appendChild(pill);
 
   if (complete) {
@@ -305,11 +407,16 @@ function createTradeShowCard(tradeShow, { showName = true, onChange, tasks } = {
   head.appendChild(meta);
   card.appendChild(head);
 
+  const rows = tasks ?? item.tasks;
   const tasksWrap = document.createElement("div");
-  tasksWrap.className = "payroll-run-tasks trade-show-card-tasks";
-  (tasks ?? buildTradeShowEmailTasks(tradeShow)).forEach(task => {
-    tasksWrap.appendChild(createTaskCheckbox(task, onChange));
-  });
+  tasksWrap.className = "payroll-run-tasks schedule-card-tasks";
+  rows.forEach(task => tasksWrap.appendChild(createTaskCheckbox(task, onChange)));
+  if (rows.length === 0) {
+    const empty = document.createElement("span");
+    empty.className = "schedule-card-empty";
+    empty.textContent = "No tasks yet.";
+    tasksWrap.appendChild(empty);
+  }
   card.appendChild(tasksWrap);
 
   return card;

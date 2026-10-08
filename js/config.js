@@ -55,3 +55,81 @@ const TRADE_SHOW_EMAIL_TASKS = [
   { key: "email-1w", label: "Email · 1 week out", daysBefore: 7 },
   { key: "email-1d", label: "Email · Day before", daysBefore: 1 },
 ];
+
+// ── Platforms ────────────────────────────────────────────────────────────────
+
+/**
+ * The online stores banners are made for. Same key/label split as the rest:
+ * the key is stored and picks the colour in crm.css.
+ */
+const PLATFORMS = [
+  { key: "faire", label: "Faire" },
+  { key: "fashiongo", label: "FashionGo" },
+  { key: "magento", label: "Magento" },
+];
+
+const PLATFORM_KEYS = PLATFORMS.map(p => p.key);
+
+function getPlatformLabel(key) {
+  return PLATFORMS.find(p => p.key === key)?.label ?? key;
+}
+
+/** What a banner is for. The first is what a new banner starts as. */
+const BANNER_TYPES = [
+  { key: "collection", label: "Collection" },
+  { key: "display", label: "Display" },
+  { key: "advertisement", label: "Advertisement" },
+];
+
+const BANNER_TYPE_KEYS = BANNER_TYPES.map(t => t.key);
+
+function getBannerTypeLabel(key) {
+  return BANNER_TYPES.find(t => t.key === key)?.label ?? key;
+}
+
+/** A banner features at least one style and at most this many. */
+const MAX_BANNER_STYLES = 4;
+
+/** Supabase Storage bucket the banner images live in (see supabase-schema.sql). */
+const BANNER_BUCKET = "banners";
+
+/** Larger than any web banner needs to be; keeps a stray photo from going up. */
+const MAX_BANNER_FILE_BYTES = 10 * 1024 * 1024;
+
+// ── Campaigns ────────────────────────────────────────────────────────────────
+
+/**
+ * What kind of campaign it is. Same key/label split as TRADE_SHOWS: the key is
+ * stored and picks the colour in crm.css, the label is what's shown.
+ */
+const CAMPAIGN_TYPES = [
+  { key: "sale", label: "Sale" },
+  { key: "new-arrivals", label: "New Arrivals" },
+  { key: "collection-launch", label: "Collection Launch" },
+  { key: "holiday", label: "Holiday" },
+  { key: "promotion", label: "Promotion" },
+];
+
+const CAMPAIGN_TYPE_KEYS = CAMPAIGN_TYPES.map(t => t.key);
+const DEFAULT_CAMPAIGN_TYPE = "sale";
+
+function getCampaignTypeLabel(key) {
+  return CAMPAIGN_TYPES.find(t => t.key === key)?.label ?? key;
+}
+
+/**
+ * The kinds of task a campaign can be given — as many of each as it needs.
+ * `key` doubles as the task's calendar kind, so a campaign email and a trade
+ * show email filter and draw the same way.
+ */
+const CAMPAIGN_TASK_CATEGORIES = [
+  { key: "email", label: "Email" },
+  { key: "banner", label: "Banner" },
+  { key: "social", label: "Social Media" },
+];
+
+const CAMPAIGN_TASK_CATEGORY_KEYS = CAMPAIGN_TASK_CATEGORIES.map(c => c.key);
+
+function getCampaignTaskCategoryLabel(key) {
+  return CAMPAIGN_TASK_CATEGORIES.find(c => c.key === key)?.label ?? key;
+}

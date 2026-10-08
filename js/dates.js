@@ -3,6 +3,15 @@
 const WEEKDAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 const WEEKDAY_SHORT = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
+/** Monday-first, for lists of days a person reads ("Fri, Sat, Sun"). */
+const WEEKDAY_DISPLAY_ORDER = [1, 2, 3, 4, 5, 6, 0];
+
+/** [5, 6, 0] → "Fri, Sat, Sun". */
+function formatWeekdayList(weekdays) {
+  const set = new Set(weekdays);
+  return WEEKDAY_DISPLAY_ORDER.filter(d => set.has(d)).map(d => WEEKDAY_SHORT[d]).join(", ");
+}
+
 function ymd(date) {
   const y = date.getFullYear();
   const m = String(date.getMonth() + 1).padStart(2, "0");
@@ -29,6 +38,32 @@ function daysBetween(aYmd, bYmd) {
   const b = parseYmd(bYmd);
   if (!a || !b) return 0;
   return Math.round((b - a) / 86400000);
+}
+
+/**
+ * The dates a range is actually "on": every day from startDate to endDate,
+ * or only the listed weekdays when `weekdays` is non-empty.
+ */
+function isActiveDay({ startDate, endDate, weekdays }, dayYmd) {
+  if (!startDate || dayYmd < startDate || dayYmd > (endDate || startDate)) return false;
+  if (!weekdays?.length) return true;
+  return weekdays.includes(parseYmd(dayYmd).getDay());
+}
+
+function listActiveDays(range) {
+  const start = parseYmd(range.startDate);
+  if (!start) return [];
+  const total = daysBetween(range.startDate, range.endDate || range.startDate) + 1;
+  const days = [];
+  for (let i = 0; i < total; i++) {
+    const day = ymd(addDays(start, i));
+    if (isActiveDay(range, day)) days.push(day);
+  }
+  return days;
+}
+
+function countActiveDays(range) {
+  return listActiveDays(range).length;
 }
 
 function todayYmd() {

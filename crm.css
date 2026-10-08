@@ -931,7 +931,7 @@ th:not(.th-filterable).sorted-asc::after { content: '↑'; }
 th:not(.th-filterable).sorted-desc::after { content: '↓'; }
 
 /* PO table: sort hint on header hover (lighter), full arrow when sorted */
-#tradeShowsTable thead th[data-col]:not(.th-filterable):not(.th-flag-col):not(.th-select-col):not(.th-packing-list-col):not(.sorted-asc):not(.sorted-desc):hover::after {
+.record-table thead th[data-col]:not(.th-filterable):not(.th-flag-col):not(.th-select-col):not(.th-packing-list-col):not(.sorted-asc):not(.sorted-desc):hover::after {
   content: '↑';
   position: absolute;
   right: 8px;
@@ -942,13 +942,13 @@ th:not(.th-filterable).sorted-desc::after { content: '↓'; }
   opacity: 0.45;
 }
 
-#tradeShowsTable thead th[data-col]:not(.th-filterable):not(.th-flag-col):not(.th-select-col):not(.th-packing-list-col).sorted-asc::after,
-#tradeShowsTable thead th[data-col]:not(.th-filterable):not(.th-flag-col):not(.th-select-col):not(.th-packing-list-col).sorted-desc::after {
+.record-table thead th[data-col]:not(.th-filterable):not(.th-flag-col):not(.th-select-col):not(.th-packing-list-col).sorted-asc::after,
+.record-table thead th[data-col]:not(.th-filterable):not(.th-flag-col):not(.th-select-col):not(.th-packing-list-col).sorted-desc::after {
   color: var(--text);
   opacity: 1;
 }
 
-#tradeShowsTable thead th.th-filterable:not(.sorted-asc):not(.sorted-desc):not(.filter-active):has(.th-label:hover)::before {
+.record-table thead th.th-filterable:not(.sorted-asc):not(.sorted-desc):not(.filter-active):has(.th-label:hover)::before {
   content: '↑';
   position: absolute;
   top: 50%;
@@ -959,8 +959,8 @@ th:not(.th-filterable).sorted-desc::after { content: '↓'; }
   opacity: 0.45;
 }
 
-#tradeShowsTable thead th.th-filterable.sorted-asc::before,
-#tradeShowsTable thead th.th-filterable.sorted-desc::before {
+.record-table thead th.th-filterable.sorted-asc::before,
+.record-table thead th.th-filterable.sorted-desc::before {
   color: var(--text);
   opacity: 1;
 }
@@ -980,78 +980,78 @@ th[data-col="Notes"] {
 
 th:hover { background: var(--accent-heavy); color: var(--text); }
 
-#tradeShowsTable thead th:hover:not(.filter-active),
-#tradeShowsTable thead th.th-flag-col:hover:not(.filter-active),
-#tradeShowsTable thead th.th-select-col:hover:not(.filter-active) {
+.record-table thead th:hover:not(.filter-active),
+.record-table thead th.th-flag-col:hover:not(.filter-active),
+.record-table thead th.th-select-col:hover:not(.filter-active) {
   background: var(--header-bg);
   color: var(--text);
 }
 
-#tradeShowsTable thead th.th-filterable.filter-active:hover {
+.record-table thead th.th-filterable.filter-active:hover {
   background: var(--accent);
   color: #fff;
 }
 
-#tradeShowsTable thead th.th-flag-col.filter-active:hover {
+.record-table thead th.th-flag-col.filter-active:hover {
   background: var(--header-bg);
   color: var(--text);
 }
 
 /* Leading control cluster: Flag | Select | Status — no internal dividers */
-#tradeShowsTable th.th-flag-col,
-#tradeShowsTable td.td-flag-cell,
-#tradeShowsTable th.th-select-col,
-#tradeShowsTable td.td-select-cell,
-#tradeShowsTable th[data-col="Status"],
-#tradeShowsTable td[data-col="Status"] {
+.record-table th.th-flag-col,
+.record-table td.td-flag-cell,
+.record-table th.th-select-col,
+.record-table td.td-select-cell,
+.record-table th[data-col="Status"],
+.record-table td[data-col="Status"] {
   border-right: none;
 }
 
-#tradeShowsTable th.th-flag-col,
-#tradeShowsTable td.td-flag-cell {
+.record-table th.th-flag-col,
+.record-table td.td-flag-cell {
   padding-right: 2px;
 }
 
-#tradeShowsTable th.th-select-col,
-#tradeShowsTable td.td-select-cell {
+.record-table th.th-select-col,
+.record-table td.td-select-cell {
   padding-left: 2px;
   padding-right: 2px;
 }
 
-#tradeShowsTable th[data-col="Status"],
-#tradeShowsTable td[data-col="Status"] {
+.record-table th[data-col="Status"],
+.record-table td[data-col="Status"] {
   padding-left: 4px;
 }
 
-#tradeShowsTable thead th {
+.record-table thead th {
   padding-top: 5px;
   padding-bottom: 5px;
 }
 
-#tradeShowsTable tbody td {
+.record-table tbody td {
   padding-top: 4px;
   padding-bottom: 4px;
 }
 
-#tradeShowsTable .th-flag-icon,
-#tradeShowsTable .po-flag-btn,
-#tradeShowsTable .po-packing-list-indicator {
+.record-table .th-flag-icon,
+.record-table .po-flag-btn,
+.record-table .po-packing-list-indicator {
   width: 24px;
   height: 24px;
 }
 
-#tradeShowsTable .th-flag-icon svg {
+.record-table .th-flag-icon svg {
   width: 14px;
   height: 14px;
 }
 
-#tradeShowsTable .po-select-checkbox,
-#tradeShowsTable th.th-select-col input[type="checkbox"] {
+.record-table .po-select-checkbox,
+.record-table th.th-select-col input[type="checkbox"] {
   width: 16px;
   height: 16px;
 }
 
-#tradeShowsTable .editable-preview {
+.record-table .editable-preview {
   padding: 2px 5px;
 }
 
@@ -2592,20 +2592,20 @@ td.n41-status-mismatch,
    CRM — Companies table
    ============================================================ */
 
-#tradeShowsTable {
+.record-table {
   min-width: 1080px;
 }
 
-#tradeShowsTable .col-company    { width: 230px; min-width: 180px; }
-#tradeShowsTable .col-owner      { width: 120px; min-width: 95px; }
-#tradeShowsTable .col-location   { width: 130px; min-width: 100px; }
-#tradeShowsTable .col-schedule   { width: 118px; min-width: 100px; }
-#tradeShowsTable .col-services   { width: 120px; min-width: 100px; }
+.record-table .col-company    { width: 230px; min-width: 180px; }
+.record-table .col-owner      { width: 120px; min-width: 95px; }
+.record-table .col-location   { width: 130px; min-width: 100px; }
+.record-table .col-schedule   { width: 118px; min-width: 100px; }
+.record-table .col-services   { width: 120px; min-width: 100px; }
 /* Notes takes whatever is left — it's the one column that benefits from it. */
-#tradeShowsTable .col-notes      { width: auto;  min-width: 180px; }
+.record-table .col-notes      { width: auto;  min-width: 180px; }
 
 /* A memo can run long; the row stays one line and the full text is on hover. */
-#tradeShowsTable td[data-col="Notes"] {
+.record-table td[data-col="Notes"] {
   text-align: left;
   white-space: nowrap;
   overflow: hidden;
@@ -2614,17 +2614,17 @@ td.n41-status-mismatch,
   color: var(--text-muted);
 }
 
-#tradeShowsTable td[data-col="Company"] {
+.record-table td[data-col="Company"] {
   text-align: left;
   font-weight: 600;
 }
 
-#tradeShowsTable td[data-col="Owner"],
-#tradeShowsTable td[data-col="Location"] {
+.record-table td[data-col="Owner"],
+.record-table td[data-col="Location"] {
   text-align: left;
 }
 
-#tradeShowsTable tbody tr.clickable-row {
+.record-table tbody tr.clickable-row {
   cursor: pointer;
 }
 
@@ -5534,98 +5534,130 @@ span.dash-event { cursor: pointer; /* clicking selects the day */ }
 .dashboard-day-pane .task-tabs { flex: 1; }
 
 /* ============================================================
-   Trade shows — one colour family per show
+   Schedule items — one colour family per trade show and per
+   campaign type
 
-   Every place a show appears (table dot, calendar chip, card pill, form
-   button) keys on data-show, so a show reads as the same colour everywhere.
+   Every place an item appears (table dot, calendar chip, card pill, form
+   button) keys on data-show or data-campaign-type, so it reads as the same
+   colour everywhere.
    ============================================================ */
 
-[data-show] {
-  --show-bg: #eef0f3;
-  --show-fg: #4b5563;
-  --show-strong: #6b7280;
+[data-show],
+[data-campaign-type] {
+  --item-bg: #eef0f3;
+  --item-fg: #4b5563;
+  --item-strong: #6b7280;
 }
-[data-show="atlanta-apparel"] { --show-bg: #fde7ea; --show-fg: #a3233a; --show-strong: #c22f4a; }
-[data-show="dallas-market"]   { --show-bg: #fdf0d5; --show-fg: #8a5a00; --show-strong: #b07400; }
-[data-show="magic-new-york"]  { --show-bg: #ece6fb; --show-fg: #5a3aa8; --show-strong: #6d4ac7; }
-[data-show="magic-las-vegas"] { --show-bg: #fbe3f3; --show-fg: #9b1f74; --show-strong: #b8288b; }
-[data-show="magic-nashville"] { --show-bg: #dcf3ef; --show-fg: #0f6e62; --show-strong: #138577; }
-[data-show="flair"]           { --show-bg: #e1ecfb; --show-fg: #1f56a5; --show-strong: #2a67c2; }
 
-.trade-show-dot {
+/* Trade shows */
+[data-show="atlanta-apparel"] { --item-bg: #fde7ea; --item-fg: #a3233a; --item-strong: #c22f4a; }
+[data-show="dallas-market"]   { --item-bg: #fdf0d5; --item-fg: #8a5a00; --item-strong: #b07400; }
+[data-show="magic-new-york"]  { --item-bg: #ece6fb; --item-fg: #5a3aa8; --item-strong: #6d4ac7; }
+[data-show="magic-las-vegas"] { --item-bg: #fbe3f3; --item-fg: #9b1f74; --item-strong: #b8288b; }
+[data-show="magic-nashville"] { --item-bg: #dcf3ef; --item-fg: #0f6e62; --item-strong: #138577; }
+[data-show="flair"]           { --item-bg: #e1ecfb; --item-fg: #1f56a5; --item-strong: #2a67c2; }
+
+/* Campaign types */
+[data-campaign-type="sale"]              { --item-bg: #ffe8de; --item-fg: #b23c0e; --item-strong: #e0561c; }
+[data-campaign-type="new-arrivals"]      { --item-bg: #e3f4dc; --item-fg: #2f6b12; --item-strong: #3f8a1a; }
+[data-campaign-type="collection-launch"] { --item-bg: #e4e6fa; --item-fg: #3a3f9e; --item-strong: #4a50c0; }
+[data-campaign-type="holiday"]           { --item-bg: #dff1e8; --item-fg: #155c3b; --item-strong: #1c7a4f; }
+[data-campaign-type="promotion"]         { --item-bg: #fdf3c7; --item-fg: #7a5d00; --item-strong: #a07a00; }
+
+.item-dot {
   display: inline-block;
   flex: 0 0 auto;
   width: 9px;
   height: 9px;
   border-radius: 50%;
-  background: var(--show-strong);
+  background: var(--item-strong);
 }
 
-.trade-show-dot--lg { width: 12px; height: 12px; margin-right: 10px; vertical-align: 2px; }
+.item-dot--lg { width: 12px; height: 12px; margin-right: 10px; }
 
-.trade-show-pill {
-  background: var(--show-bg);
-  color: var(--show-fg);
+.schedule-card-pill {
+  background: var(--item-bg);
+  color: var(--item-fg);
 }
 
 /* ── Calendar chips ──
-   A show day is a solid block in its colour; an email is a pale chip edged in
-   the same colour — same show, clearly a different kind of thing. */
-.dash-event.cal-event--show {
-  background: var(--show-bg);
-  color: var(--show-fg);
+   A day is a solid block in the item colour; a task is a pale chip edged in
+   the same colour — same item, clearly a different kind of thing. */
+.dash-event.cal-event--day {
+  background: var(--item-bg);
+  color: var(--item-fg);
 }
 
-.dash-event.cal-event--email {
+.dash-event.cal-event--task {
   background: var(--surface);
-  color: var(--show-fg);
-  box-shadow: inset 3px 0 0 var(--show-strong), inset 0 0 0 1px var(--border);
+  color: var(--item-fg);
+  box-shadow: inset 3px 0 0 var(--item-strong), inset 0 0 0 1px var(--border);
 }
 
-.dash-event.cal-event--show.is-group-selected,
-.dash-event.cal-event--email.is-group-selected {
-  background: var(--show-strong);
+.dash-event.cal-event--day.is-group-selected,
+.dash-event.cal-event--task.is-group-selected {
+  background: var(--item-strong);
   color: #fff;
   box-shadow: none;
 }
 
-.cal-filter-btn[data-kind="show"].is-active  { background: #6d4ac7; border-color: #6d4ac7; }
-.cal-filter-btn[data-kind="email"].is-active { background: #1f2937; border-color: #1f2937; }
+.cal-filter-btn[data-kind="campaign"].is-active { background: #e0561c; border-color: #e0561c; }
+.cal-filter-btn[data-kind="show"].is-active     { background: #6d4ac7; border-color: #6d4ac7; }
+.cal-filter-btn[data-kind="email"].is-active,
+.cal-filter-btn[data-kind="banner"].is-active,
+.cal-filter-btn[data-kind="social"].is-active   { background: #1f2937; border-color: #1f2937; }
 
-.payroll-task[data-kind="email"] .payroll-task-icon { color: var(--text-muted); }
+.payroll-task[data-kind="email"] .payroll-task-icon,
+.payroll-task[data-kind="banner"] .payroll-task-icon,
+.payroll-task[data-kind="social"] .payroll-task-icon { color: var(--text-muted); }
 
 /* ── Cards ── */
-.trade-show-card { border-left: 3px solid var(--show-strong); }
-.trade-show-card.is-complete { border-left-color: #cfe3cf; }
+.schedule-card { border-left: 3px solid var(--item-strong); }
+.schedule-card.is-complete { border-left-color: #cfe3cf; }
 
-.trade-show-card.is-selected,
-.trade-show-card.is-selected.is-complete {
-  background: var(--show-bg);
-  border-color: var(--show-bg);
-  border-left-color: var(--show-strong);
+.schedule-card.is-selected,
+.schedule-card.is-selected.is-complete {
+  background: var(--item-bg);
+  border-color: var(--item-bg);
+  border-left-color: var(--item-strong);
 }
 
-/* Three emails stack in narrow rails rather than squeezing side by side. */
-.trade-show-card-tasks { flex-direction: column; gap: 6px; }
-.trade-show-card-tasks .payroll-task { flex: 0 0 auto; }
+/* Tasks stack in narrow rails rather than squeezing side by side. */
+.schedule-card-tasks { flex-direction: column; gap: 6px; }
+.schedule-card-tasks .payroll-task { flex: 0 0 auto; }
+
+.schedule-card-empty {
+  font-family: var(--font);
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+/* A missed task date, wherever the row appears. */
+.payroll-task-due.is-overdue,
+.item-next-task .is-overdue {
+  color: var(--danger);
+  font-weight: 600;
+}
 
 /* ============================================================
-   Trade shows — list table
+   Campaigns / Trade shows — list tables
    ============================================================ */
 
-#tradeShowsTable { min-width: 980px; }
+.record-table { min-width: 980px; }
 
-#tradeShowsTable .col-show   { width: 220px; min-width: 180px; }
-#tradeShowsTable .col-date   { width: 116px; min-width: 100px; }
-#tradeShowsTable .col-days   { width: 64px;  min-width: 56px; }
-#tradeShowsTable .col-status { width: 112px; min-width: 100px; }
-#tradeShowsTable .col-emails { width: 96px;  min-width: 88px; }
-#tradeShowsTable .col-next   { width: 128px; min-width: 110px; }
-#tradeShowsTable .col-notes  { width: auto;  min-width: 180px; }
+.record-table .col-name     { width: 220px; min-width: 170px; }
+.record-table .col-type     { width: 130px; min-width: 110px; }
+.record-table .col-date     { width: 116px; min-width: 100px; }
+.record-table .col-days     { width: 64px;  min-width: 56px; }
+.record-table .col-status   { width: 112px; min-width: 100px; }
+.record-table .col-progress { width: 120px; min-width: 96px; }
+.record-table .col-next     { width: 140px; min-width: 120px; }
+.record-table .col-notes    { width: auto;  min-width: 180px; }
 
-#tradeShowsTable td[data-col="Show"] { text-align: left; font-weight: 600; }
+.record-table td[data-col="name"] { text-align: left; font-weight: 600; }
+.record-table td[data-col="campaignType"] { text-align: left; }
 
-#tradeShowsTable td[data-col="Notes"] {
+.record-table td[data-col="notes"] {
   text-align: left;
   white-space: nowrap;
   overflow: hidden;
@@ -5634,17 +5666,21 @@ span.dash-event { cursor: pointer; /* clicking selects the day */ }
   color: var(--text-muted);
 }
 
-#tradeShowsTable tbody tr.clickable-row { cursor: pointer; }
+.record-table th[data-col="name"],
+.record-table th[data-col="campaignType"],
+.record-table th[data-col="notes"] { text-align: left; }
 
-#tradeShowsTable th.th-no-sort { cursor: default; }
+.record-table tbody tr.clickable-row { cursor: pointer; }
 
-.trade-show-name-cell {
+.record-table th.th-no-sort { cursor: default; }
+
+.record-name-cell {
   display: inline-flex;
   align-items: center;
   gap: 8px;
 }
 
-.trade-show-status {
+.item-status {
   display: inline-block;
   padding: 2px 9px;
   border-radius: 10px;
@@ -5656,74 +5692,276 @@ span.dash-event { cursor: pointer; /* clicking selects the day */ }
   color: #4b5563;
 }
 
-.trade-show-status[data-timing="upcoming"] { background: #e1ecfb; color: #1f56a5; }
-.trade-show-status[data-timing="live"]     { background: #e1f5ee; color: #0f6e56; font-weight: 600; }
-.trade-show-status[data-timing="past"]     { background: #eef0f3; color: #8b929c; }
+.item-status[data-timing="upcoming"] { background: #e1ecfb; color: #1f56a5; }
+.item-status[data-timing="live"]     { background: #e1f5ee; color: #0f6e56; font-weight: 600; }
+.item-status[data-timing="past"]     { background: #eef0f3; color: #8b929c; }
 
-.trade-show-email-dots {
+.item-progress {
   display: inline-flex;
   align-items: center;
   gap: 3px;
 }
 
-.trade-show-email-dots .service-dot.is-on { background: var(--success); }
+.item-progress .service-dot.is-on { background: var(--success); }
 
-.trade-show-email-count {
+.item-progress-count {
   margin-left: 5px;
   font-size: 11px;
   color: var(--text-muted);
 }
 
-/* ============================================================
-   Trade shows — detail page
-   ============================================================ */
-
-.trade-show-detail-inner { max-width: 880px; }
-
-.trade-show-detail-title { display: flex; align-items: center; }
-
-.trade-show-detail-status { margin-left: auto; }
-
-.trade-show-tasks-panel,
-.trade-show-tasks-panel .dashboard-panel-body { min-height: 0; }
-
-.trade-show-task-list {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 4px 0;
+.item-next-task {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
 }
 
-.trade-show-task-list .payroll-task { flex: 0 0 auto; padding: 10px 14px 10px 12px; }
-.trade-show-task-list .payroll-task-name { font-size: 13px; }
-.trade-show-task-list .payroll-task-due { font-size: 12px; min-width: 64px; }
+.item-next-task .dash-event-icon { width: 12px; height: 12px; color: var(--text-muted); }
 
-.trade-show-task-relative {
-  margin-left: auto;
+/* ============================================================
+   Campaigns / Trade shows — side pane
+
+   Same build as the PO App packing list pane: pinned to the right of the
+   main area, over whatever view is open, with the list still visible to its
+   left. Header, a grey summary card, then tasks and notes.
+   ============================================================ */
+
+.app-main { position: relative; }
+
+.item-pane {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 70;
+  width: 540px;
+  max-width: 100%;
+  border-left: 1px solid var(--border);
+  box-shadow: -8px 0 18px rgba(15, 23, 42, 0.08);
+  background: var(--surface);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
   font-family: var(--font);
+  animation: item-pane-in 160ms ease-out;
+}
+
+.item-pane[hidden] { display: none !important; }
+
+@keyframes item-pane-in {
+  from { opacity: 0; transform: translateX(12px); }
+  to   { opacity: 1; transform: none; }
+}
+
+.item-pane-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 16px 10px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.item-pane-title-group {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.item-pane-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text);
+  min-width: 0;
+}
+
+.item-pane-subtitle {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.item-pane-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.item-pane-header-actions .header-menu-wrap { position: relative; }
+
+.item-pane-menu {
+  right: 0;
+  left: auto;
+}
+
+.item-pane-icon-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  cursor: pointer;
+  border-radius: 5px;
+  padding: 5px 7px;
+  color: var(--text-muted);
+  font-size: 15px;
+  line-height: 1;
+}
+
+.item-pane-icon-btn:hover {
+  background: #f3f4f6;
+  color: var(--text);
+}
+
+.item-pane-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+/* Grey label / value grid — the PO pane summary card. */
+.item-pane-summary {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  column-gap: 14px;
+  row-gap: 6px;
+  padding: 14px 16px;
+  background: #fafafa;
+  border-bottom: 1px solid var(--border);
+}
+
+.item-pane-label {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text);
+  white-space: nowrap;
+  line-height: 1.6;
+}
+
+.item-pane-value {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text);
+  min-width: 0;
+}
+
+.item-pane-value.is-overdue { color: var(--danger); font-weight: 600; }
+
+.item-pane-section {
+  padding: 12px 16px 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+.item-pane-section-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.item-pane-section-title {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text);
+}
+
+.item-pane-section-count {
+  margin-left: auto;
+  font-size: 11.5px;
+  color: var(--text-muted);
+}
+
+.item-pane-section-head .company-notes-status { margin-left: auto; }
+
+.item-pane-notes {
+  display: block;
+  width: 100%;
+  min-height: 96px;
+  padding: 7px 9px;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  background: #fafafa;
+  font-family: var(--font);
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text);
+  resize: vertical;
+  outline: none;
+}
+
+.item-pane-notes:focus {
+  border-color: var(--accent);
+  background: var(--surface);
+  box-shadow: 0 0 0 3px var(--accent-light);
+}
+
+.item-task-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.item-task-list .payroll-task { flex: 0 0 auto; padding: 9px 12px 9px 10px; }
+.item-task-list .payroll-task-name { font-size: 13px; }
+.item-task-list .payroll-task-due { font-size: 12px; min-width: 64px; }
+
+.item-task-relative {
+  margin-left: auto;
   font-size: 11.5px;
   color: var(--text-muted);
   white-space: nowrap;
 }
 
+.item-tasks-empty {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+/* The record open in the pane, in the list behind it. */
+.record-table tr.is-pane-row td { background: var(--row-selected-bg); }
+.record-table tr.is-pane-row:hover td { background: var(--row-selected-hover); }
+.record-table tr.is-pane-row td:first-child { box-shadow: inset 3px 0 0 var(--accent); }
+
+.form-notes {
+  resize: vertical;
+  min-height: 64px;
+  line-height: 1.5;
+}
+
 /* ============================================================
-   Trade shows — add / edit form
+   Forms — show / type pickers, email preview, campaign tasks
    ============================================================ */
 
-.trade-show-picker { flex-wrap: wrap; }
+.item-picker { flex-wrap: wrap; }
 
-.trade-show-picker.is-invalid .form-toggle-btn { border-color: var(--danger); }
+.item-picker.is-invalid .form-toggle-btn { border-color: var(--danger); }
 
-.form-toggle-btn.trade-show-toggle.is-active {
-  background: var(--show-strong);
-  border-color: var(--show-strong);
+.form-toggle-btn.item-toggle.is-active {
+  background: var(--item-strong);
+  border-color: var(--item-strong);
   color: #fff;
 }
 
-.form-toggle-btn.trade-show-toggle:hover:not(.is-active) {
-  background: var(--show-bg);
-  border-color: var(--show-strong);
-  color: var(--show-fg);
+.form-toggle-btn.item-toggle:hover:not(.is-active) {
+  background: var(--item-bg);
+  border-color: var(--item-strong);
+  color: var(--item-fg);
 }
 
 .trade-show-email-preview {
@@ -5754,8 +5992,613 @@ span.dash-event { cursor: pointer; /* clicking selects the day */ }
   font-weight: 600;
 }
 
-/* A missed email's date, wherever the row appears. */
-.payroll-task-due.is-overdue {
-  color: var(--danger);
+.campaign-form-card { width: 600px; }
+
+.campaign-task-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.campaign-task-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 6px 6px 12px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+}
+
+.campaign-task-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+  font-family: var(--font);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.campaign-task-name .dash-event-icon { width: 14px; height: 14px; color: var(--text-muted); }
+
+.campaign-task-date { width: 160px; flex: 0 0 auto; }
+
+.campaign-task-remove { flex: 0 0 auto; }
+
+.campaign-add-task {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.campaign-add-task-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.campaign-add-task-btn .dash-event-icon { width: 13px; height: 13px; }
+
+/* ============================================================
+   Calendar header — filter left, ‹ today › centred, Month/Week right
+
+   Three equal-weight columns keep the navigation dead-centre however wide
+   the filter label or the month title gets.
+   ============================================================ */
+
+.dashboard-cal-header {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 12px;
+  /* The filter menu drops below the header, over the grid. */
+  overflow: visible;
+  z-index: 5;
+}
+
+.dashboard-cal-header .dashboard-cal-legend {
+  justify-self: start;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.dashboard-cal-header .dashboard-cal-title {
+  position: static;
+  transform: none;
+  font-size: 14px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.dashboard-cal-header .dashboard-cal-nav { justify-self: center; }
+
+.dashboard-cal-header .cal-view-group {
+  justify-self: end;
+  margin-left: 0;
+}
+
+/* Today's date in place of "Today" — fixed width, so the arrows don't
+   shift as the date gets longer or shorter. */
+.cal-today-btn {
+  min-width: 104px;
+  justify-content: center;
   font-weight: 600;
 }
+
+/* ── Filter: one button, the rest on hover ── */
+.cal-filter-bar {
+  position: relative;
+  display: inline-flex;
+  flex-wrap: nowrap;
+}
+
+.cal-filter-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* A small caret, so the button reads as a menu. */
+.cal-filter-trigger::after {
+  content: "";
+  width: 10px;
+  height: 10px;
+  background-color: currentColor;
+  mask: var(--icon-caret-down) no-repeat center / contain;
+  -webkit-mask: var(--icon-caret-down) no-repeat center / contain;
+  opacity: 0.8;
+}
+
+.cal-filter-trigger-flag {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #fff;
+  opacity: 0.85;
+}
+
+/* Hidden until hovered (or opened by click); padding-top bridges the gap
+   between button and menu so the pointer can cross it without closing. */
+.cal-filter-menu {
+  display: none;
+  position: absolute;
+  top: 100%;
+  left: 0;
+  z-index: 50;
+  padding-top: 6px;
+}
+
+.cal-filter-bar:hover .cal-filter-menu,
+.cal-filter-bar:focus-within .cal-filter-menu,
+.cal-filter-bar.is-open .cal-filter-menu {
+  display: flex;
+}
+
+.cal-filter-menu {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+  min-width: 160px;
+}
+
+/* The menu's card sits inside the bridge padding. */
+.cal-filter-menu::before {
+  content: "";
+  position: absolute;
+  inset: 6px 0 0 0;
+  z-index: -1;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.12);
+}
+
+.cal-filter-menu .cal-filter-btn {
+  margin: 0 8px;
+  text-align: left;
+}
+
+.cal-filter-menu .cal-filter-btn:first-child { margin-top: 8px; }
+.cal-filter-menu .cal-filter-btn:last-child { margin-bottom: 8px; }
+
+.cal-filter-menu .cal-filter-btn--completed {
+  margin-left: 8px;
+  margin-top: 4px;
+}
+
+/* ── Layout switch (compact / cards) ── */
+.item-pane-layout-toggle {
+  display: inline-flex;
+  padding: 2px;
+  gap: 2px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+}
+
+.item-pane-layout-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 3px 8px;
+  background: none;
+  border: none;
+  border-radius: 999px;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.item-pane-layout-btn:hover:not(.is-active) { color: var(--text); }
+
+.item-pane-layout-btn.is-active {
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+}
+
+/* ============================================================
+   Side pane — card layout
+
+   The full-page detail design, carried into the pane: a header card with
+   the big title and a bulleted subtitle, then Tasks and Notes each as their
+   own white card on the grey page background. No summary grid — the header
+   line carries type, dates and length instead.
+   ============================================================ */
+
+.item-pane[data-layout="cards"] {
+  background: var(--bg);
+  width: 600px;
+}
+
+.item-pane[data-layout="cards"] .item-pane-header {
+  flex-wrap: wrap;
+  gap: 12px 16px;
+  margin: 16px 16px 0;
+  padding: 14px 16px 14px 20px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.item-pane[data-layout="cards"] .item-pane-title {
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  margin-bottom: 3px;
+  gap: 0;
+}
+
+.item-pane[data-layout="cards"] .item-pane-title .item-dot {
+  width: 12px;
+  height: 12px;
+  margin-right: 10px;
+}
+
+.item-pane[data-layout="cards"] .item-pane-subtitle {
+  font-size: 13px;
+  font-weight: 400;
+  white-space: normal;
+}
+
+.item-pane[data-layout="cards"] .item-pane-subtitle .sep {
+  margin: 0 7px;
+  color: var(--empty-display);
+}
+
+.item-pane[data-layout="cards"] .item-pane-summary { display: none; }
+
+.item-pane[data-layout="cards"] .item-pane-body {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 16px;
+}
+
+.item-pane[data-layout="cards"] .item-pane-section {
+  flex-shrink: 0;
+  padding: 0;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+/* Section heads read as the dashboard panel headers did. */
+.item-pane[data-layout="cards"] .item-pane-section-head {
+  margin: 0;
+  padding: 11px 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.item-pane[data-layout="cards"] .item-pane-section-title {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.item-pane[data-layout="cards"] .item-pane-section-count {
+  font-weight: 600;
+  background: var(--accent-light);
+  border-radius: 10px;
+  padding: 1px 8px;
+}
+
+.item-pane[data-layout="cards"] .item-pane-section-count:empty { display: none; }
+
+.item-pane[data-layout="cards"] #itemPaneTasks { padding: 12px 16px 14px; }
+
+.item-pane[data-layout="cards"] .item-task-list { gap: 8px; }
+
+.item-pane[data-layout="cards"] .item-task-list .payroll-task { padding: 10px 14px 10px 12px; }
+
+/* The notes box is the card itself — no inner border, as on the old page. */
+.item-pane[data-layout="cards"] .item-pane-notes {
+  min-height: 92px;
+  padding: 10px 12px;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  font-size: 12.5px;
+  resize: none;
+  box-shadow: none;
+}
+
+/* ── Campaign form: only on specific days ── */
+.campaign-days-field { gap: 8px; }
+
+.campaign-days-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  width: fit-content;
+}
+
+.campaign-days-switch-label {
+  font-family: var(--font);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text);
+}
+
+.campaign-weekdays[hidden] { display: none; }
+
+.campaign-weekday-btn {
+  min-width: 52px;
+  padding: 6px 10px;
+}
+
+.campaign-weekdays.is-invalid .campaign-weekday-btn:not(.is-active) { border-color: var(--danger); }
+
+/* ============================================================
+   Platforms — banners per online store
+   ============================================================ */
+
+/* One colour per platform, on the same tokens as shows and campaign types,
+   so the form picker and pills share the item-toggle styling. */
+[data-platform] {
+  --item-bg: #eef0f3;
+  --item-fg: #4b5563;
+  --item-strong: #6b7280;
+}
+[data-platform="faire"]     { --item-bg: #f3ece2; --item-fg: #5e4630; --item-strong: #7a5a3c; }
+[data-platform="fashiongo"] { --item-bg: #fde4ef; --item-fg: #a1205e; --item-strong: #c72a75; }
+[data-platform="magento"]   { --item-bg: #feeadd; --item-fg: #a6400f; --item-strong: #e8590c; }
+
+.platform-pill {
+  display: inline-block;
+  padding: 2px 9px;
+  border-radius: 10px;
+  font-family: var(--font);
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+  background: var(--item-bg);
+  color: var(--item-fg);
+}
+
+/* ── List ── */
+.banners-table { min-width: 900px; }
+
+.banners-table .col-preview  { width: 136px; min-width: 136px; }
+.banners-table .col-name     { width: 240px; min-width: 180px; }
+.banners-table .col-platform { width: 110px; min-width: 100px; }
+.banners-table .col-size     { width: 120px; min-width: 100px; }
+.banners-table .col-styles   { width: auto;  min-width: 220px; }
+.banners-table .col-updated  { width: 120px; min-width: 110px; }
+
+.banners-table td[data-col="name"],
+.banners-table td[data-col="styles"],
+.banners-table th[data-col="styles"],
+.banners-table th[data-col="preview"] { text-align: left; }
+
+.banners-table td[data-col="preview"] { padding-top: 6px; padding-bottom: 6px; }
+
+.banner-thumb {
+  display: block;
+  width: 112px;
+  height: 44px;
+  object-fit: cover;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+}
+
+.banner-thumb.is-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font);
+  font-size: 10.5px;
+  color: var(--text-muted);
+  border-style: dashed;
+}
+
+.banner-style-chips {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.banner-style-chip {
+  padding: 2px 8px;
+  border-radius: 10px;
+  background: var(--accent-light);
+  font-family: var(--font);
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text);
+  white-space: nowrap;
+}
+
+/* ── Pane ── */
+.banner-pane-preview {
+  padding: 14px 16px 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+.banner-pane-image {
+  display: block;
+  width: 100%;
+  max-height: 320px;
+  object-fit: contain;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: repeating-conic-gradient(#f3f4f6 0% 25%, #fff 0% 50%) 50% / 16px 16px;
+}
+
+.banner-pane-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  height: 140px;
+  border: 1px dashed var(--border-strong);
+  border-radius: 6px;
+  font-family: var(--font);
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.banner-size-note {
+  display: block;
+  margin-top: 6px;
+  font-family: var(--font);
+  font-size: 11.5px;
+  color: var(--text-muted);
+}
+
+.banner-size-note:empty { display: none; }
+.banner-size-note.is-match { color: var(--success); }
+.banner-size-note.is-mismatch { color: #b45309; font-weight: 600; }
+
+.banner-style-table {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+  font-family: var(--font);
+  font-size: 13px;
+}
+
+.banner-style-table span {
+  padding: 7px 12px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text);
+}
+
+.banner-style-table span:nth-last-child(-n + 2) { border-bottom: none; }
+
+.banner-style-table .banner-style-head {
+  background: var(--header-bg);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+/* ── Form ── */
+.banner-form-card { width: 600px; }
+
+.banner-size-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.banner-size-row .form-input { width: 120px; }
+
+.banner-size-x {
+  font-family: var(--font);
+  font-size: 14px;
+  color: var(--text-muted);
+}
+
+#bannerFormSizeHint.is-mismatch { color: #b45309; font-weight: 600; }
+
+.banner-drop {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 120px;
+  padding: 8px;
+  border: 1px dashed var(--border-strong);
+  border-radius: 8px;
+  background: var(--bg);
+}
+
+.banner-drop.is-dragover {
+  border-color: var(--accent);
+  background: var(--accent-light);
+}
+
+.banner-drop-empty {
+  font-family: var(--font);
+  font-size: 12.5px;
+  color: var(--text-muted);
+}
+
+.banner-form-preview {
+  display: block;
+  max-width: 100%;
+  max-height: 220px;
+  object-fit: contain;
+  border-radius: 4px;
+}
+
+.banner-image-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.banner-pick-btn { cursor: pointer; }
+
+.banner-style-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.banner-style-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.banner-style-row .banner-style-no { flex: 0 0 160px; }
+.banner-style-row .banner-style-color { flex: 1; min-width: 0; }
+.banner-style-row .banner-style-remove[hidden] { visibility: hidden; display: inline-flex; }
+
+.banner-add-style {
+  align-self: flex-start;
+  margin-top: 8px;
+}
+
+/* ── Banner type + multiple platforms ── */
+.banners-table .col-type { width: 120px; min-width: 110px; }
+.banners-table .col-platform { width: 180px; min-width: 120px; }
+.banners-table td[data-col="platform"] { text-align: left; }
+
+.platform-pills {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.banner-type-pill {
+  display: inline-block;
+  padding: 2px 9px;
+  border-radius: 10px;
+  font-family: var(--font);
+  font-size: 11px;
+  font-weight: 500;
+  white-space: nowrap;
+  background: #eef0f3;
+  color: #4b5563;
+}
+
+.banner-type-pill[data-banner-type="collection"]    { background: #e4e6fa; color: #3a3f9e; }
+.banner-type-pill[data-banner-type="display"]       { background: #e1f5ee; color: #0f6e56; }
+.banner-type-pill[data-banner-type="advertisement"] { background: #fdf3c7; color: #7a5d00; }
+
+/* Label on the left, the "Multiple platforms" box on the right of it. */
+.banner-platform-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.banner-multi-platform { font-size: 12.5px; }
+
+.item-picker.is-invalid .form-toggle-btn:not(.is-active) { border-color: var(--danger); }

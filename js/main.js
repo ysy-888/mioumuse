@@ -30,9 +30,13 @@ async function bootApp() {
   initAuthForm();
   initAppNav();
   initHeaderMenu();
-  initTradeShowsView();
-  initTradeShowDetail();
+  initRecordLists();
+  // Before the forms: its Escape handler has to see an open form first.
+  initItemPane();
+  initCampaignForm();
   initTradeShowForm();
+  initBannersView();
+  initBannerForm();
   initCalendar();
 
   if (!isSupabaseConfigured()) {

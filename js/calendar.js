@@ -1,10 +1,10 @@
 /**
- * Calendar — every trade show and every email task, on the day it lands.
+ * Calendar — every campaign and trade show, and every task, on the day it lands.
  *
  * A continuously scrolling month grid (or a single week) with a day pane that
- * opens beside it. A show appears on each day it runs; its emails appear on
- * their due dates. Selecting a show lights up all of it at once — the show
- * days and the three emails leading up to them.
+ * opens beside it. A campaign or show appears on each day it runs; its tasks
+ * appear on their due dates. Selecting one lights up all of it at once — its
+ * days and every task leading up to them.
  */
 
 const CAL_MONTHS_BEFORE = 2;
@@ -21,26 +21,38 @@ const CAL_VIEW_MODES = [
 ];
 
 let calCursor = null;          // { year, month } the arrows/title target
+/**
+ * The date whose week sits in the month grid's top row. Today by default, so
+ * the calendar opens on this week rather than on the 1st of the month; the
+ * month arrows set it to the 1st, and scrolling keeps it current.
+ */
+let calTopYmd = null;
 let calSelectedYmd = "";       // day whose pane is open
 let calScrollEl = null;
 let calMonthAnchors = {};
 let calScrollRaf = 0;
 
 /** Every kind the filter knows about — used to tell "all on" from "narrowed". */
-const CAL_KINDS = [EVENT_KIND_SHOW, TASK_KIND_EMAIL];
+const CAL_KINDS = [EVENT_KIND_SHOW, EVENT_KIND_CAMPAIGN, TASK_KIND_EMAIL, TASK_KIND_BANNER, TASK_KIND_SOCIAL];
 
 /** Which kinds are shown. All on by default. */
 let calFilterSelection = new Set(CAL_KINDS);
 
 /**
- * Emails for a show whose every email is done are hidden by default; the
- * filter bar opts back into them. The show days themselves always show —
- * they're events, not work to finish.
+ * Tasks of an item whose every task is done are hidden by default; the filter
+ * bar opts back into them. The days themselves always show — they're events,
+ * not work to finish.
  */
 let calShowCompleted = false;
 
-function isEmailHiddenAsCompleted(tradeShow) {
-  return !calShowCompleted && isTradeShowComplete(tradeShow);
+function areTasksHiddenAsCompleted(item) {
+  return !calShowCompleted && isItemComplete(item);
+}
+
+/** The item's tasks that pass the kind filter and the completed toggle. */
+function getVisibleItemTasks(item) {
+  if (areTasksHiddenAsCompleted(item)) return [];
+  return item.tasks.filter(task => calFilterSelection.has(task.kind));
 }
 
 // ── Group selection ──────────────────────────────────────────────────────────
@@ -113,37 +125,42 @@ function getCalRange() {
   return { start, end };
 }
 
-/** Everything one show puts on the calendar, after the kind filter. */
-function buildShowCalendarItems(tradeShow) {
-  const items = [];
-  if (calFilterSelection.has(EVENT_KIND_SHOW)) {
-    buildTradeShowDayEvents(tradeShow).forEach(event => items.push({ ...event, done: false }));
+/**
+ * Everything one item puts on the calendar, after the filters: a chip per day
+ * it runs, and a chip per task on its due date. Each entry carries its item.
+ */
+function buildItemCalendarEntries(item) {
+  const entries = [];
+  if (calFilterSelection.has(item.dayKind)) {
+    buildItemDayEvents(item).forEach(event => entries.push({ ...event, done: false, item }));
   }
-  if (calFilterSelection.has(TASK_KIND_EMAIL) && !isEmailHiddenAsCompleted(tradeShow)) {
-    buildTradeShowEmailTasks(tradeShow).forEach(task => items.push({ ...task, done: isTaskComplete(task.id) }));
-  }
-  return items.map(item => ({ ...item, tradeShow }));
+  getVisibleItemTasks(item).forEach(task => entries.push({ ...task, done: isTaskComplete(task.id), item }));
+  return entries;
 }
 
-/** ymd → item[] for the visible range, after filters. */
+function isDayEntry(entry) {
+  return entry.kind === EVENT_KIND_SHOW || entry.kind === EVENT_KIND_CAMPAIGN;
+}
+
+/** ymd → entry[] for the visible range, after filters. */
 function buildCalEventsByDate() {
   const { start, end } = getCalRange();
   const from = ymd(start);
   const to = ymd(end);
   const byDate = new Map();
 
-  getAllTradeShows().forEach(tradeShow => {
-    buildShowCalendarItems(tradeShow).forEach(item => {
-      if (item.dueDate < from || item.dueDate > to) return;
-      if (!byDate.has(item.dueDate)) byDate.set(item.dueDate, []);
-      byDate.get(item.dueDate).push(item);
+  getAllScheduleItems().forEach(item => {
+    buildItemCalendarEntries(item).forEach(entry => {
+      if (entry.dueDate < from || entry.dueDate > to) return;
+      if (!byDate.has(entry.dueDate)) byDate.set(entry.dueDate, []);
+      byDate.get(entry.dueDate).push(entry);
     });
   });
 
-  // Show days first — they frame the day — then emails, each by show name.
-  byDate.forEach(items => items.sort((a, b) =>
-    (a.kind === EVENT_KIND_SHOW ? 0 : 1) - (b.kind === EVENT_KIND_SHOW ? 0 : 1) ||
-    getTradeShowLabel(a.tradeShow.show).localeCompare(getTradeShowLabel(b.tradeShow.show))));
+  // Days first — they frame the date — then tasks, each by name.
+  byDate.forEach(entries => entries.sort((a, b) =>
+    (isDayEntry(a) ? 0 : 1) - (isDayEntry(b) ? 0 : 1) ||
+    a.item.chipLabel.localeCompare(b.item.chipLabel)));
   return byDate;
 }
 
@@ -191,11 +208,12 @@ function stepCalPeriod(delta) {
   const { year, month } = getCalCursor();
   const next = new Date(year, month + delta, 1);
   calCursor = { year: next.getFullYear(), month: next.getMonth() };
+  calTopYmd = ymd(next);
   setCalTitle(calCursor.year, calCursor.month);
-  scrollCalToMonth(calCursor.year, calCursor.month);
+  scrollCalToDate(calTopYmd);
 }
 
-/** Jump back to today in whichever view is open. */
+/** Jump back to today in whichever view is open — this week at the top. */
 function goToCalToday() {
   const now = new Date();
   if (calViewMode === "week") {
@@ -204,38 +222,46 @@ function goToCalToday() {
     return;
   }
   calCursor = { year: now.getFullYear(), month: now.getMonth() };
+  calTopYmd = ymd(now);
   setCalTitle(calCursor.year, calCursor.month);
-  scrollCalToMonth(calCursor.year, calCursor.month);
+  scrollCalToDate(calTopYmd);
+}
+
+function getCalTopYmd() {
+  return calTopYmd ?? todayYmd();
 }
 
 function setCalViewMode(mode) {
   if (calViewMode === mode) return;
   calViewMode = mode;
-  // Line the two views up on the same date, so switching doesn't teleport.
+  // Line the two views up on the same week, so switching doesn't teleport:
+  // the week view shows the month grid's top row, and back again.
   if (mode === "week") {
-    const { year, month } = getCalCursor();
-    const now = new Date();
-    const anchor = (now.getFullYear() === year && now.getMonth() === month)
-      ? now
-      : new Date(year, month, 1);
-    calWeekStart = addDays(anchor, -anchor.getDay());
+    const top = parseYmd(getCalTopYmd()) ?? new Date();
+    calWeekStart = addDays(top, -top.getDay());
   } else if (calWeekStart) {
     calCursor = { year: calWeekStart.getFullYear(), month: calWeekStart.getMonth() };
+    calTopYmd = ymd(calWeekStart);
   }
   renderCalendar();
 }
 
-function scrollCalToMonth(year, month, { instant = false } = {}) {
-  const anchor = calMonthAnchors[`${year}-${month}`];
-  if (!anchor || !calScrollEl) return;
+/** Scroll the month grid so the week holding `dayYmd` is the top row. */
+function scrollCalToDate(dayYmd, { instant = false } = {}) {
+  const cell = calScrollEl?.querySelector(`.dash-cal-cell[data-ymd="${dayYmd}"]`);
+  if (!cell) return;
   const headH = calScrollEl.querySelector(".dash-cal-head")?.offsetHeight ?? 0;
   calScrollEl.scrollTo({
-    top: anchor.offsetTop - headH,
+    top: cell.offsetTop - headH,
     behavior: instant ? "auto" : "smooth",
   });
 }
 
-/** Keep the centered title in step with what's actually on screen. */
+/**
+ * Keep the title and the top-row date in step with what's actually on
+ * screen: the title names the latest month that has started by the top row,
+ * and the top row is remembered so a re-render or resize lands back on it.
+ */
 function onCalScroll() {
   if (calScrollRaf) return;
   calScrollRaf = requestAnimationFrame(() => {
@@ -243,6 +269,13 @@ function onCalScroll() {
     if (!calScrollEl) return;
     const headH = calScrollEl.querySelector(".dash-cal-head")?.offsetHeight ?? 0;
     const probe = calScrollEl.scrollTop + headH + 8;
+
+    // Every 7th cell starts a row.
+    const cells = calScrollEl.querySelectorAll(".dash-cal-body > .dash-cal-cell");
+    for (let i = 0; i < cells.length; i += 7) {
+      if (cells[i].offsetTop > probe) break;
+      calTopYmd = cells[i].dataset.ymd;
+    }
 
     let best = null;
     Object.entries(calMonthAnchors).forEach(([key, cell]) => {
@@ -260,39 +293,48 @@ function onCalScroll() {
 
 // ── Grid ─────────────────────────────────────────────────────────────────────
 
-function describeCalItem(item) {
-  if (item.kind === EVENT_KIND_SHOW) {
-    return `Day ${item.dayNumber} of ${item.dayCount} · ${formatDateRange(item.tradeShow.startDate, item.tradeShow.endDate)}`;
+/** The badge on a task chip — the cell is far too narrow for full labels. */
+const CAL_TASK_SHORT_LABELS = {
+  [TASK_KIND_EMAIL]: "Email",
+  [TASK_KIND_BANNER]: "Banner",
+  [TASK_KIND_SOCIAL]: "Social",
+};
+
+function describeCalEntry(entry) {
+  if (isDayEntry(entry)) {
+    return `Day ${entry.dayNumber} of ${entry.dayCount} · ${formatDateRange(entry.item.startDate, entry.item.endDate)}`;
   }
-  return `${item.label} · due ${formatTaskDate(item.dueDate)}`;
+  return `${entry.label} · due ${formatTaskDate(entry.dueDate)}`;
 }
 
-function createCalEventChip(item) {
+function createCalEventChip(entry) {
   const chip = document.createElement("button");
   chip.type = "button";
-  chip.className = `dash-event cal-event--${item.kind}${item.done ? " is-done" : ""}`;
-  chip.dataset.show = item.tradeShow.show;
-  chip.title = `${getTradeShowTitle(item.tradeShow)} · ${describeCalItem(item)}`;
+  chip.className = `dash-event cal-event--${isDayEntry(entry) ? "day" : "task"} cal-event--${entry.kind}${entry.done ? " is-done" : ""}`;
+  applyItemColor(chip, entry.item);
+  chip.title = `${entry.item.title} · ${describeCalEntry(entry)}`;
   // What the group highlight matches on.
-  chip.dataset.taskId = item.id;
+  chip.dataset.taskId = entry.id;
 
-  chip.appendChild(createCalEventIcon(item.kind));
+  chip.appendChild(createCalEventIcon(entry.kind));
 
   const label = document.createElement("span");
   label.className = "dash-event-title";
-  label.textContent = getTradeShowLabel(item.tradeShow.show);
+  label.textContent = entry.item.chipLabel;
   chip.appendChild(label);
 
   const meta = document.createElement("span");
   meta.className = "dash-event-meta";
-  meta.textContent = item.kind === EVENT_KIND_SHOW ? `Day ${item.dayNumber}` : "Email";
+  meta.textContent = isDayEntry(entry)
+    ? describeItemDay(entry.item, entry.dayNumber, entry.dayCount)
+    : CAL_TASK_SHORT_LABELS[entry.kind] ?? entry.label;
   chip.appendChild(meta);
 
-  // Open the day, then select the show this chip belongs to.
+  // Open the day, then select the item this chip belongs to.
   chip.addEventListener("click", e => {
     e.stopPropagation();
-    if (calSelectedYmd !== item.dueDate) selectCalDay(item.dueDate);
-    selectCalGroup(getTradeShowGroupIds(item.tradeShow));
+    if (calSelectedYmd !== entry.dueDate) selectCalDay(entry.dueDate);
+    selectCalGroup(getItemGroupIds(entry.item));
     renderCalDayPane();
   });
   return chip;
@@ -316,10 +358,10 @@ function buildCalCell(date, byDate, today) {
   }
   cell.appendChild(num);
 
-  const items = byDate.get(cellYmd) ?? [];
+  const entries = byDate.get(cellYmd) ?? [];
 
-  // How many emails are still open on this day, at a glance.
-  const openCount = items.filter(item => item.kind === TASK_KIND_EMAIL && !item.done).length;
+  // How many tasks are still open on this day, at a glance.
+  const openCount = entries.filter(entry => !isDayEntry(entry) && !entry.done).length;
   if (openCount > 0) {
     const badge = document.createElement("span");
     badge.className = "dash-cal-open-count";
@@ -331,9 +373,9 @@ function buildCalCell(date, byDate, today) {
   // Every chip is rendered; which ones actually show is decided by
   // applyCalCellOverflow, so selecting a show can reveal one that was
   // sitting inside "+N more" without rebuilding the grid.
-  items.forEach(item => cell.appendChild(createCalEventChip(item)));
+  entries.forEach(entry => cell.appendChild(createCalEventChip(entry)));
 
-  if (items.length > 0) {
+  if (entries.length > 0) {
     const more = document.createElement("span");
     more.className = "dash-cal-more";
     more.hidden = true;
@@ -464,7 +506,7 @@ function renderCalendarGrid() {
   calScrollEl = scroll;
   scroll.addEventListener("scroll", onCalScroll, { passive: true });
   sizeCalRows();
-  scrollCalToMonth(year, month, { instant: true });
+  scrollCalToDate(getCalTopYmd(), { instant: true });
   // The chips are new nodes, so the highlight has to be painted back on.
   applyCalGroupSelection();
 }
@@ -493,29 +535,26 @@ function closeCalDayPane() {
 }
 
 /**
- * The shows with anything on `dayYmd` — running that day, or an email due.
+ * The items with anything on `dayYmd` — running that day, or a task due.
  * Kind filter only: the pane has its own Completed tab, so hiding finished
  * work here would empty the tab that exists to show it.
  */
 function buildDayPaneEntries(dayYmd) {
   const entries = [];
-  getAllTradeShows().forEach(tradeShow => {
-    const running = calFilterSelection.has(EVENT_KIND_SHOW) &&
-      tradeShow.startDate <= dayYmd && dayYmd <= tradeShow.endDate;
-    const dayTasks = calFilterSelection.has(TASK_KIND_EMAIL)
-      ? buildTradeShowEmailTasks(tradeShow).filter(t => t.dueDate === dayYmd)
-      : [];
+  getAllScheduleItems().forEach(item => {
+    const running = calFilterSelection.has(item.dayKind) && isActiveDay(item, dayYmd);
+    const dayTasks = item.tasks.filter(t => t.dueDate === dayYmd && calFilterSelection.has(t.kind));
     if (!running && dayTasks.length === 0) return;
 
     entries.push({
-      tradeShow,
-      taskIds: getTradeShowGroupIds(tradeShow),
-      // A show day with no email due has nothing to finish, so it stays open.
+      item,
+      taskIds: getItemGroupIds(item),
+      // A day with no task due has nothing to finish, so it stays open.
       done: dayTasks.length > 0 && dayTasks.every(t => isTaskComplete(t.id)),
       openCount: dayTasks.filter(t => !isTaskComplete(t.id)).length,
     });
   });
-  return entries.sort((a, b) => a.tradeShow.startDate.localeCompare(b.tradeShow.startDate));
+  return entries.sort((a, b) => a.item.startDate.localeCompare(b.item.startDate));
 }
 
 const DAY_PANE_TABS = [
@@ -593,7 +632,7 @@ function renderCalDayPane() {
   }
 
   body.replaceChildren(...shown.map(entry => {
-    const card = createTradeShowCard(entry.tradeShow);
+    const card = createScheduleCard(entry.item);
     attachCalGroupSelection(card, entry.taskIds);
     return card;
   }));
@@ -606,8 +645,11 @@ function renderCalDayPane() {
 // picking it again releases back to All.
 
 const CAL_FILTER_OPTIONS = [
+  { key: EVENT_KIND_CAMPAIGN, label: "Campaigns" },
   { key: EVENT_KIND_SHOW, label: "Trade Shows" },
   { key: TASK_KIND_EMAIL, label: "Emails" },
+  { key: TASK_KIND_BANNER, label: "Banners" },
+  { key: TASK_KIND_SOCIAL, label: "Social Media" },
 ];
 
 function isCalFilterShowingAll() {
@@ -634,45 +676,95 @@ function applyCalFilterChange() {
   renderUpcomingTasks();
 }
 
+/**
+ * The filter bar collapses to one button naming the current filter ("All"
+ * unless narrowed). Hovering it — or clicking, for touch — drops the full
+ * set of options below it. Kept open by click until a click lands elsewhere.
+ */
+let calFilterMenuOpen = false;
+
+function makeCalFilterBtn(label, active, onClick, extraClass = "") {
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "cal-filter-btn" + (active ? " is-active" : "") + (extraClass ? " " + extraClass : "");
+  btn.textContent = label;
+  btn.setAttribute("aria-pressed", active ? "true" : "false");
+  btn.addEventListener("click", onClick);
+  return btn;
+}
+
+/** The label the collapsed button shows: "All", or the one kind picked. */
+function getCalFilterLabel() {
+  if (isCalFilterShowingAll()) return "All";
+  return CAL_FILTER_OPTIONS.find(option => calFilterSelection.has(option.key))?.label ?? "All";
+}
+
 function renderCalFilterBar() {
   const bar = document.getElementById("calFilterBar");
   if (!bar) return;
+  bar.classList.toggle("is-open", calFilterMenuOpen);
 
-  const makeBtn = (label, active, onClick, extraClass = "") => {
-    const btn = document.createElement("button");
-    btn.type = "button";
-    btn.className = "cal-filter-btn" + (active ? " is-active" : "") + (extraClass ? " " + extraClass : "");
-    btn.textContent = label;
-    btn.setAttribute("aria-pressed", active ? "true" : "false");
-    btn.addEventListener("click", onClick);
-    return btn;
-  };
+  const trigger = document.createElement("button");
+  trigger.type = "button";
+  trigger.className = "cal-filter-btn cal-filter-trigger is-active";
+  trigger.setAttribute("aria-haspopup", "true");
+  trigger.setAttribute("aria-expanded", calFilterMenuOpen ? "true" : "false");
+  if (!isCalFilterShowingAll()) trigger.dataset.kind = [...calFilterSelection][0];
+  trigger.textContent = getCalFilterLabel();
+  if (calShowCompleted) {
+    // Completed work is on — worth a hint even while the menu is shut.
+    const flag = document.createElement("span");
+    flag.className = "cal-filter-trigger-flag";
+    flag.title = "Showing completed";
+    trigger.appendChild(flag);
+  }
+  trigger.addEventListener("click", e => {
+    e.stopPropagation();
+    calFilterMenuOpen = !calFilterMenuOpen;
+    renderCalFilterBar();
+  });
 
-  const all = makeBtn("All", isCalFilterShowingAll(), setCalFilterAll);
+  const menu = document.createElement("div");
+  menu.className = "cal-filter-menu";
+  menu.setAttribute("role", "group");
+  menu.setAttribute("aria-label", "Filter calendar");
 
+  const all = makeCalFilterBtn("All", isCalFilterShowingAll(), setCalFilterAll);
   const kinds = CAL_FILTER_OPTIONS.map(option => {
     const active = !isCalFilterShowingAll() && calFilterSelection.has(option.key);
-    const btn = makeBtn(option.label, active, () => toggleCalFilterKind(option.key));
+    const btn = makeCalFilterBtn(option.label, active, () => toggleCalFilterKind(option.key));
     btn.dataset.kind = option.key;
     return btn;
   });
-
-  const showCompleted = makeBtn("Show completed", calShowCompleted, () => {
+  const showCompleted = makeCalFilterBtn("Show completed", calShowCompleted, () => {
     calShowCompleted = !calShowCompleted;
     applyCalFilterChange();
   }, "cal-filter-btn--completed");
 
-  const views = CAL_VIEW_MODES.map(mode => {
-    const btn = makeBtn(mode.label, calViewMode === mode.key, () => setCalViewMode(mode.key), "cal-view-btn");
+  menu.append(all, ...kinds, showCompleted);
+  bar.replaceChildren(trigger, menu);
+
+  renderCalViewToggle();
+  renderCalTodayButton();
+}
+
+/** Month / Week, on the header's right. */
+function renderCalViewToggle() {
+  const group = document.getElementById("calViewToggle");
+  if (!group) return;
+  group.replaceChildren(...CAL_VIEW_MODES.map(mode => {
+    const btn = makeCalFilterBtn(mode.label, calViewMode === mode.key, () => setCalViewMode(mode.key), "cal-view-btn");
     btn.dataset.view = mode.key;
     return btn;
-  });
+  }));
+}
 
-  const viewGroup = document.createElement("div");
-  viewGroup.className = "cal-view-group";
-  viewGroup.append(...views);
-
-  bar.replaceChildren(all, ...kinds, showCompleted, viewGroup);
+/** The jump-to-today button names today, e.g. "Thu, Oct 8". */
+function renderCalTodayButton() {
+  const btn = document.getElementById("calToday");
+  if (!btn) return;
+  btn.textContent = formatTaskDate(todayYmd());
+  btn.title = "Go to today";
 }
 
 // ── Upcoming tasks rail ──────────────────────────────────────────────────────
@@ -681,30 +773,32 @@ function renderCalFilterBar() {
 const CAL_UPCOMING_DAYS = 45;
 
 /**
- * One card per show with something inside the window — an email due, or the
- * show itself running — plus any show with a missed email, however long ago:
+ * One card per item with something inside the window — a task due, or the
+ * item itself running — plus any item with a missed task, however long ago:
  * overdue work doesn't age out of the list just because it's old.
+ *
+ * The kind filter narrows which tasks a card buckets on and shows, so
+ * picking "Banners" turns the rail into a banner to-do list.
  */
 function buildUpcomingCardEntries() {
   const from = ymd(addDays(new Date(), -CAL_UPCOMING_DAYS));
   const to = ymd(addDays(new Date(), CAL_UPCOMING_DAYS));
 
-  return getAllTradeShows()
-    .filter(tradeShow => {
-      const emails = buildTradeShowEmailTasks(tradeShow);
-      const emailsShown = calFilterSelection.has(TASK_KIND_EMAIL) && !isEmailHiddenAsCompleted(tradeShow);
-      const emailInWindow = emailsShown &&
-        emails.some(t => (t.dueDate >= from && t.dueDate <= to) || isTaskOverdue(t));
-      const showInWindow = calFilterSelection.has(EVENT_KIND_SHOW) &&
-        tradeShow.endDate >= from && tradeShow.startDate <= to;
-      return emailInWindow || showInWindow;
+  return getAllScheduleItems()
+    .filter(item => {
+      const taskInWindow = getVisibleItemTasks(item)
+        .some(t => (t.dueDate >= from && t.dueDate <= to) || isTaskOverdue(t));
+      const runningInWindow = calFilterSelection.has(item.dayKind) &&
+        item.endDate >= from && item.startDate <= to &&
+        listActiveDays(item).some(day => day >= from && day <= to);
+      return taskInWindow || runningInWindow;
     })
-    .map(tradeShow => ({
-      tradeShow,
-      taskIds: getTradeShowGroupIds(tradeShow),
-      buckets: getTaskStatusBuckets(buildTradeShowEmailTasks(tradeShow)),
+    .map(item => ({
+      item,
+      taskIds: getItemGroupIds(item),
+      buckets: getTaskStatusBuckets(item.tasks.filter(t => calFilterSelection.has(t.kind))),
     }))
-    .sort((a, b) => a.tradeShow.startDate.localeCompare(b.tradeShow.startDate));
+    .sort((a, b) => a.item.startDate.localeCompare(b.item.startDate));
 }
 
 /** Which status tab the Home rail is showing. */
@@ -715,7 +809,7 @@ function renderUpcomingTasks() {
   if (!list) return;
 
   const all = buildUpcomingCardEntries();
-  // A show can count toward more than one tab — see getTaskStatusBuckets.
+  // An item can count toward more than one tab — see getTaskStatusBuckets.
   const counts = { upcoming: 0, overdue: 0, completed: 0 };
   all.forEach(e => Object.keys(e.buckets).forEach(key => { counts[key] += 1; }));
 
@@ -731,15 +825,15 @@ function renderUpcomingTasks() {
   if (shown.length === 0) {
     const empty = document.createElement("div");
     empty.className = "dash-empty";
-    empty.textContent = getAllTradeShows().length === 0
-      ? "No trade shows yet — add one from the Trade Shows tab."
+    empty.textContent = getAllScheduleItems().length === 0
+      ? "Nothing scheduled yet — add a campaign or a trade show to get started."
       : `Nothing ${homeTaskStatus}.`;
     list.replaceChildren(empty);
     return;
   }
 
   list.replaceChildren(...shown.map(entry => {
-    const card = createTradeShowCard(entry.tradeShow, { tasks: entry.buckets[homeTaskStatus] });
+    const card = createScheduleCard(entry.item, { tasks: entry.buckets[homeTaskStatus] });
     attachCalGroupSelection(card, entry.taskIds);
     return card;
   }));
@@ -766,7 +860,25 @@ function initCalendar() {
 
   document.getElementById("calDayPaneClose")?.addEventListener("click", closeCalDayPane);
 
+  // A filter menu opened by click closes on the next click elsewhere, or Escape.
+  const closeFilterMenu = () => {
+    if (!calFilterMenuOpen) return;
+    calFilterMenuOpen = false;
+    renderCalFilterBar();
+  };
+  document.addEventListener("click", e => {
+    if (!e.target.closest("#calFilterBar")) closeFilterMenu();
+  });
+  document.addEventListener("keydown", e => {
+    if (e.key === "Escape") closeFilterMenu();
+  });
+
   window.addEventListener("resize", () => {
-    if (getCurrentAppView() === "home") sizeCalRows();
+    if (getCurrentAppView() !== "home") return;
+    sizeCalRows();
+    // Resizing the rows moves every week's position; without re-anchoring,
+    // the scroll handler reads whatever week drifted into view and the
+    // calendar jumps away from the one you were on.
+    if (calViewMode === "month") scrollCalToDate(getCalTopYmd(), { instant: true });
   });
 }
