@@ -101,9 +101,14 @@ const TRADE_SHOW_TIMING_LABELS = {
 
 // ── Task status tabs ─────────────────────────────────────────────────────────
 //
-// The same three buckets drive every task list. A card is bucketed by its own
-// tasks: anything still open and past due makes the card overdue, everything
-// done makes it completed, and the rest is upcoming.
+// A card can sit in more than one tab at once — a show with one missed email
+// and two still to come is both overdue and upcoming:
+//
+//   Upcoming   any email still open and not yet due. The card shows all of
+//              its emails, missed ones with their date in red, so the whole
+//              run-up reads in order.
+//   Overdue    any email open past its due date. The card shows only those.
+//   Completed  every email done.
 
 const TASK_STATUS_TABS = [
   { key: "upcoming", label: "Upcoming" },
@@ -111,11 +116,23 @@ const TASK_STATUS_TABS = [
   { key: "completed", label: "Completed" },
 ];
 
-function classifyTaskStatus(tasks) {
+function isTaskOverdue(task) {
+  return !isTaskComplete(task.id) && task.dueDate < todayYmd();
+}
+
+/**
+ * The tabs a card belongs in, each mapped to the tasks it shows there.
+ * A tab the card isn't in is simply absent.
+ */
+function getTaskStatusBuckets(tasks) {
   const today = todayYmd();
   const open = tasks.filter(t => !isTaskComplete(t.id));
-  if (open.length === 0) return "completed";
-  return open.some(t => t.dueDate < today) ? "overdue" : "upcoming";
+  const buckets = {};
+  if (open.some(t => t.dueDate >= today)) buckets.upcoming = tasks;
+  const overdue = open.filter(t => t.dueDate < today);
+  if (overdue.length > 0) buckets.overdue = overdue;
+  if (tasks.length > 0 && open.length === 0) buckets.completed = tasks;
+  return buckets;
 }
 
 /** Builds the tab strip; `onChange` receives the newly picked status key. */
@@ -187,6 +204,10 @@ function createTaskCheckbox(task, onChange) {
   const due = document.createElement("span");
   due.className = "payroll-task-due";
   due.textContent = formatTaskDateShort(task.dueDate);
+  if (isTaskOverdue(task)) {
+    due.classList.add("is-overdue");
+    due.title = "Overdue";
+  }
 
   const name = document.createElement("span");
   name.className = "payroll-task-name";
@@ -245,9 +266,10 @@ function createCalEventIcon(kind) {
 /**
  * One card per show: its name and dates up top, its emails as checkable rows.
  * `showName` is off on the show's own detail page, which already says whose
- * emails these are.
+ * emails these are. `tasks` narrows the rows — the Overdue tab passes just
+ * the missed emails.
  */
-function createTradeShowCard(tradeShow, { showName = true, onChange } = {}) {
+function createTradeShowCard(tradeShow, { showName = true, onChange, tasks } = {}) {
   const complete = isTradeShowComplete(tradeShow);
   const card = document.createElement("div");
   card.className = "payroll-run trade-show-card" + (complete ? " is-complete" : "");
@@ -285,7 +307,7 @@ function createTradeShowCard(tradeShow, { showName = true, onChange } = {}) {
 
   const tasksWrap = document.createElement("div");
   tasksWrap.className = "payroll-run-tasks trade-show-card-tasks";
-  buildTradeShowEmailTasks(tradeShow).forEach(task => {
+  (tasks ?? buildTradeShowEmailTasks(tradeShow)).forEach(task => {
     tasksWrap.appendChild(createTaskCheckbox(task, onChange));
   });
   card.appendChild(tasksWrap);

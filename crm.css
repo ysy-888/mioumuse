@@ -5753,3 +5753,9 @@ span.dash-event { cursor: pointer; /* clicking selects the day */ }
   min-width: 96px;
   font-weight: 600;
 }
+
+/* A missed email's date, wherever the row appears. */
+.payroll-task-due.is-overdue {
+  color: var(--danger);
+  font-weight: 600;
+}

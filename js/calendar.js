@@ -682,8 +682,8 @@ const CAL_UPCOMING_DAYS = 45;
 
 /**
  * One card per show with something inside the window — an email due, or the
- * show itself running. Overdue work sits before today, so the window reaches
- * back as well as forward.
+ * show itself running — plus any show with a missed email, however long ago:
+ * overdue work doesn't age out of the list just because it's old.
  */
 function buildUpcomingCardEntries() {
   const from = ymd(addDays(new Date(), -CAL_UPCOMING_DAYS));
@@ -692,9 +692,9 @@ function buildUpcomingCardEntries() {
   return getAllTradeShows()
     .filter(tradeShow => {
       const emails = buildTradeShowEmailTasks(tradeShow);
-      const emailInWindow = calFilterSelection.has(TASK_KIND_EMAIL) &&
-        !isEmailHiddenAsCompleted(tradeShow) &&
-        emails.some(t => t.dueDate >= from && t.dueDate <= to);
+      const emailsShown = calFilterSelection.has(TASK_KIND_EMAIL) && !isEmailHiddenAsCompleted(tradeShow);
+      const emailInWindow = emailsShown &&
+        emails.some(t => (t.dueDate >= from && t.dueDate <= to) || isTaskOverdue(t));
       const showInWindow = calFilterSelection.has(EVENT_KIND_SHOW) &&
         tradeShow.endDate >= from && tradeShow.startDate <= to;
       return emailInWindow || showInWindow;
@@ -702,7 +702,7 @@ function buildUpcomingCardEntries() {
     .map(tradeShow => ({
       tradeShow,
       taskIds: getTradeShowGroupIds(tradeShow),
-      status: classifyTaskStatus(buildTradeShowEmailTasks(tradeShow)),
+      buckets: getTaskStatusBuckets(buildTradeShowEmailTasks(tradeShow)),
     }))
     .sort((a, b) => a.tradeShow.startDate.localeCompare(b.tradeShow.startDate));
 }
@@ -715,15 +715,16 @@ function renderUpcomingTasks() {
   if (!list) return;
 
   const all = buildUpcomingCardEntries();
+  // A show can count toward more than one tab — see getTaskStatusBuckets.
   const counts = { upcoming: 0, overdue: 0, completed: 0 };
-  all.forEach(e => { counts[e.status] += 1; });
+  all.forEach(e => Object.keys(e.buckets).forEach(key => { counts[key] += 1; }));
 
   renderTaskStatusTabs("homeTaskTabs", homeTaskStatus, counts, key => {
     homeTaskStatus = key;
     renderUpcomingTasks();
   });
 
-  const shown = all.filter(e => e.status === homeTaskStatus);
+  const shown = all.filter(e => e.buckets[homeTaskStatus]);
   const count = document.getElementById("upcomingTasksCount");
   if (count) count.textContent = shown.length ? String(shown.length) : "";
 
@@ -738,7 +739,7 @@ function renderUpcomingTasks() {
   }
 
   list.replaceChildren(...shown.map(entry => {
-    const card = createTradeShowCard(entry.tradeShow);
+    const card = createTradeShowCard(entry.tradeShow, { tasks: entry.buckets[homeTaskStatus] });
     attachCalGroupSelection(card, entry.taskIds);
     return card;
   }));
