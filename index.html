@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Mioumuse</title>
 <link rel="icon" href="favicon.svg" type="image/svg+xml" />
-<link rel="stylesheet" href="crm.css?v=20261008-1748" />
+<link rel="stylesheet" href="crm.css?v=20261008-1836" />
 </head>
 <body>
 
@@ -540,6 +540,96 @@
   </div>
 </div>
 
+<!-- ── Mailchimp: create / edit a linked campaign ────────────── -->
+<div id="mcFormOverlay" class="modal-backdrop">
+  <div class="modal-card company-form-card mc-form-card" role="dialog" aria-modal="true" aria-labelledby="mcFormTitle">
+    <div class="modal-header">
+      <h3 id="mcFormTitle">Create in Mailchimp</h3>
+      <button type="button" class="btn-close" id="mcFormCloseBtn" aria-label="Close">✕</button>
+    </div>
+
+    <form id="mcForm" class="modal-body company-form-body" novalidate>
+      <div class="form-field form-field--full">
+        <span class="mc-form-task" id="mcFormTaskLabel"></span>
+      </div>
+
+      <label class="form-field form-field--full" id="mcFormAudienceRow">
+        <span class="form-label">Audience</span>
+        <select class="form-input" id="mcFormAudience"></select>
+        <span class="form-hint" id="mcFormAudienceHint" hidden>Segments and tags belong to an audience, so changing it resets who it's sent to.</span>
+      </label>
+
+      <!-- Who in the audience: everyone, a saved segment, or contacts with tags. -->
+      <div class="form-field form-field--full" id="mcFormSendToField">
+        <span class="form-label">Send to</span>
+        <div class="form-toggle-row" id="mcFormSendTo" role="group" aria-label="Send to"></div>
+        <select class="form-input mc-segment-select" id="mcFormSegment" aria-label="Segment" hidden></select>
+        <div class="mc-tags" id="mcFormTagsWrap" hidden>
+          <div class="mc-tag-match">
+            <span>Contacts with</span>
+            <div class="form-toggle-row mc-match-toggle" id="mcFormTagMatch" role="group" aria-label="Tag match"></div>
+            <span>of these tags</span>
+          </div>
+          <div class="mc-tag-list" id="mcFormTags" role="group" aria-label="Tags"></div>
+        </div>
+        <span class="form-hint" id="mcFormSendToHint"></span>
+      </div>
+
+      <label class="form-field form-field--full">
+        <span class="form-label">Campaign name</span>
+        <input type="text" class="form-input" id="mcFormName" autocomplete="off" />
+        <span class="form-hint">Only you see this, in Mailchimp's campaign list.</span>
+      </label>
+
+      <label class="form-field form-field--full">
+        <span class="form-label">Subject line</span>
+        <input type="text" class="form-input" id="mcFormSubject" autocomplete="off" placeholder="What recipients see in their inbox" />
+      </label>
+
+      <label class="form-field form-field--full">
+        <span class="form-label">Preview text</span>
+        <input type="text" class="form-input" id="mcFormPreview" autocomplete="off" placeholder="Optional — the line shown after the subject" />
+      </label>
+
+      <!-- Edit only: Mailchimp won't schedule an email until it's designed. -->
+      <div class="form-field form-field--full" id="mcFormScheduleField">
+        <label class="form-check">
+          <input type="checkbox" id="mcFormSchedule" />
+          <span class="form-check-box" aria-hidden="true"></span>
+          <span>Schedule the send</span>
+        </label>
+        <div class="mc-send-row" id="mcFormSendRow" hidden>
+          <input type="date" class="form-input" id="mcFormSendDate" aria-label="Send date" />
+          <select class="form-input" id="mcFormSendClock" aria-label="Send time"></select>
+        </div>
+        <span class="form-hint">Your local time. Mailchimp schedules on the quarter hour, and only once the email has been designed.</span>
+        <span class="form-hint" id="mcFormDueNote">The task's due date moves to the send date.</span>
+      </div>
+    </form>
+
+    <div class="modal-footer">
+      <span class="modal-footer-message" id="mcFormMessage"></span>
+      <button type="button" class="btn" id="mcFormCancelBtn">Cancel</button>
+      <button type="button" class="btn btn-primary" id="mcFormSaveBtn">Create draft</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Mailchimp: link a task to an existing campaign ────────── -->
+<div id="mcLinkOverlay" class="modal-backdrop">
+  <div class="modal-card company-form-card mc-link-card" role="dialog" aria-modal="true" aria-labelledby="mcLinkTitle">
+    <div class="modal-header">
+      <h3 id="mcLinkTitle">Link a Mailchimp campaign</h3>
+      <button type="button" class="btn-close" id="mcLinkCloseBtn" aria-label="Close">✕</button>
+    </div>
+    <div class="modal-body mc-link-body">
+      <span class="mc-form-task" id="mcLinkTaskLabel"></span>
+      <input type="search" class="form-input" id="mcLinkSearch" placeholder="Search campaigns" autocomplete="off" />
+      <div class="mc-link-list" id="mcLinkList"></div>
+    </div>
+  </div>
+</div>
+
 <div id="appSavingOverlay" class="app-saving-overlay" aria-hidden="false">
   <div class="app-saving-backdrop"></div>
   <div class="app-saving-panel" role="status" aria-live="polite">
@@ -572,21 +662,22 @@
 
 <!-- Supabase JS client — auth.js and store.js both depend on the global it exports. -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
-<script src="js/config.js?v=20261008-1748"></script>
+<script src="js/config.js?v=20261008-1836"></script>
 <!-- Needs SUPABASE_URL/KEY from config.js and the CDN client above. -->
-<script src="js/auth.js?v=20261008-1748"></script>
-<script src="js/util.js?v=20261008-1748"></script>
-<script src="js/dates.js?v=20261008-1748"></script>
-<script src="js/store.js?v=20261008-1748"></script>
-<script src="js/tasks.js?v=20261008-1748"></script>
-<script src="js/app-shell.js?v=20261008-1748"></script>
-<script src="js/record-list.js?v=20261008-1748"></script>
-<script src="js/item-pane.js?v=20261008-1748"></script>
-<script src="js/campaign-form.js?v=20261008-1748"></script>
-<script src="js/trade-show-form.js?v=20261008-1748"></script>
-<script src="js/banners.js?v=20261008-1748"></script>
-<script src="js/banner-form.js?v=20261008-1748"></script>
-<script src="js/calendar.js?v=20261008-1748"></script>
-<script src="js/main.js?v=20261008-1748"></script>
+<script src="js/auth.js?v=20261008-1836"></script>
+<script src="js/util.js?v=20261008-1836"></script>
+<script src="js/dates.js?v=20261008-1836"></script>
+<script src="js/store.js?v=20261008-1836"></script>
+<script src="js/tasks.js?v=20261008-1836"></script>
+<script src="js/app-shell.js?v=20261008-1836"></script>
+<script src="js/record-list.js?v=20261008-1836"></script>
+<script src="js/item-pane.js?v=20261008-1836"></script>
+<script src="js/campaign-form.js?v=20261008-1836"></script>
+<script src="js/trade-show-form.js?v=20261008-1836"></script>
+<script src="js/banners.js?v=20261008-1836"></script>
+<script src="js/banner-form.js?v=20261008-1836"></script>
+<script src="js/mailchimp.js?v=20261008-1836"></script>
+<script src="js/calendar.js?v=20261008-1836"></script>
+<script src="js/main.js?v=20261008-1836"></script>
 </body>
 </html>

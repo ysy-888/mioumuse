@@ -200,7 +200,15 @@ function renderPaneTasks(item) {
     relative.className = "item-task-relative";
     relative.textContent = describeDaysUntil(task.dueDate);
     row.appendChild(relative);
-    list.appendChild(row);
+    if (task.kind !== TASK_KIND_EMAIL) {
+      list.appendChild(row);
+      return;
+    }
+    // Email tasks carry their Mailchimp controls underneath.
+    const group = document.createElement("div");
+    group.className = "item-task-group";
+    group.append(row, createMailchimpStrip(task, item));
+    list.appendChild(group);
   });
   body.replaceChildren(list);
 }
@@ -349,6 +357,8 @@ async function deletePaneItem() {
   if (!item) return;
   const meta = ITEM_TYPE_META[item.type];
   if (!confirm(`Delete ${item.title} and its tasks? This cannot be undone.`)) return;
+  // Its emails may have Mailchimp drafts — ask about those separately.
+  await offerToDeleteLinkedCampaigns(item.tasks);
   try {
     // Drop any pending note first — the record it would save to is going.
     clearTimeout(notesSaveTimer);

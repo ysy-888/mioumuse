@@ -6602,3 +6602,259 @@ span.dash-event { cursor: pointer; /* clicking selects the day */ }
 .banner-multi-platform { font-size: 12.5px; }
 
 .item-picker.is-invalid .form-toggle-btn:not(.is-active) { border-color: var(--danger); }
+
+/* ============================================================
+   Mailchimp — strip under Email tasks, badges, dialogs
+   ============================================================ */
+
+/* Form rows are display:flex, which beats the [hidden] attribute unless
+   it's restated. */
+.form-field[hidden],
+.mc-send-row[hidden] { display: none !important; }
+
+/* An Email task and its Mailchimp strip read as one block. */
+.item-task-group {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  overflow: hidden;
+}
+
+.item-task-group > .payroll-task {
+  border: none;
+  border-radius: 0;
+}
+
+.mc-strip {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  padding: 7px 12px;
+  border-top: 1px dashed var(--border);
+  background: var(--surface);
+  font-family: var(--font);
+  font-size: 12px;
+}
+
+.mc-logo {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #7a5d00;
+}
+
+.mc-info {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.mc-subject {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-muted);
+}
+
+.mc-note {
+  flex: 1;
+  min-width: 0;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mc-actions {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-left: auto;
+}
+
+.mc-btn {
+  padding: 3px 9px;
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  font-family: var(--font);
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--text);
+  text-decoration: none;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.mc-btn:hover { background: var(--bg); }
+
+.mc-btn--danger { color: var(--danger); }
+.mc-btn--danger:hover { background: var(--danger-tint); }
+
+/* Status pill — the same tones in the strip, badges and the picker. */
+.mc-status {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+  background: #eef0f3;
+  color: #4b5563;
+}
+
+.mc-status[data-tone="draft"]     { background: #eef0f3; color: #4b5563; }
+.mc-status[data-tone="scheduled"] { background: #e1ecfb; color: #1f56a5; }
+.mc-status[data-tone="sending"]   { background: #fdf3c7; color: #7a5d00; }
+.mc-status[data-tone="sent"]      { background: #e1f5ee; color: #0f6e56; }
+.mc-status[data-tone="missing"]   { background: var(--danger-tint); color: var(--danger); }
+
+/* The small "MC" mark on linked task rows in cards. */
+.mc-badge {
+  flex: 0 0 auto;
+  margin-left: auto;
+  padding: 0 5px;
+  border-radius: 4px;
+  font-family: var(--font);
+  font-size: 9.5px;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  line-height: 15px;
+  background: #ffe01b;
+  color: #241c15;
+}
+
+.mc-badge[data-tone="scheduled"] { background: #cfe0fa; color: #1f56a5; }
+.mc-badge[data-tone="sent"]      { background: #cdeee2; color: #0f6e56; }
+.mc-badge[data-tone="missing"]   { background: var(--danger-tint); color: var(--danger); }
+
+/* In the pane the strip already says all this. */
+.item-task-group .mc-badge { display: none; }
+
+/* ── Dialogs ── */
+.mc-form-card { width: 560px; }
+
+.mc-form-task {
+  font-family: var(--font);
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.mc-send-row {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.mc-send-row input { flex: 0 0 170px; }
+.mc-send-row select { flex: 0 0 140px; }
+
+.mc-link-card { width: 600px; }
+
+.mc-link-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.mc-link-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 50vh;
+  overflow-y: auto;
+}
+
+.mc-link-row {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 9px 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  text-align: left;
+  font-family: var(--font);
+  cursor: pointer;
+}
+
+.mc-link-row:hover:not(:disabled) { border-color: var(--accent); background: var(--bg); }
+.mc-link-row:disabled { opacity: 0.5; cursor: default; }
+
+.mc-link-row-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.mc-link-title {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.mc-link-sub {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.mc-link-empty {
+  padding: 18px 4px;
+  font-family: var(--font);
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.mc-link-empty.is-error { color: var(--danger); }
+
+/* ── Mailchimp: send to (segments / tags) ── */
+.mc-segment-select[hidden],
+.mc-tags[hidden] { display: none !important; }
+
+.mc-segment-select { margin-top: 8px; }
+
+.mc-tags {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.mc-tag-match {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font);
+  font-size: 12.5px;
+  color: var(--text-muted);
+}
+
+.mc-match-toggle .form-toggle-btn { padding: 3px 12px; }
+
+.mc-tag-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  max-height: 160px;
+  overflow-y: auto;
+}
+
+.mc-tag-btn { padding: 4px 11px; }
+
+.mc-recipients {
+  flex-basis: 100%;
+  order: 3;
+  font-size: 11.5px;
+  color: var(--text-muted);
+}
+
+.mc-recipients[title] { cursor: help; text-decoration: underline dotted; }

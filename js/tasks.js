@@ -325,6 +325,9 @@ function createTaskCheckbox(task, onChange) {
   });
 
   label.append(cb, box, icon, text);
+  // Linked to a Mailchimp campaign: a small mark coloured by its state.
+  const mc = typeof createMcTaskBadge === "function" ? createMcTaskBadge(task.id) : null;
+  if (mc) label.appendChild(mc);
   return label;
 }
 

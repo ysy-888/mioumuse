@@ -57,6 +57,8 @@ reference in index.html so the URLs change on every deploy.
 | `js/trade-show-form.js` | Add / edit trade show modal |
 | `js/banners.js` | Platforms tab — banners table (platform filter, search, sort) and the banner side pane |
 | `js/banner-form.js` | Add / edit banner modal — image upload, pixel size, up to 4 Style # / Color rows |
+| `js/mailchimp.js` | Mailchimp links on Email tasks — create / edit / schedule / delete, link picker, sync and auto-complete |
+| `supabase/functions/mailchimp/` | Edge Function the app calls for Mailchimp; holds the API key (secret `MAILCHIMP_API_KEY`) |
 | `js/calendar.js` | Home calendar of every campaign, show, and task, with the upcoming rail |
 | `js/main.js` | Boot |
 
@@ -130,4 +132,30 @@ unless **Show completed** is on.
 
 
 - Social Media
-- Mailchimp
+
+
+## Mailchimp
+
+Email tasks (campaign emails and trade show emails) can be linked to a
+Mailchimp campaign from the side pane: **Create in Mailchimp** makes a draft
+already linked to the task; **Link existing** picks one you started in
+Mailchimp. A linked task shows the campaign's status and subject, and can be
+edited (name, subject, preview text, send time), opened in Mailchimp to
+design, unlinked, or deleted — drafts and scheduled campaigns only; sent ones
+are never deleted from the app, since their reports would go with them.
+
+When a linked campaign has been sent, the task ticks itself off — checked on
+load, on Refresh, every 5 minutes while the app is open, and when its tab
+comes back into view. That happens once per link: untick it by hand and it
+stays unticked. Setting a send time on a campaign task moves its due date to
+the send date.
+
+The app never holds the Mailchimp key. It calls the `mailchimp` Edge
+Function, which reads the key from the `MAILCHIMP_API_KEY` secret and only
+answers signed-in users. Deploy it with:
+
+```bash
+supabase functions deploy mailchimp --project-ref anzrcautqhbxdyobdyxp --use-api
+```
+
+Links live in the `task_links` table (see `supabase-schema.sql`).

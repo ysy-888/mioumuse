@@ -212,6 +212,7 @@ function initAppNav() {
     setAppLoading(true, "Refreshing…");
     try {
       await loadAppData();
+      syncMailchimp();
       // Re-render from the fresh data. A record in the pane that was deleted
       // elsewhere closes the pane.
       switchAppView(getCurrentAppView());

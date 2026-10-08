@@ -132,3 +132,24 @@ alter table banners add column if not exists platforms jsonb not null default '[
 alter table banners alter column platform drop not null;
 update banners set platforms = jsonb_build_array(platform)
   where platforms = '[]'::jsonb and platform is not null;
+
+-- ── Mailchimp: which task is linked to which Mailchimp campaign ─────────────
+--
+-- One row per linked task (task ids as in completed_tasks). `sent_seen` flips
+-- once the app has ticked the task off for a sent campaign, so a task you
+-- untick by hand afterwards stays unticked.
+
+create table if not exists task_links (
+  user_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
+  task_id text not null,
+  mc_campaign_id text not null,
+  sent_seen boolean not null default false,
+  created_at timestamptz not null default now(),
+  primary key (user_id, task_id)
+);
+
+alter table task_links enable row level security;
+
+drop policy if exists "task_links: own rows only" on task_links;
+create policy "task_links: own rows only" on task_links
+  for all using (user_id = auth.uid()) with check (user_id = auth.uid());

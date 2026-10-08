@@ -183,6 +183,14 @@ async function loadAppData() {
   allCampaigns = campaignsRes.data.map(row => normalizeCampaign(campaignRowToInput(row)));
   allBanners = bannersRes.data.map(row => normalizeBanner(bannerRowToInput(row)));
   completedTaskIds = new Set(tasksRes.data.map(row => row.task_id));
+
+  // Mailchimp links are an add-on: if their table isn't there yet, the rest
+  // of the app still loads — there are just no links.
+  const linksRes = await client.from("task_links").select("task_id, mc_campaign_id, sent_seen");
+  taskLinks = new Map((linksRes.error ? [] : linksRes.data).map(row => [row.task_id, {
+    campaignId: row.mc_campaign_id,
+    sentSeen: row.sent_seen === true,
+  }]));
 }
 
 /**
@@ -201,6 +209,8 @@ async function clearAllData() {
     client.from("completed_tasks").delete().neq("task_id", ""),
   ]);
   results.forEach(throwIfError);
+  // Links only — the Mailchimp campaigns themselves are left alone.
+  await client.from("task_links").delete().neq("task_id", "");
   return loadAppData();
 }
 
@@ -228,10 +238,56 @@ async function deleteCompletedTasks(taskIds) {
   taskIds.forEach(id => completedTaskIds.delete(id));
 }
 
-/** Every completion mark whose id starts with `prefix`. */
+/**
+ * Every completion mark — and Mailchimp link — whose task id starts with
+ * `prefix`. Used when a whole record goes.
+ */
 async function deleteCompletedTasksWithPrefix(prefix) {
   throwIfError(await requireClient().from("completed_tasks").delete().like("task_id", `${prefix}%`));
   [...completedTaskIds].filter(id => id.startsWith(prefix)).forEach(id => completedTaskIds.delete(id));
+  await deleteTaskLinks([...taskLinks.keys()].filter(id => id.startsWith(prefix)));
+}
+
+// ── Mailchimp links ──────────────────────────────────────────────────────────
+//
+// task id → { campaignId, sentSeen }. Only the link is stored; the campaign's
+// status, subject and send time are always read fresh from Mailchimp.
+
+let taskLinks = new Map();
+
+function getTaskLink(taskId) {
+  return taskLinks.get(taskId) ?? null;
+}
+
+function getAllTaskLinks() {
+  return taskLinks;
+}
+
+/** The task already linked to a Mailchimp campaign, if any. */
+function findTaskLinkedTo(campaignId) {
+  for (const [taskId, link] of taskLinks) if (link.campaignId === campaignId) return taskId;
+  return null;
+}
+
+async function setTaskLink(taskId, campaignId) {
+  const row = { task_id: taskId, mc_campaign_id: campaignId, sent_seen: false };
+  throwIfError(await requireClient().from("task_links").upsert(row, { onConflict: "user_id,task_id" }));
+  taskLinks.set(taskId, { campaignId, sentSeen: false });
+}
+
+/** Remember the app already ticked this task off for its sent campaign. */
+async function markTaskLinkSentSeen(taskId) {
+  const link = taskLinks.get(taskId);
+  if (!link || link.sentSeen) return;
+  throwIfError(await requireClient().from("task_links").update({ sent_seen: true }).eq("task_id", taskId));
+  link.sentSeen = true;
+}
+
+async function deleteTaskLinks(taskIds) {
+  const ids = taskIds.filter(id => taskLinks.has(id));
+  if (ids.length === 0) return;
+  throwIfError(await requireClient().from("task_links").delete().in("task_id", ids));
+  ids.forEach(id => taskLinks.delete(id));
 }
 
 // ── Trade shows ──────────────────────────────────────────────────────────────
@@ -332,9 +388,10 @@ async function updateCampaign(id, patch) {
   const kept = new Set(merged.tasks.map(t => t.id));
   const removedTaskIds = campaign.tasks
     .filter(t => !kept.has(t.id))
-    .map(t => buildCampaignTaskId(campaign.id, t.id))
-    .filter(isTaskComplete);
-  await deleteCompletedTasks(removedTaskIds);
+    .map(t => buildCampaignTaskId(campaign.id, t.id));
+  await deleteCompletedTasks(removedTaskIds.filter(isTaskComplete));
+  // Their Mailchimp links go too; the Mailchimp campaigns themselves stay.
+  await deleteTaskLinks(removedTaskIds);
 
   Object.assign(campaign, merged);
   return campaign;
@@ -553,6 +610,22 @@ async function deleteBanner(id) {
  * Notes autosave as they're typed, so this writes the one field rather than
  * re-validating the whole record on every keystroke.
  */
+/**
+ * Move one campaign task's due date — used when its Mailchimp send time is
+ * set, so the calendar shows the day the email actually goes out. Takes the
+ * app-wide task id ("cp|<campaign>|<task>"); anything else is left alone.
+ */
+async function setCampaignTaskDueDate(appTaskId, dueDate) {
+  const [prefix, campaignId, taskId] = String(appTaskId).split("|");
+  if (prefix !== TASK_ID_PREFIX_CAMPAIGN || !parseYmd(dueDate)) return false;
+  const campaign = getCampaignById(campaignId);
+  const task = campaign?.tasks.find(t => t.id === taskId);
+  if (!task || task.dueDate === dueDate) return false;
+  task.dueDate = dueDate;
+  await persistCampaign(campaign);
+  return true;
+}
+
 async function setRecordNotes(type, id, notes) {
   if (type === "campaign") {
     const campaign = getCampaignById(id);

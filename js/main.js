@@ -15,6 +15,8 @@ async function loadAndShowApp() {
 
   try {
     await loadAppData();
+    // Mailchimp catches up in the background; the app doesn't wait on it.
+    syncMailchimp();
     switchAppView("home");
   } catch (err) {
     showIndicator(err.message || "Failed to load data.", "error");
@@ -37,6 +39,7 @@ async function bootApp() {
   initTradeShowForm();
   initBannersView();
   initBannerForm();
+  initMailchimp();
   initCalendar();
 
   if (!isSupabaseConfigured()) {
