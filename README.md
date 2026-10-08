@@ -59,6 +59,8 @@ reference in index.html so the URLs change on every deploy.
 | `js/banner-form.js` | Add / edit banner modal — image upload, pixel size, up to 4 Style # / Color rows |
 | `js/mailchimp.js` | Mailchimp links on Email tasks — create / edit / schedule / delete, link picker, sync and auto-complete |
 | `supabase/functions/mailchimp/` | Edge Function the app calls for Mailchimp; holds the API key (secret `MAILCHIMP_API_KEY`) |
+| `js/styles.js` | Styles tab — the style database table, status / season / category filters, search |
+| `js/style-import.js` | Import Excel — reads the N41 ATS export in the browser, previews new / updated / unchanged, saves |
 | `js/calendar.js` | Home calendar of every campaign, show, and task, with the upcoming rail |
 | `js/main.js` | Boot |
 
@@ -159,3 +161,29 @@ supabase functions deploy mailchimp --project-ref anzrcautqhbxdyobdyxp --use-api
 ```
 
 Links live in the `task_links` table (see `supabase-schema.sql`).
+
+## Styles database
+
+The **Styles** tab holds every Style # + Color from the N41 ATS export.
+**Import Excel** reads the .xlsx in the browser (SheetJS, loaded only when
+importing) — the file itself is never uploaded:
+
+| Column | Field |
+|---|---|
+| B | N41 Status |
+| D (merged with E) | Season |
+| F | Category |
+| H | Style # |
+| I | Color |
+| L (merged with M–N) | Description |
+
+Rows are read from row 8 down; any row without a Style # (the size-breakdown
+and blank rows between styles) is skipped. A preview shows what's new,
+updated and unchanged before anything is saved; confirming saves only new
+and changed styles. Styles missing from a newer file are left as they are.
+
+Banner Style # fields look styles up as you type: suggestions, the style's
+colours, and its description and status under the row and in the banner pane.
+
+Styles live in the `styles` table (see `supabase-schema.sql`), keyed by
+user + Style # + Color, and are loaded 1,000 rows at a time.

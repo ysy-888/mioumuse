@@ -6858,3 +6858,211 @@ span.dash-event { cursor: pointer; /* clicking selects the day */ }
 }
 
 .mc-recipients[title] { cursor: help; text-decoration: underline dotted; }
+
+/* ============================================================
+   Styles — database table, import dialog, banner lookups
+   ============================================================ */
+
+.styles-table { min-width: 900px; }
+.styles-table .col-style-no    { width: 130px; min-width: 110px; }
+.styles-table .col-color       { width: 150px; min-width: 120px; }
+.styles-table .col-description { width: auto;  min-width: 240px; }
+.styles-table .col-category    { width: 180px; min-width: 140px; }
+.styles-table .col-season      { width: 90px;  min-width: 80px; }
+.styles-table .col-status      { width: 110px; min-width: 100px; }
+
+.styles-table td[data-col="styleNo"] { text-align: left; font-weight: 600; }
+.styles-table td[data-col="color"],
+.styles-table td[data-col="category"],
+.styles-table td[data-col="description"] { text-align: left; }
+.styles-table th[data-col="styleNo"],
+.styles-table th[data-col="color"],
+.styles-table th[data-col="category"],
+.styles-table th[data-col="description"] { text-align: left; }
+
+.styles-table td[data-col="description"] {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 0;
+}
+
+.style-more-row td { padding: 12px; text-align: center; }
+
+.style-select-filters {
+  display: flex;
+  gap: 6px;
+}
+
+.style-filter-select {
+  width: auto;
+  max-width: 220px;
+  padding-top: 5px;
+  padding-bottom: 5px;
+  font-size: 12.5px;
+}
+
+/* N41 status, by how sellable it is. */
+.style-status {
+  display: inline-block;
+  padding: 2px 9px;
+  border-radius: 10px;
+  font-family: var(--font);
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+  background: #eef0f3;
+  color: #4b5563;
+}
+
+.style-status[data-status="ACTIVE"]   { background: #e1f5ee; color: #0f6e56; }
+.style-status[data-status="SOLDOUT"]  { background: #fde7ea; color: #a3233a; }
+.style-status[data-status="NO MORE"]  { background: #fdf0d5; color: #8a5a00; }
+.style-status[data-status="COMPANY"]  { background: #e1ecfb; color: #1f56a5; }
+.style-status[data-status="CANCEL"]   { background: #f3e8e8; color: #7a2b2b; }
+.style-status[data-status="INACTIVE"] { background: #eef0f3; color: #8b929c; }
+
+/* ── Import dialog ── */
+.style-import-card { width: 760px; }
+
+.style-import-body {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.style-import-pick {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 22px 16px;
+  border: 1px dashed var(--border-strong);
+  border-radius: 8px;
+  background: var(--bg);
+  font-family: var(--font);
+  font-size: 13px;
+  text-align: center;
+}
+
+.style-import-pick.is-dragover { border-color: var(--accent); background: var(--accent-light); }
+.style-import-choose { cursor: pointer; }
+
+.style-import-file {
+  font-family: var(--font);
+  font-size: 12.5px;
+  color: var(--text-muted);
+  margin-bottom: 8px;
+}
+
+.style-import-stats {
+  display: flex;
+  gap: 10px;
+}
+
+.style-import-stat {
+  flex: 1;
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 10px 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-family: var(--font);
+  font-size: 12.5px;
+  color: var(--text-muted);
+}
+
+.style-import-stat strong { font-size: 20px; color: var(--text); }
+.style-import-stat[data-tone="new"] strong { color: var(--success); }
+.style-import-stat[data-tone="changed"] strong { color: #1f56a5; }
+
+.style-import-preview {
+  max-height: 42vh;
+  overflow-y: auto;
+}
+
+.style-import-table {
+  width: 100%;
+  min-width: 0;
+  border-collapse: collapse;
+  font-family: var(--font);
+  font-size: 12px;
+}
+
+.style-import-table th,
+.style-import-table td {
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  white-space: normal;
+  position: static;
+}
+
+.style-import-table th { background: var(--header-bg); font-size: 10.5px; }
+
+.style-import-kind {
+  padding: 1px 7px;
+  border-radius: 8px;
+  font-size: 10.5px;
+  font-weight: 700;
+}
+
+.style-import-kind[data-kind="new"]     { background: #e1f5ee; color: #0f6e56; }
+.style-import-kind[data-kind="changed"] { background: #e1ecfb; color: #1f56a5; }
+
+.style-import-more {
+  padding: 8px;
+  font-family: var(--font);
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+/* ── Banner form: the match line under each style row ── */
+.banner-style-row { flex-wrap: wrap; }
+
+.banner-style-match {
+  flex-basis: 100%;
+  font-family: var(--font);
+  font-size: 11.5px;
+  color: var(--text-muted);
+}
+
+.banner-style-match:empty { display: none; }
+.banner-style-match.is-match { color: var(--success); }
+.banner-style-match.is-unknown { color: #b45309; }
+
+/* Banner pane: four columns once the database fills them in. */
+.banner-style-table--db { grid-template-columns: auto auto 1fr auto; }
+.banner-style-table--db span:nth-last-child(-n + 4) { border-bottom: none; }
+.banner-style-table--db span:nth-last-child(n + 5) { border-bottom: 1px solid var(--border); }
+
+/* ============================================================
+   Table gutters
+
+   Every list table sits inset from the window edges, lined up with the
+   toolbar above it (24px sides), on the grey page background. The cells
+   already draw their right and bottom borders; the wrapper adds the left
+   and top, so the table reads as one framed panel. No overflow clipping on
+   the wrapper — that would stop the column headings from sticking.
+   ============================================================ */
+
+/* No top padding on the scroller itself: sticky headings pin below the
+   scroller's padding, and rows would show through that strip above them.
+   The gap above the table is a margin on the table instead — it scrolls
+   away, and the headings pin flush to the top. */
+.app-main > .table-scroll-y {
+  padding: 0 24px 24px;
+  background: var(--bg);
+}
+
+.app-main > .table-scroll-y > .table-scroll-x {
+  margin-top: 16px;
+  border-left: 1px solid var(--border);
+  border-top: 1px solid var(--border);
+}
+
+@media (max-width: 640px) {
+  .app-main > .table-scroll-y { padding: 0 16px 16px; }
+  .app-main > .table-scroll-y > .table-scroll-x { margin-top: 12px; }
+}

@@ -145,6 +145,9 @@ function renderBannerStylesCell(td, banner) {
     const chip = document.createElement("span");
     chip.className = "banner-style-chip";
     mountSearchHighlightedText(chip, [style.styleNo, style.color].filter(Boolean).join(" · "));
+    // Hover for what it is, from the Styles database.
+    const found = findStyle(style.styleNo, style.color);
+    if (found) chip.title = [found.description, found.status].filter(Boolean).join(" · ");
     wrap.appendChild(chip);
   });
   td.replaceChildren(wrap);
@@ -285,15 +288,25 @@ function renderBannerPane(banner) {
       empty.textContent = "No styles listed.";
       styles.replaceChildren(empty);
     } else {
+      // Description and N41 status come from the Styles database, when the
+      // style is in it.
       const table = document.createElement("div");
-      table.className = "banner-style-table";
-      [["Style #", "Color"], ...banner.styles.map(s => [s.styleNo, s.color])].forEach(([styleNo, color], i) => {
-        const a = document.createElement("span");
-        const b = document.createElement("span");
-        a.textContent = styleNo || EMPTY_DISPLAY;
-        b.textContent = color || EMPTY_DISPLAY;
-        if (i === 0) { a.className = b.className = "banner-style-head"; }
-        table.append(a, b);
+      table.className = "banner-style-table banner-style-table--db";
+      const rows = banner.styles.map(s => {
+        const found = findStyle(s.styleNo, s.color);
+        return [s.styleNo, s.color, found?.description ?? "", found?.status ?? ""];
+      });
+      [["Style #", "Color", "Description", "Status"], ...rows].forEach((cells, i) => {
+        cells.forEach((text, col) => {
+          const cell = document.createElement("span");
+          if (i === 0) cell.className = "banner-style-head";
+          if (i > 0 && col === 3 && text) {
+            cell.appendChild(createStyleStatusPill(text));
+          } else {
+            cell.textContent = text || EMPTY_DISPLAY;
+          }
+          table.appendChild(cell);
+        });
       });
       styles.replaceChildren(table);
     }

@@ -2,12 +2,12 @@
  * View switching and the header menu.
  *
  * Views: "home" (calendar + upcoming tasks), "campaigns" and "tradeShows"
- * (lists), and "platforms" (banners). A record opens in a side pane over
- * whichever view is showing (js/item-pane.js, js/banners.js), not as a view
- * of its own.
+ * (lists), "platforms" (banners) and "styles" (the style database). A record
+ * opens in a side pane over whichever view is showing (js/item-pane.js,
+ * js/banners.js), not as a view of its own.
  */
 
-const APP_VIEWS = ["home", "campaigns", "tradeShows", "platforms"];
+const APP_VIEWS = ["home", "campaigns", "tradeShows", "platforms", "styles"];
 
 let currentAppView = "home";
 
@@ -59,6 +59,8 @@ function switchAppView(view) {
     tradeShowsTableWrap: view === "tradeShows",
     platformsToolbar: view === "platforms",
     bannersTableWrap: view === "platforms",
+    stylesToolbar: view === "styles",
+    stylesTableWrap: view === "styles",
     calendarWrap: view === "home",
   };
   Object.entries(panes).forEach(([id, visible]) => {
@@ -71,6 +73,7 @@ function switchAppView(view) {
     navTabCampaigns: view === "campaigns",
     navTabTradeShows: view === "tradeShows",
     navTabPlatforms: view === "platforms",
+    navTabStyles: view === "styles",
   };
   Object.entries(tabs).forEach(([id, active]) => {
     const el = document.getElementById(id);
@@ -83,6 +86,7 @@ function switchAppView(view) {
   if (view === "home") renderCalendar();
   RECORD_LISTS[view]?.apply();
   if (view === "platforms") applyBannerFilters();
+  if (view === "styles") applyStyleFilters();
   updateAppBackButton();
 }
 
@@ -205,6 +209,7 @@ function initAppNav() {
   document.getElementById("navTabCampaigns")?.addEventListener("click", () => switchAppView("campaigns"));
   document.getElementById("navTabTradeShows")?.addEventListener("click", () => switchAppView("tradeShows"));
   document.getElementById("navTabPlatforms")?.addEventListener("click", () => switchAppView("platforms"));
+  document.getElementById("navTabStyles")?.addEventListener("click", () => switchAppView("styles"));
   document.getElementById("navLogoHome")?.addEventListener("click", () => switchAppView("home"));
   document.getElementById("appBackBtn")?.addEventListener("click", () => goBackAppView("home"));
 

@@ -24,6 +24,10 @@
  *               imagePath,           // object path in the BANNER_BUCKET, or ""
  *               styles: [{ styleNo, color }],   // 1 to MAX_BANNER_STYLES
  *               updatedAt }
+ *   Style     { styleNo, color,      // together, the record's identity
+ *               status,              // N41 status, e.g. ACTIVE, SOLDOUT
+ *               season, category, description,
+ *               updatedAt }
  *
  * A trade show's tasks are derived from its dates (see js/tasks.js); a
  * campaign's are chosen one by one and stored on it. Either way, only which
@@ -191,11 +195,32 @@ async function loadAppData() {
     campaignId: row.mc_campaign_id,
     sentSeen: row.sent_seen === true,
   }]));
+
+  // The Styles database is an add-on too, and can run to thousands of rows.
+  setAllStyles(await loadAllStyleRows(client));
+}
+
+/**
+ * Every style, a page at a time — Supabase hands back at most 1,000 rows per
+ * request. A missing table (SQL not run yet) reads as no styles.
+ */
+async function loadAllStyleRows(client) {
+  const PAGE = 1000;
+  const rows = [];
+  for (let from = 0; ; from += PAGE) {
+    const res = await client.from("styles").select("*")
+      .order("style_no").order("color")
+      .range(from, from + PAGE - 1);
+    if (res.error) return rows;
+    rows.push(...res.data);
+    if (res.data.length < PAGE) return rows;
+  }
 }
 
 /**
  * Wipe every trade show, campaign, banner (images included), and completed
- * task. Cannot be undone.
+ * task. Cannot be undone. The Styles database is left alone — it comes from
+ * the ATS export and is re-imported, not entered by hand.
  */
 async function clearAllData() {
   const client = requireClient();
@@ -404,6 +429,99 @@ async function deleteCampaign(id) {
   await deleteCompletedTasksWithPrefix(`${TASK_ID_PREFIX_CAMPAIGN}|${id}|`);
   const [removed] = allCampaigns.splice(index, 1);
   return removed;
+}
+
+// ── Styles ───────────────────────────────────────────────────────────────────
+//
+// Imported from the N41 ATS export (js/style-import.js). One record per
+// Style # + Color; importing again updates what changed and adds what's new.
+
+let allStyles = [];
+/** Style # (upper case) → its colours, for the banner lookups. */
+let stylesByNo = new Map();
+
+/** The identity of a style record, matching the table's primary key. */
+function styleKey(styleNo, color) {
+  return `${styleNo}\u0000${color}`;
+}
+
+function styleRowToStyle(row) {
+  return {
+    styleNo: String(row.style_no ?? ""),
+    color: String(row.color ?? ""),
+    status: String(row.n41_status ?? ""),
+    season: String(row.season ?? ""),
+    category: String(row.category ?? ""),
+    description: String(row.description ?? ""),
+    updatedAt: String(row.updated_at ?? ""),
+  };
+}
+
+function styleToRow(style) {
+  return {
+    style_no: style.styleNo,
+    color: style.color,
+    n41_status: style.status,
+    season: style.season,
+    category: style.category,
+    description: style.description,
+    updated_at: new Date().toISOString(),
+  };
+}
+
+function setAllStyles(rows) {
+  allStyles = rows.map(styleRowToStyle);
+  indexStyles();
+}
+
+function indexStyles() {
+  stylesByNo = new Map();
+  allStyles.forEach(style => {
+    const key = style.styleNo.toUpperCase();
+    if (!stylesByNo.has(key)) stylesByNo.set(key, []);
+    stylesByNo.get(key).push(style);
+  });
+}
+
+function getAllStyles() {
+  return allStyles;
+}
+
+/** Every colour of a Style #, or [] when it isn't in the database. */
+function getStyleColors(styleNo) {
+  return stylesByNo.get(String(styleNo ?? "").trim().toUpperCase()) ?? [];
+}
+
+/** One Style # + Color, matched without regard to case. */
+function findStyle(styleNo, color) {
+  const c = String(color ?? "").trim().toUpperCase();
+  return getStyleColors(styleNo).find(s => s.color.toUpperCase() === c) ?? null;
+}
+
+/** Distinct Style #s, for suggestions as you type. */
+function getStyleNumbers() {
+  return [...new Set(allStyles.map(s => s.styleNo))];
+}
+
+/**
+ * Save new and changed styles, `onProgress(saved, total)` after each batch.
+ * Batches keep each request small; a failure stops there, and what was
+ * already saved stays saved (re-running the import picks up the rest).
+ */
+async function saveStyles(styles, onProgress) {
+  const BATCH = 500;
+  const client = requireClient();
+  for (let i = 0; i < styles.length; i += BATCH) {
+    const batch = styles.slice(i, i + BATCH);
+    throwIfError(await client.from("styles").upsert(batch.map(styleToRow), { onConflict: "user_id,style_no,color" }));
+    onProgress?.(Math.min(i + BATCH, styles.length), styles.length);
+  }
+  // Fold the saved records into the cache without a full reload.
+  const byKey = new Map(allStyles.map(s => [styleKey(s.styleNo, s.color), s]));
+  const now = new Date().toISOString();
+  styles.forEach(s => byKey.set(styleKey(s.styleNo, s.color), { ...s, updatedAt: now }));
+  allStyles = [...byKey.values()].sort((a, b) => a.styleNo.localeCompare(b.styleNo) || a.color.localeCompare(b.color));
+  indexStyles();
 }
 
 // ── Banners ──────────────────────────────────────────────────────────────────

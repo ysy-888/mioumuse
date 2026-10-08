@@ -153,3 +153,26 @@ alter table task_links enable row level security;
 drop policy if exists "task_links: own rows only" on task_links;
 create policy "task_links: own rows only" on task_links
   for all using (user_id = auth.uid()) with check (user_id = auth.uid());
+
+-- ── Styles database (imported from the N41 ATS Excel export) ────────────────
+--
+-- One row per Style # + Color. Re-importing updates changed fields and adds
+-- new rows; styles missing from a newer file are kept as they are.
+
+create table if not exists styles (
+  user_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
+  style_no text not null,
+  color text not null,
+  n41_status text not null default '',
+  season text not null default '',
+  category text not null default '',
+  description text not null default '',
+  updated_at timestamptz not null default now(),
+  primary key (user_id, style_no, color)
+);
+
+alter table styles enable row level security;
+
+drop policy if exists "styles: own rows only" on styles;
+create policy "styles: own rows only" on styles
+  for all using (user_id = auth.uid()) with check (user_id = auth.uid());

@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Mioumuse</title>
 <link rel="icon" href="favicon.svg" type="image/svg+xml" />
-<link rel="stylesheet" href="crm.css?v=20261008-1836" />
+<link rel="stylesheet" href="crm.css?v=20261008-2027" />
 </head>
 <body>
 
@@ -19,6 +19,7 @@
     <button type="button" class="app-title-tab" id="navTabCampaigns" role="tab" aria-selected="false">Campaigns</button>
     <button type="button" class="app-title-tab" id="navTabTradeShows" role="tab" aria-selected="false">Trade Shows</button>
     <button type="button" class="app-title-tab" id="navTabPlatforms" role="tab" aria-selected="false">Platforms</button>
+    <button type="button" class="app-title-tab" id="navTabStyles" role="tab" aria-selected="false">Styles</button>
   </nav>
   <div class="header-right">
     <button type="button" class="btn btn-primary btn-icon" id="refreshBtn" aria-label="Refresh">
@@ -105,6 +106,31 @@
     <button type="button" class="btn btn-primary" id="addBannerBtn">
       <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
       Add banner
+    </button>
+  </div>
+</div>
+
+<!-- ── Styles toolbar ────────────────────────────────────────── -->
+<div id="stylesToolbar" class="toolbar" hidden>
+  <div class="toolbar-filter-cluster">
+    <div class="toolbar-filter-section">
+      <div class="filter-btn-group" id="styleStatusFilters" role="group" aria-label="N41 status"></div>
+    </div>
+    <div class="toolbar-filter-section style-select-filters">
+      <select class="form-input style-filter-select" id="styleSeasonFilter" aria-label="Season"></select>
+      <select class="form-input style-filter-select" id="styleCategoryFilter" aria-label="Category"></select>
+    </div>
+  </div>
+
+  <div class="toolbar-end">
+    <div class="counter toolbar-row-counter" id="stylesRowCounter">— styles</div>
+    <div class="search-wrap toolbar-search-wrap">
+      <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+      <input type="search" id="styleSearchInput" placeholder="Search" />
+    </div>
+    <button type="button" class="btn btn-primary" id="importStylesBtn">
+      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M17 8l-5-5-5 5"/><path d="M12 3v12"/></svg>
+      Import Excel
     </button>
   </div>
 </div>
@@ -309,6 +335,35 @@
       </section>
     </div>
   </aside>
+
+  <!-- ── Styles database ─────────────────────────────────────── -->
+  <div id="stylesTableWrap" class="table-scroll-y" hidden>
+    <div class="table-scroll-x">
+    <table id="stylesTable" class="record-table styles-table">
+      <colgroup>
+        <col class="col-style-no" />
+        <col class="col-color" />
+        <col class="col-description" />
+        <col class="col-category" />
+        <col class="col-season" />
+        <col class="col-status" />
+      </colgroup>
+      <thead>
+        <tr>
+          <th data-col="styleNo">Style #</th>
+          <th data-col="color">Color</th>
+          <th data-col="description">Description</th>
+          <th data-col="category">Category</th>
+          <th data-col="season">Season</th>
+          <th data-col="status">N41 Status</th>
+        </tr>
+      </thead>
+      <tbody id="stylesTableBody">
+        <tr class="state-row"><td colspan="6">Loading styles…</td></tr>
+      </tbody>
+    </table>
+    </div>
+  </div>
 
   <!-- ── Calendar ────────────────────────────────────────────── -->
   <div id="calendarWrap" class="dashboard-wrap" hidden>
@@ -528,6 +583,8 @@
       <div class="form-field form-field--full">
         <span class="form-label">Styles</span>
         <div class="banner-style-list" id="bannerFormStyles"></div>
+        <!-- Style # suggestions from the Styles database. -->
+        <datalist id="styleNumberList"></datalist>
         <button type="button" class="btn banner-add-style" id="bannerFormAddStyle">+ Add style</button>
       </div>
     </form>
@@ -630,6 +687,33 @@
   </div>
 </div>
 
+<!-- ── Styles: import the ATS Excel export ───────────────────── -->
+<div id="styleImportOverlay" class="modal-backdrop">
+  <div class="modal-card company-form-card style-import-card" role="dialog" aria-modal="true" aria-labelledby="styleImportTitle">
+    <div class="modal-header">
+      <h3 id="styleImportTitle">Import styles from Excel</h3>
+      <button type="button" class="btn-close" id="styleImportCloseBtn" aria-label="Close">✕</button>
+    </div>
+    <div class="modal-body style-import-body">
+      <div class="style-import-pick" id="styleImportPick">
+        <span>Drop the ATS export (.xlsx) here, or</span>
+        <label class="btn btn-primary style-import-choose">
+          <input type="file" id="styleImportFile" accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel" hidden />
+          Choose file
+        </label>
+        <span class="form-hint">Read from row 8: Status (B), Season (D), Category (F), Style # (H), Color (I), Description (L). Rows without a Style # are skipped. Nothing is saved until you confirm.</span>
+      </div>
+      <div id="styleImportSummary"></div>
+      <div class="style-import-preview" id="styleImportPreview"></div>
+    </div>
+    <div class="modal-footer">
+      <span class="modal-footer-message" id="styleImportMessage"></span>
+      <button type="button" class="btn" id="styleImportCancelBtn">Cancel</button>
+      <button type="button" class="btn btn-primary" id="styleImportConfirmBtn" disabled>Import</button>
+    </div>
+  </div>
+</div>
+
 <div id="appSavingOverlay" class="app-saving-overlay" aria-hidden="false">
   <div class="app-saving-backdrop"></div>
   <div class="app-saving-panel" role="status" aria-live="polite">
@@ -662,22 +746,24 @@
 
 <!-- Supabase JS client — auth.js and store.js both depend on the global it exports. -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
-<script src="js/config.js?v=20261008-1836"></script>
+<script src="js/config.js?v=20261008-2027"></script>
 <!-- Needs SUPABASE_URL/KEY from config.js and the CDN client above. -->
-<script src="js/auth.js?v=20261008-1836"></script>
-<script src="js/util.js?v=20261008-1836"></script>
-<script src="js/dates.js?v=20261008-1836"></script>
-<script src="js/store.js?v=20261008-1836"></script>
-<script src="js/tasks.js?v=20261008-1836"></script>
-<script src="js/app-shell.js?v=20261008-1836"></script>
-<script src="js/record-list.js?v=20261008-1836"></script>
-<script src="js/item-pane.js?v=20261008-1836"></script>
-<script src="js/campaign-form.js?v=20261008-1836"></script>
-<script src="js/trade-show-form.js?v=20261008-1836"></script>
-<script src="js/banners.js?v=20261008-1836"></script>
-<script src="js/banner-form.js?v=20261008-1836"></script>
-<script src="js/mailchimp.js?v=20261008-1836"></script>
-<script src="js/calendar.js?v=20261008-1836"></script>
-<script src="js/main.js?v=20261008-1836"></script>
+<script src="js/auth.js?v=20261008-2027"></script>
+<script src="js/util.js?v=20261008-2027"></script>
+<script src="js/dates.js?v=20261008-2027"></script>
+<script src="js/store.js?v=20261008-2027"></script>
+<script src="js/tasks.js?v=20261008-2027"></script>
+<script src="js/app-shell.js?v=20261008-2027"></script>
+<script src="js/record-list.js?v=20261008-2027"></script>
+<script src="js/item-pane.js?v=20261008-2027"></script>
+<script src="js/campaign-form.js?v=20261008-2027"></script>
+<script src="js/trade-show-form.js?v=20261008-2027"></script>
+<script src="js/banners.js?v=20261008-2027"></script>
+<script src="js/banner-form.js?v=20261008-2027"></script>
+<script src="js/mailchimp.js?v=20261008-2027"></script>
+<script src="js/style-import.js?v=20261008-2027"></script>
+<script src="js/styles.js?v=20261008-2027"></script>
+<script src="js/calendar.js?v=20261008-2027"></script>
+<script src="js/main.js?v=20261008-2027"></script>
 </body>
 </html>

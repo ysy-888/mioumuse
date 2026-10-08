@@ -40,6 +40,7 @@ async function bootApp() {
   initBannersView();
   initBannerForm();
   initMailchimp();
+  initStylesView();
   initCalendar();
 
   if (!isSupabaseConfigured()) {

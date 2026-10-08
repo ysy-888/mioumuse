@@ -116,6 +116,55 @@ function syncMultiPlatformMode() {
 
 // ── Styles ───────────────────────────────────────────────────────────────────
 
+// ── Styles database lookups ──────────────────────────────────────────────────
+//
+// Style # suggests numbers from the Styles database as you type; once it
+// matches, Color offers that style's colours, and a line under the row shows
+// the description and N41 status. Both stay free text — a style that isn't
+// in the database (yet) can still be entered.
+
+let bannerColorListSeq = 0;
+
+/** The shared Style # suggestions, refreshed whenever the database grew. */
+function fillStyleNumberList() {
+  const list = document.getElementById("styleNumberList");
+  if (!list) return;
+  const numbers = getStyleNumbers();
+  if (list.childElementCount === numbers.length) return;
+  list.replaceChildren(...numbers.map(n => new Option(n)));
+}
+
+function updateBannerStyleMatch(row) {
+  const styleNo = row.querySelector(".banner-style-no").value.trim();
+  const color = row.querySelector(".banner-style-color").value.trim();
+  const colorList = document.getElementById(row.querySelector(".banner-style-color").getAttribute("list"));
+  const note = row.querySelector(".banner-style-match");
+
+  const colors = styleNo ? getStyleColors(styleNo) : [];
+  colorList?.replaceChildren(...colors.map(s => new Option(s.color)));
+
+  note.className = "banner-style-match";
+  if (!styleNo || getAllStyles().length === 0) {
+    note.textContent = "";
+    return;
+  }
+  if (colors.length === 0) {
+    note.textContent = "Not in the Styles database.";
+    note.classList.add("is-unknown");
+    return;
+  }
+  const match = color ? findStyle(styleNo, color) : null;
+  if (match) {
+    note.textContent = [match.description, match.category, match.season, match.status].filter(Boolean).join(" · ");
+    note.classList.add("is-match");
+  } else if (color) {
+    note.textContent = `${colors[0].description} — color not listed for this style (has ${colors.map(s => s.color).join(", ")}).`;
+    note.classList.add("is-unknown");
+  } else {
+    note.textContent = `${colors[0].description} — ${colors.length === 1 ? "1 color" : `${colors.length} colors`}: ${colors.map(s => s.color).join(", ")}.`;
+  }
+}
+
 function createBannerStyleRow(style = {}) {
   const row = document.createElement("div");
   row.className = "banner-style-row";
@@ -127,6 +176,11 @@ function createBannerStyleRow(style = {}) {
   styleNo.autocomplete = "off";
   styleNo.value = style.styleNo ?? "";
   styleNo.setAttribute("aria-label", "Style #");
+  styleNo.setAttribute("list", "styleNumberList");
+
+  const colorListId = `bannerColorList-${++bannerColorListSeq}`;
+  const colorList = document.createElement("datalist");
+  colorList.id = colorListId;
 
   const color = document.createElement("input");
   color.type = "text";
@@ -135,6 +189,19 @@ function createBannerStyleRow(style = {}) {
   color.autocomplete = "off";
   color.value = style.color ?? "";
   color.setAttribute("aria-label", "Color");
+  color.setAttribute("list", colorListId);
+
+  const note = document.createElement("span");
+  note.className = "banner-style-match";
+
+  // A style # with only one colour fills it in.
+  styleNo.addEventListener("input", () => updateBannerStyleMatch(row));
+  styleNo.addEventListener("change", () => {
+    const colors = getStyleColors(styleNo.value);
+    if (colors.length === 1 && !color.value.trim()) color.value = colors[0].color;
+    updateBannerStyleMatch(row);
+  });
+  color.addEventListener("input", () => updateBannerStyleMatch(row));
 
   const remove = document.createElement("button");
   remove.type = "button";
@@ -147,7 +214,8 @@ function createBannerStyleRow(style = {}) {
     syncBannerStyleRows();
   });
 
-  row.append(styleNo, color, remove);
+  row.append(styleNo, color, remove, colorList, note);
+  updateBannerStyleMatch(row);
   return row;
 }
 
@@ -314,6 +382,7 @@ function openBannerForm(bannerId = null) {
   document.getElementById("bannerFormWidth").value = banner?.width || "";
   document.getElementById("bannerFormHeight").value = banner?.height || "";
   document.getElementById("bannerFormFile").value = "";
+  fillStyleNumberList();
   setBannerFormStyles(banner?.styles ?? []);
   renderBannerFormImage();
 
