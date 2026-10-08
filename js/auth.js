@@ -39,7 +39,7 @@ async function signOut() {
 
 function showLoginScreen(message = "") {
   const app = document.getElementById("appMain");
-  const toolbar = document.getElementById("companiesToolbar");
+  const toolbar = document.getElementById("tradeShowsToolbar");
   if (app) app.hidden = true;
   if (toolbar) toolbar.hidden = true;
 

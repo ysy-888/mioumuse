@@ -1,31 +1,26 @@
 /**
  * View switching and the header menu.
  *
- * Views: "home" (calendar + upcoming tasks), "companies" (list) → "company"
- * (full-page detail) → back.
+ * Views: "home" (calendar + upcoming tasks), "tradeShows" (list) →
+ * "tradeShow" (full-page detail) → back.
  * The detail page is a real view swap, not a modal, so the whole frame
- * (toolbar, footer pagination) hides with it.
+ * (toolbar included) hides with it.
  */
 
-const APP_VIEWS = ["home", "companies", "company", "bookkeeping"];
+const APP_VIEWS = ["home", "tradeShows", "tradeShow"];
 
 let currentAppView = "home";
 
 /**
  * Where the header's back button goes. Only view changes are recorded, so
- * moving between two companies stays one entry — going back from a company
- * lands on whatever you were looking at before you opened one, whether that
- * was the list, the calendar, or the bookkeeping grid.
+ * moving between two shows stays one entry — going back from a show lands on
+ * whatever you were looking at before you opened one.
  */
 const appViewHistory = [];
 let navigatingBack = false;
 
 function getCurrentAppView() {
   return currentAppView;
-}
-
-function isCompaniesViewActive() {
-  return currentAppView === "companies";
 }
 
 function updateAppBackButton() {
@@ -56,25 +51,21 @@ function switchAppView(view) {
   currentAppView = view;
 
   const panes = {
-    companiesToolbar: view === "companies",
-    companiesTableWrap: view === "companies",
-    companyDetailView: view === "company",
+    tradeShowsToolbar: view === "tradeShows",
+    tradeShowsTableWrap: view === "tradeShows",
+    tradeShowDetailView: view === "tradeShow",
     calendarWrap: view === "home",
-    bookkeepingView: view === "bookkeeping",
-    // Pagination belongs to the list only.
-    appFooterEnd: view === "companies",
   };
   Object.entries(panes).forEach(([id, visible]) => {
     const el = document.getElementById(id);
     if (el) el.hidden = !visible;
   });
 
-  // The Companies tab stays selected while a company detail page is open —
-  // the detail is a drill-down within that section.
+  // The Trade Shows tab stays selected while a show's page is open — the
+  // detail is a drill-down within that section.
   const tabs = {
     navLogoHome: view === "home",
-    navTabCompanies: view === "companies" || view === "company",
-    navTabBookkeeping: view === "bookkeeping",
+    navTabTradeShows: view === "tradeShows" || view === "tradeShow",
   };
   Object.entries(tabs).forEach(([id, active]) => {
     const el = document.getElementById(id);
@@ -83,12 +74,9 @@ function switchAppView(view) {
     el.setAttribute("aria-selected", active ? "true" : "false");
   });
 
-  if (view === "companies" && typeof updateCompaniesPaginationUI === "function") {
-    updateCompaniesPaginationUI();
-  }
   // The grid needs real layout to size its rows, so render on entry.
-  if (view === "home" && typeof renderCalendar === "function") renderCalendar();
-  if (view === "bookkeeping" && typeof renderBookkeepingView === "function") renderBookkeepingView();
+  if (view === "home") renderCalendar();
+  if (view === "tradeShows") applyTradeShowFilters();
   updateAppBackButton();
 }
 
@@ -125,18 +113,22 @@ function initHeaderMenu() {
 
   document.getElementById("headerMenuExportCsv")?.addEventListener("click", () => {
     closeHeaderMenu();
-    exportCompaniesCsv();
+    exportTradeShowsCsv();
   });
 
   document.getElementById("headerMenuResetData")?.addEventListener("click", async () => {
     closeHeaderMenu();
-    if (!confirm("Permanently delete every company, owner, and completed task? This cannot be undone.")) return;
+    if (!confirm("Permanently delete every trade show and completed task? This cannot be undone.")) return;
     setAppLoading(true, "Clearing…");
-    await clearAllData();
-    applyCompanyFilters();
-    switchAppView("companies");
-    setAppLoading(false);
-    showIndicator("All data cleared", "success");
+    try {
+      await clearAllData();
+      switchAppView("tradeShows");
+      showIndicator("All data cleared", "success");
+    } catch (err) {
+      showIndicator(err.message || "Could not clear data.", "error");
+    } finally {
+      setAppLoading(false);
+    }
   });
 
   document.getElementById("headerMenuSignOut")?.addEventListener("click", async () => {
@@ -154,31 +146,28 @@ function csvCell(value) {
   return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 
-/** Export whatever the current filters/search have narrowed the list to. */
-function exportCompaniesCsv() {
-  const rows = typeof filteredCompanies !== "undefined" ? filteredCompanies : getAllCompanies();
+/** Every trade show with its email dates and whether each one is done. */
+function exportTradeShowsCsv() {
+  const rows = [...getAllTradeShows()].sort((a, b) => a.startDate.localeCompare(b.startDate));
   if (!rows.length) {
     showIndicator("Nothing to export", "error");
     return;
   }
 
   const header = [
-    "Company Name", "Owner", "Location", "Payroll", "Payroll Tax", "Sales Tax",
-    ...SERVICES.map(s => s.label), "Notes",
+    "Show", "Start", "End",
+    ...TRADE_SHOW_EMAIL_TASKS.flatMap(email => [email.label, `${email.label} done`]),
+    "Notes",
   ];
   const lines = [header.map(csvCell).join(",")];
 
-  rows.forEach(company => {
+  rows.forEach(tradeShow => {
     lines.push([
-      company.name,
-      getCompanyOwnerName(company),
-      getCompanyLocationDisplay(company),
-      // The schedule columns read the same as the table: blank when the
-      // service is off, so an inactive client's retained settings don't
-      // export as if they were live.
-      ...["Payroll", "Payroll Tax", "Sales Tax"].map(col => getCompanyColumnValue(company, col)),
-      ...SERVICE_KEYS.map(key => (company.services[key] ? "Yes" : "No")),
-      company.notes,
+      getTradeShowLabel(tradeShow.show),
+      tradeShow.startDate,
+      tradeShow.endDate,
+      ...buildTradeShowEmailTasks(tradeShow).flatMap(task => [task.dueDate, isTaskComplete(task.id) ? "Yes" : "No"]),
+      tradeShow.notes,
     ].map(csvCell).join(","));
   });
 
@@ -186,26 +175,37 @@ function exportCompaniesCsv() {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = `companies-${new Date().toISOString().slice(0, 10)}.csv`;
+  a.download = `trade-shows-${todayYmd()}.csv`;
   a.click();
   URL.revokeObjectURL(url);
-  showIndicator(`Exported ${rows.length} companies`, "success");
+  showIndicator(`Exported ${rows.length} trade shows`, "success");
 }
 
 // ── Nav ──────────────────────────────────────────────────────────────────────
 
 function initAppNav() {
-  document.getElementById("navTabCompanies")?.addEventListener("click", () => switchAppView("companies"));
+  document.getElementById("navTabTradeShows")?.addEventListener("click", () => switchAppView("tradeShows"));
   document.getElementById("navLogoHome")?.addEventListener("click", () => switchAppView("home"));
-  document.getElementById("navTabBookkeeping")?.addEventListener("click", () => switchAppView("bookkeeping"));
   document.getElementById("appBackBtn")?.addEventListener("click", () => goBackAppView("home"));
 
   document.getElementById("refreshBtn")?.addEventListener("click", async () => {
     setAppLoading(true, "Refreshing…");
-    await loadAppData();
-    applyCompanyFilters();
-    setAppLoading(false);
-    showIndicator("Refreshed", "success");
+    try {
+      await loadAppData();
+      // Re-enter the current view so it renders from the fresh data. A show
+      // that was deleted elsewhere falls back to the list.
+      if (getCurrentAppView() === "tradeShow" && !getTradeShowById(currentTradeShowId)) {
+        goBackAppView("tradeShows");
+      } else {
+        switchAppView(getCurrentAppView());
+        refreshTradeShowDetailIfActive();
+      }
+      showIndicator("Refreshed", "success");
+    } catch (err) {
+      showIndicator(err.message || "Could not refresh.", "error");
+    } finally {
+      setAppLoading(false);
+    }
   });
 
   document.getElementById("saveIndicatorDismiss")?.addEventListener("click", clearIndicator);

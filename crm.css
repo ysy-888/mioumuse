@@ -931,7 +931,7 @@ th:not(.th-filterable).sorted-asc::after { content: '↑'; }
 th:not(.th-filterable).sorted-desc::after { content: '↓'; }
 
 /* PO table: sort hint on header hover (lighter), full arrow when sorted */
-#companiesTable thead th[data-col]:not(.th-filterable):not(.th-flag-col):not(.th-select-col):not(.th-packing-list-col):not(.sorted-asc):not(.sorted-desc):hover::after {
+#tradeShowsTable thead th[data-col]:not(.th-filterable):not(.th-flag-col):not(.th-select-col):not(.th-packing-list-col):not(.sorted-asc):not(.sorted-desc):hover::after {
   content: '↑';
   position: absolute;
   right: 8px;
@@ -942,13 +942,13 @@ th:not(.th-filterable).sorted-desc::after { content: '↓'; }
   opacity: 0.45;
 }
 
-#companiesTable thead th[data-col]:not(.th-filterable):not(.th-flag-col):not(.th-select-col):not(.th-packing-list-col).sorted-asc::after,
-#companiesTable thead th[data-col]:not(.th-filterable):not(.th-flag-col):not(.th-select-col):not(.th-packing-list-col).sorted-desc::after {
+#tradeShowsTable thead th[data-col]:not(.th-filterable):not(.th-flag-col):not(.th-select-col):not(.th-packing-list-col).sorted-asc::after,
+#tradeShowsTable thead th[data-col]:not(.th-filterable):not(.th-flag-col):not(.th-select-col):not(.th-packing-list-col).sorted-desc::after {
   color: var(--text);
   opacity: 1;
 }
 
-#companiesTable thead th.th-filterable:not(.sorted-asc):not(.sorted-desc):not(.filter-active):has(.th-label:hover)::before {
+#tradeShowsTable thead th.th-filterable:not(.sorted-asc):not(.sorted-desc):not(.filter-active):has(.th-label:hover)::before {
   content: '↑';
   position: absolute;
   top: 50%;
@@ -959,8 +959,8 @@ th:not(.th-filterable).sorted-desc::after { content: '↓'; }
   opacity: 0.45;
 }
 
-#companiesTable thead th.th-filterable.sorted-asc::before,
-#companiesTable thead th.th-filterable.sorted-desc::before {
+#tradeShowsTable thead th.th-filterable.sorted-asc::before,
+#tradeShowsTable thead th.th-filterable.sorted-desc::before {
   color: var(--text);
   opacity: 1;
 }
@@ -980,78 +980,78 @@ th[data-col="Notes"] {
 
 th:hover { background: var(--accent-heavy); color: var(--text); }
 
-#companiesTable thead th:hover:not(.filter-active),
-#companiesTable thead th.th-flag-col:hover:not(.filter-active),
-#companiesTable thead th.th-select-col:hover:not(.filter-active) {
+#tradeShowsTable thead th:hover:not(.filter-active),
+#tradeShowsTable thead th.th-flag-col:hover:not(.filter-active),
+#tradeShowsTable thead th.th-select-col:hover:not(.filter-active) {
   background: var(--header-bg);
   color: var(--text);
 }
 
-#companiesTable thead th.th-filterable.filter-active:hover {
+#tradeShowsTable thead th.th-filterable.filter-active:hover {
   background: var(--accent);
   color: #fff;
 }
 
-#companiesTable thead th.th-flag-col.filter-active:hover {
+#tradeShowsTable thead th.th-flag-col.filter-active:hover {
   background: var(--header-bg);
   color: var(--text);
 }
 
 /* Leading control cluster: Flag | Select | Status — no internal dividers */
-#companiesTable th.th-flag-col,
-#companiesTable td.td-flag-cell,
-#companiesTable th.th-select-col,
-#companiesTable td.td-select-cell,
-#companiesTable th[data-col="Status"],
-#companiesTable td[data-col="Status"] {
+#tradeShowsTable th.th-flag-col,
+#tradeShowsTable td.td-flag-cell,
+#tradeShowsTable th.th-select-col,
+#tradeShowsTable td.td-select-cell,
+#tradeShowsTable th[data-col="Status"],
+#tradeShowsTable td[data-col="Status"] {
   border-right: none;
 }
 
-#companiesTable th.th-flag-col,
-#companiesTable td.td-flag-cell {
+#tradeShowsTable th.th-flag-col,
+#tradeShowsTable td.td-flag-cell {
   padding-right: 2px;
 }
 
-#companiesTable th.th-select-col,
-#companiesTable td.td-select-cell {
+#tradeShowsTable th.th-select-col,
+#tradeShowsTable td.td-select-cell {
   padding-left: 2px;
   padding-right: 2px;
 }
 
-#companiesTable th[data-col="Status"],
-#companiesTable td[data-col="Status"] {
+#tradeShowsTable th[data-col="Status"],
+#tradeShowsTable td[data-col="Status"] {
   padding-left: 4px;
 }
 
-#companiesTable thead th {
+#tradeShowsTable thead th {
   padding-top: 5px;
   padding-bottom: 5px;
 }
 
-#companiesTable tbody td {
+#tradeShowsTable tbody td {
   padding-top: 4px;
   padding-bottom: 4px;
 }
 
-#companiesTable .th-flag-icon,
-#companiesTable .po-flag-btn,
-#companiesTable .po-packing-list-indicator {
+#tradeShowsTable .th-flag-icon,
+#tradeShowsTable .po-flag-btn,
+#tradeShowsTable .po-packing-list-indicator {
   width: 24px;
   height: 24px;
 }
 
-#companiesTable .th-flag-icon svg {
+#tradeShowsTable .th-flag-icon svg {
   width: 14px;
   height: 14px;
 }
 
-#companiesTable .po-select-checkbox,
-#companiesTable th.th-select-col input[type="checkbox"] {
+#tradeShowsTable .po-select-checkbox,
+#tradeShowsTable th.th-select-col input[type="checkbox"] {
   width: 16px;
   height: 16px;
 }
 
-#companiesTable .editable-preview {
+#tradeShowsTable .editable-preview {
   padding: 2px 5px;
 }
 
@@ -2592,20 +2592,20 @@ td.n41-status-mismatch,
    CRM — Companies table
    ============================================================ */
 
-#companiesTable {
+#tradeShowsTable {
   min-width: 1080px;
 }
 
-#companiesTable .col-company    { width: 230px; min-width: 180px; }
-#companiesTable .col-owner      { width: 120px; min-width: 95px; }
-#companiesTable .col-location   { width: 130px; min-width: 100px; }
-#companiesTable .col-schedule   { width: 118px; min-width: 100px; }
-#companiesTable .col-services   { width: 120px; min-width: 100px; }
+#tradeShowsTable .col-company    { width: 230px; min-width: 180px; }
+#tradeShowsTable .col-owner      { width: 120px; min-width: 95px; }
+#tradeShowsTable .col-location   { width: 130px; min-width: 100px; }
+#tradeShowsTable .col-schedule   { width: 118px; min-width: 100px; }
+#tradeShowsTable .col-services   { width: 120px; min-width: 100px; }
 /* Notes takes whatever is left — it's the one column that benefits from it. */
-#companiesTable .col-notes      { width: auto;  min-width: 180px; }
+#tradeShowsTable .col-notes      { width: auto;  min-width: 180px; }
 
 /* A memo can run long; the row stays one line and the full text is on hover. */
-#companiesTable td[data-col="Notes"] {
+#tradeShowsTable td[data-col="Notes"] {
   text-align: left;
   white-space: nowrap;
   overflow: hidden;
@@ -2614,17 +2614,17 @@ td.n41-status-mismatch,
   color: var(--text-muted);
 }
 
-#companiesTable td[data-col="Company"] {
+#tradeShowsTable td[data-col="Company"] {
   text-align: left;
   font-weight: 600;
 }
 
-#companiesTable td[data-col="Owner"],
-#companiesTable td[data-col="Location"] {
+#tradeShowsTable td[data-col="Owner"],
+#tradeShowsTable td[data-col="Location"] {
   text-align: left;
 }
 
-#companiesTable tbody tr.clickable-row {
+#tradeShowsTable tbody tr.clickable-row {
   cursor: pointer;
 }
 
@@ -5532,3 +5532,224 @@ span.dash-event { cursor: pointer; /* clicking selects the day */ }
 }
 
 .dashboard-day-pane .task-tabs { flex: 1; }
+
+/* ============================================================
+   Trade shows — one colour family per show
+
+   Every place a show appears (table dot, calendar chip, card pill, form
+   button) keys on data-show, so a show reads as the same colour everywhere.
+   ============================================================ */
+
+[data-show] {
+  --show-bg: #eef0f3;
+  --show-fg: #4b5563;
+  --show-strong: #6b7280;
+}
+[data-show="atlanta-apparel"] { --show-bg: #fde7ea; --show-fg: #a3233a; --show-strong: #c22f4a; }
+[data-show="dallas-market"]   { --show-bg: #fdf0d5; --show-fg: #8a5a00; --show-strong: #b07400; }
+[data-show="magic-new-york"]  { --show-bg: #ece6fb; --show-fg: #5a3aa8; --show-strong: #6d4ac7; }
+[data-show="magic-las-vegas"] { --show-bg: #fbe3f3; --show-fg: #9b1f74; --show-strong: #b8288b; }
+[data-show="magic-nashville"] { --show-bg: #dcf3ef; --show-fg: #0f6e62; --show-strong: #138577; }
+[data-show="flair"]           { --show-bg: #e1ecfb; --show-fg: #1f56a5; --show-strong: #2a67c2; }
+
+.trade-show-dot {
+  display: inline-block;
+  flex: 0 0 auto;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--show-strong);
+}
+
+.trade-show-dot--lg { width: 12px; height: 12px; margin-right: 10px; vertical-align: 2px; }
+
+.trade-show-pill {
+  background: var(--show-bg);
+  color: var(--show-fg);
+}
+
+/* ── Calendar chips ──
+   A show day is a solid block in its colour; an email is a pale chip edged in
+   the same colour — same show, clearly a different kind of thing. */
+.dash-event.cal-event--show {
+  background: var(--show-bg);
+  color: var(--show-fg);
+}
+
+.dash-event.cal-event--email {
+  background: var(--surface);
+  color: var(--show-fg);
+  box-shadow: inset 3px 0 0 var(--show-strong), inset 0 0 0 1px var(--border);
+}
+
+.dash-event.cal-event--show.is-group-selected,
+.dash-event.cal-event--email.is-group-selected {
+  background: var(--show-strong);
+  color: #fff;
+  box-shadow: none;
+}
+
+.cal-filter-btn[data-kind="show"].is-active  { background: #6d4ac7; border-color: #6d4ac7; }
+.cal-filter-btn[data-kind="email"].is-active { background: #1f2937; border-color: #1f2937; }
+
+.payroll-task[data-kind="email"] .payroll-task-icon { color: var(--text-muted); }
+
+/* ── Cards ── */
+.trade-show-card { border-left: 3px solid var(--show-strong); }
+.trade-show-card.is-complete { border-left-color: #cfe3cf; }
+
+.trade-show-card.is-selected,
+.trade-show-card.is-selected.is-complete {
+  background: var(--show-bg);
+  border-color: var(--show-bg);
+  border-left-color: var(--show-strong);
+}
+
+/* Three emails stack in narrow rails rather than squeezing side by side. */
+.trade-show-card-tasks { flex-direction: column; gap: 6px; }
+.trade-show-card-tasks .payroll-task { flex: 0 0 auto; }
+
+/* ============================================================
+   Trade shows — list table
+   ============================================================ */
+
+#tradeShowsTable { min-width: 980px; }
+
+#tradeShowsTable .col-show   { width: 220px; min-width: 180px; }
+#tradeShowsTable .col-date   { width: 116px; min-width: 100px; }
+#tradeShowsTable .col-days   { width: 64px;  min-width: 56px; }
+#tradeShowsTable .col-status { width: 112px; min-width: 100px; }
+#tradeShowsTable .col-emails { width: 96px;  min-width: 88px; }
+#tradeShowsTable .col-next   { width: 128px; min-width: 110px; }
+#tradeShowsTable .col-notes  { width: auto;  min-width: 180px; }
+
+#tradeShowsTable td[data-col="Show"] { text-align: left; font-weight: 600; }
+
+#tradeShowsTable td[data-col="Notes"] {
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 0; /* lets the ellipsis kick in inside a table cell */
+  color: var(--text-muted);
+}
+
+#tradeShowsTable tbody tr.clickable-row { cursor: pointer; }
+
+#tradeShowsTable th.th-no-sort { cursor: default; }
+
+.trade-show-name-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.trade-show-status {
+  display: inline-block;
+  padding: 2px 9px;
+  border-radius: 10px;
+  font-family: var(--font);
+  font-size: 11px;
+  font-weight: 500;
+  white-space: nowrap;
+  background: #eef0f3;
+  color: #4b5563;
+}
+
+.trade-show-status[data-timing="upcoming"] { background: #e1ecfb; color: #1f56a5; }
+.trade-show-status[data-timing="live"]     { background: #e1f5ee; color: #0f6e56; font-weight: 600; }
+.trade-show-status[data-timing="past"]     { background: #eef0f3; color: #8b929c; }
+
+.trade-show-email-dots {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.trade-show-email-dots .service-dot.is-on { background: var(--success); }
+
+.trade-show-email-count {
+  margin-left: 5px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+/* ============================================================
+   Trade shows — detail page
+   ============================================================ */
+
+.trade-show-detail-inner { max-width: 880px; }
+
+.trade-show-detail-title { display: flex; align-items: center; }
+
+.trade-show-detail-status { margin-left: auto; }
+
+.trade-show-tasks-panel,
+.trade-show-tasks-panel .dashboard-panel-body { min-height: 0; }
+
+.trade-show-task-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 4px 0;
+}
+
+.trade-show-task-list .payroll-task { flex: 0 0 auto; padding: 10px 14px 10px 12px; }
+.trade-show-task-list .payroll-task-name { font-size: 13px; }
+.trade-show-task-list .payroll-task-due { font-size: 12px; min-width: 64px; }
+
+.trade-show-task-relative {
+  margin-left: auto;
+  font-family: var(--font);
+  font-size: 11.5px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+/* ============================================================
+   Trade shows — add / edit form
+   ============================================================ */
+
+.trade-show-picker { flex-wrap: wrap; }
+
+.trade-show-picker.is-invalid .form-toggle-btn { border-color: var(--danger); }
+
+.form-toggle-btn.trade-show-toggle.is-active {
+  background: var(--show-strong);
+  border-color: var(--show-strong);
+  color: #fff;
+}
+
+.form-toggle-btn.trade-show-toggle:hover:not(.is-active) {
+  background: var(--show-bg);
+  border-color: var(--show-strong);
+  color: var(--show-fg);
+}
+
+.trade-show-email-preview {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 10px 12px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  font-family: var(--font);
+  font-size: 12.5px;
+  color: var(--text);
+}
+
+.trade-show-email-preview li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.trade-show-email-preview .dash-event-icon { width: 13px; height: 13px; color: var(--text-muted); }
+
+.trade-show-email-preview-date {
+  min-width: 96px;
+  font-weight: 600;
+}

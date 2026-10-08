@@ -3,9 +3,9 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Practice CRM</title>
+<title>Mioumuse</title>
 <link rel="icon" href="favicon.svg" type="image/svg+xml" />
-<link rel="stylesheet" href="crm.css?v=20260828-1904" />
+<link rel="stylesheet" href="crm.css?v=20261008-1556" />
 </head>
 <body>
 
@@ -15,14 +15,10 @@
     <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>
   </button>
   <nav class="app-title-nav" role="tablist" aria-label="Main views">
-    <button type="button" class="app-logo-text" id="navLogoHome" role="tab" aria-selected="false" title="Home">Home</button>
-    <button type="button" class="app-title-tab is-active" id="navTabCompanies" role="tab" aria-selected="true">Companies</button>
-    <button type="button" class="app-title-tab" id="navTabBookkeeping" role="tab" aria-selected="false">Bookkeeping</button>
+    <button type="button" class="app-logo-text is-active" id="navLogoHome" role="tab" aria-selected="true" title="Home">Home</button>
+    <button type="button" class="app-title-tab" id="navTabTradeShows" role="tab" aria-selected="false">Trade Shows</button>
   </nav>
   <div class="header-right">
-    <div class="header-greeting" id="headerGreeting" hidden>
-      Hello, <span class="header-greeting-name" id="headerGreetingName"></span>
-    </div>
     <button type="button" class="btn btn-primary btn-icon" id="refreshBtn" aria-label="Refresh">
       <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path d="M1 4v6h6M23 20v-6h-6"/><path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4-4.64 4.36A9 9 0 0 1 3.51 15"/></svg>
     </button>
@@ -48,159 +44,112 @@
   </div>
 </header>
 
-<!-- ── Companies toolbar ─────────────────────────────────────── -->
-<div id="companiesToolbar" class="toolbar" hidden>
+<!-- ── Trade shows toolbar ───────────────────────────────────── -->
+<div id="tradeShowsToolbar" class="toolbar" hidden>
   <div class="toolbar-filter-cluster">
     <div class="toolbar-filter-section">
-      <div class="filter-btn-group" id="companyServiceFilters" role="group" aria-label="Service"></div>
+      <div class="filter-btn-group" id="tradeShowTimingFilters" role="group" aria-label="When"></div>
     </div>
   </div>
 
   <div class="toolbar-end">
-    <div class="counter toolbar-row-counter" id="companiesRowCounter">— companies</div>
+    <div class="counter toolbar-row-counter" id="tradeShowsRowCounter">— shows</div>
     <div class="search-wrap toolbar-search-wrap">
       <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
-      <input type="search" id="companySearchInput" placeholder="Search" />
-      <div class="search-input-overlay" id="companySearchInputOverlay" aria-hidden="true"></div>
+      <input type="search" id="tradeShowSearchInput" placeholder="Search" />
     </div>
-    <button type="button" class="btn btn-primary" id="addCompanyBtn">
+    <button type="button" class="btn btn-primary" id="addTradeShowBtn">
       <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
-      Add company
-    </button>
-    <button type="button" class="btn btn-secondary" id="companiesClearAllFiltersBtn" hidden>
-      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18"/><path d="M7 12h10"/><path d="M10 18h4"/><path d="m14 4-4 16"/></svg>
-      Clear all filters
+      Add trade show
     </button>
   </div>
 </div>
 
 <div id="appMain" class="app-main">
 
-  <!-- ── Companies list ──────────────────────────────────────── -->
-  <div id="companiesTableWrap" class="table-scroll-y" hidden>
+  <!-- ── Trade shows list ────────────────────────────────────── -->
+  <div id="tradeShowsTableWrap" class="table-scroll-y" hidden>
     <div class="table-scroll-x">
-    <table id="companiesTable">
+    <table id="tradeShowsTable">
       <colgroup>
-        <col class="col-company"  data-col="Company" />
-        <col class="col-owner"    data-col="Owner" />
-        <col class="col-location" data-col="Location" />
-        <col class="col-schedule" data-col="Payroll" />
-        <col class="col-schedule" data-col="Payroll Tax" />
-        <col class="col-schedule" data-col="Sales Tax" />
-        <col class="col-services" data-col="Services" />
-        <col class="col-notes"    data-col="Notes" />
+        <col class="col-show" />
+        <col class="col-date" />
+        <col class="col-date" />
+        <col class="col-days" />
+        <col class="col-status" />
+        <col class="col-emails" />
+        <col class="col-next" />
+        <col class="col-notes" />
       </colgroup>
       <thead>
         <tr>
-          <th class="th-filterable" data-col="Company"><span class="th-label">Company Name</span></th>
-          <th class="th-filterable" data-col="Owner"><span class="th-label">Owner</span></th>
-          <th class="th-filterable" data-col="Location"><span class="th-label">Location</span></th>
-          <th class="th-filterable" data-col="Payroll"><span class="th-label">Payroll</span></th>
-          <th class="th-filterable" data-col="Payroll Tax"><span class="th-label">Payroll Tax</span></th>
-          <th class="th-filterable" data-col="Sales Tax"><span class="th-label">Sales Tax</span></th>
-          <th class="th-no-sort" data-col="Services">Services</th>
+          <th data-col="Show">Show</th>
+          <th data-col="Start">Start</th>
+          <th data-col="End">End</th>
+          <th data-col="Days">Days</th>
+          <th data-col="Status">Status</th>
+          <th data-col="Emails">Emails</th>
+          <th data-col="Next email">Next email</th>
           <th data-col="Notes">Notes</th>
         </tr>
       </thead>
-      <tbody id="companiesTableBody">
-        <tr class="state-row"><td colspan="8">Loading companies…</td></tr>
+      <tbody id="tradeShowsTableBody">
+        <tr class="state-row"><td colspan="8">Loading trade shows…</td></tr>
       </tbody>
     </table>
     </div>
   </div>
 
-  <!-- ── Company detail (full page) ──────────────────────────── -->
-  <div id="companyDetailView" class="company-detail" hidden>
-    <div class="company-detail-inner">
-      <div class="company-detail-body">
-        <div class="company-detail-main">
-          <div class="company-detail-header">
-            <div class="company-detail-headline">
-              <div class="company-detail-title" id="companyDetailTitle">—</div>
-              <div class="company-detail-subtitle" id="companyDetailSubtitle"></div>
-            </div>
-
-            <div class="company-detail-pills" id="companyDetailPills"></div>
-
-            <div class="header-menu-wrap">
-              <button type="button" class="btn btn-icon" id="companyDetailMenuBtn" aria-label="Company menu" aria-haspopup="menu" aria-expanded="false">
-                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="5" r="1.75"/><circle cx="12" cy="12" r="1.75"/><circle cx="12" cy="19" r="1.75"/></svg>
-              </button>
-              <div id="companyDetailMenu" class="header-menu-dropdown" hidden role="menu">
-                <button type="button" class="header-menu-item" id="companyMenuEdit" role="menuitem">
-                  <svg class="header-menu-item-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4z"/></svg>
-                  <span>Edit company details</span>
-                </button>
-                <button type="button" class="header-menu-item header-menu-item-separator header-menu-item--danger" id="companyMenuDelete" role="menuitem">
-                  <svg class="header-menu-item-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>
-                  <span>Delete company</span>
-                </button>
-              </div>
-            </div>
+  <!-- ── Trade show detail (full page) ───────────────────────── -->
+  <div id="tradeShowDetailView" class="company-detail" hidden>
+    <div class="company-detail-inner trade-show-detail-inner">
+      <div class="company-detail-main">
+        <div class="company-detail-header">
+          <div class="company-detail-headline">
+            <div class="company-detail-title trade-show-detail-title" id="tradeShowDetailTitle">—</div>
+            <div class="company-detail-subtitle" id="tradeShowDetailSubtitle"></div>
           </div>
 
-          <div class="company-section-tabs" id="companySectionTabs" role="tablist" aria-label="Company sections"></div>
-          <div class="company-section-panel" id="companySectionPanel"></div>
+          <span class="trade-show-status trade-show-detail-status" id="tradeShowDetailStatus"></span>
 
-          <section class="dashboard-panel company-notes-panel">
-            <div class="dashboard-panel-header">
-              <span class="dashboard-panel-title">Notes</span>
-              <span class="company-notes-status" id="companyNotesStatus" role="status" aria-live="polite"></span>
+          <div class="header-menu-wrap">
+            <button type="button" class="btn btn-icon" id="tradeShowDetailMenuBtn" aria-label="Trade show menu" aria-haspopup="menu" aria-expanded="false">
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="5" r="1.75"/><circle cx="12" cy="12" r="1.75"/><circle cx="12" cy="19" r="1.75"/></svg>
+            </button>
+            <div id="tradeShowDetailMenu" class="header-menu-dropdown" hidden role="menu">
+              <button type="button" class="header-menu-item" id="tradeShowMenuEdit" role="menuitem">
+                <svg class="header-menu-item-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4z"/></svg>
+                <span>Edit show &amp; dates</span>
+              </button>
+              <button type="button" class="header-menu-item header-menu-item-separator header-menu-item--danger" id="tradeShowMenuDelete" role="menuitem">
+                <svg class="header-menu-item-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>
+                <span>Delete trade show</span>
+              </button>
             </div>
-            <div class="dashboard-panel-body">
-              <textarea id="companyNotesInput" class="company-notes-input"
-                        aria-label="Company notes" spellcheck="true"></textarea>
-            </div>
-          </section>
+          </div>
         </div>
 
+        <section class="dashboard-panel trade-show-tasks-panel">
+          <div class="dashboard-panel-header">
+            <span class="dashboard-panel-title">Email tasks</span>
+            <span class="dashboard-panel-count" id="tradeShowTasksCount"></span>
+          </div>
+          <div class="dashboard-panel-body" id="tradeShowTasksBody"></div>
+        </section>
 
-        <aside class="company-detail-side company-detail-side--tasks">
-          <section class="dashboard-panel company-upcoming-panel">
-            <div class="dashboard-panel-header task-panel-header">
-              <div class="task-tabs" id="companyTaskTabs" role="tablist" aria-label="Task status"></div>
-              <span class="dashboard-panel-count" id="companyUpcomingCount"></span>
-            </div>
-            <div class="dashboard-panel-body dash-scroll" id="companyUpcomingList"></div>
-          </section>
-        </aside>
-        <aside class="company-detail-side company-detail-side--calendar" id="companyDetailSide">
-          <section class="dashboard-panel company-mini-cal-panel">
-            <div class="dashboard-panel-header">
-              <button type="button" class="btn btn-page" id="companyMiniCalPrev" title="Previous month" aria-label="Previous month">‹</button>
-              <span class="dashboard-panel-title company-mini-cal-title" id="companyMiniCalTitle">—</span>
-              <button type="button" class="btn btn-page" id="companyMiniCalNext" title="Next month" aria-label="Next month">›</button>
-            </div>
-            <div class="dashboard-panel-body" id="companyMiniCalBody"></div>
-          </section>
-        </aside>
+        <section class="dashboard-panel company-notes-panel">
+          <div class="dashboard-panel-header">
+            <span class="dashboard-panel-title">Notes</span>
+            <span class="company-notes-status" id="tradeShowNotesStatus" role="status" aria-live="polite"></span>
+          </div>
+          <div class="dashboard-panel-body">
+            <textarea id="tradeShowNotesInput" class="company-notes-input"
+                      aria-label="Trade show notes" spellcheck="true"
+                      placeholder="Booth number, hotel, shipping deadlines, who's going…"></textarea>
+          </div>
+        </section>
       </div>
     </div>
-  </div>
-
-  <!-- ── Bookkeeping (practice-wide year grid) ───────────────── -->
-  <div id="bookkeepingView" class="bookkeeping-view" hidden>
-    <div class="bookkeeping-main">
-      <div class="bookkeeping-toolbar">
-        <div class="bk-year-nav">
-          <button type="button" class="btn btn-page" id="bookkeepingPrevYear" title="Previous year" aria-label="Previous year">‹</button>
-          <span class="bk-year-label" id="bookkeepingYear">—</span>
-          <button type="button" class="btn btn-page" id="bookkeepingNextYear" title="Next year" aria-label="Next year">›</button>
-        </div>
-        <span class="counter" id="bookkeepingCount"></span>
-      </div>
-      <div class="bookkeeping-grid-wrap" id="bookkeepingGrid"></div>
-    </div>
-
-    <aside class="bookkeeping-side">
-      <section class="dashboard-panel bk-tasks-panel">
-        <div class="dashboard-panel-header">
-          <span class="dashboard-panel-title" id="bkTasksTitle">Monthly close</span>
-          <span class="dashboard-panel-count" id="bkTasksCount"></span>
-        </div>
-        <div class="dashboard-panel-body dash-scroll" id="bkTasksBody"></div>
-      </section>
-    </aside>
   </div>
 
   <!-- ── Calendar ────────────────────────────────────────────── -->
@@ -209,7 +158,7 @@
       <section class="dashboard-panel dashboard-calendar-panel">
         <div class="dashboard-panel-header dashboard-cal-header">
           <div class="dashboard-cal-legend">
-            <div class="cal-filter-bar" id="calFilterBar" role="group" aria-label="Filter tasks"></div>
+            <div class="cal-filter-bar" id="calFilterBar" role="group" aria-label="Filter calendar"></div>
           </div>
           <span class="dashboard-cal-title" id="calTitle">—</span>
           <div class="dashboard-cal-nav">
@@ -252,125 +201,42 @@
       <button type="button" class="message-dismiss-btn save-indicator-dismiss" id="saveIndicatorDismiss" aria-label="Dismiss message" hidden>✕</button>
     </div>
   </div>
-  <div id="appFooterEnd" class="app-footer-end">
-    <div class="pagination-block">
-      <nav class="pagination" id="paginationNav" hidden aria-label="Table pages">
-        <button type="button" class="btn btn-page" id="pageFirst" title="First page" aria-label="First page">«</button>
-        <button type="button" class="btn btn-page" id="pagePrev" title="Previous page" aria-label="Previous page">‹</button>
-        <span class="page-indicator" id="pageIndicator">1 / 1</span>
-        <button type="button" class="btn btn-page" id="pageNext" title="Next page" aria-label="Next page">›</button>
-        <button type="button" class="btn btn-page" id="pageLast" title="Last page" aria-label="Last page">»</button>
-      </nav>
-      <label class="page-size-control">
-        <span class="page-size-label">Rows</span>
-        <select id="pageSizeSelect" class="filter-select page-size-select" aria-label="Rows per page">
-          <option value="30">30</option>
-          <option value="60" selected>60</option>
-          <option value="120">120</option>
-          <option value="all">All</option>
-        </select>
-      </label>
-    </div>
-  </div>
 </footer>
 
-<!-- ── Column filter popover ─────────────────────────────────── -->
-<div id="columnFilterPopover" class="column-filter-popover" hidden>
-  <div class="column-filter-toolbar" id="columnFilterToolbar">
-    <button type="button" class="column-filter-link" id="columnFilterSelectAll">Select all</button>
-    <span class="column-filter-sep" id="columnFilterSelectSep">|</span>
-    <button type="button" class="column-filter-link" id="columnFilterClearAll">Clear all</button>
-  </div>
-  <div class="column-filter-list" id="columnFilterList"></div>
-  <div class="column-filter-footer">
-    <button type="button" class="btn btn-primary column-filter-ok" id="columnFilterOk">OK</button>
-    <button type="button" class="btn column-filter-cancel" id="columnFilterCancel">Cancel</button>
-  </div>
-</div>
-
-
-<!-- ── Company form (add / edit) ─────────────────────────────── -->
-<div id="companyFormOverlay" class="modal-backdrop">
-  <div class="modal-card company-form-card" role="dialog" aria-modal="true" aria-labelledby="companyFormTitle">
+<!-- ── Trade show form (add / edit) ──────────────────────────── -->
+<div id="tradeShowFormOverlay" class="modal-backdrop">
+  <div class="modal-card company-form-card" role="dialog" aria-modal="true" aria-labelledby="tradeShowFormTitle">
     <div class="modal-header">
-      <h3 id="companyFormTitle">Add company</h3>
-      <button type="button" class="btn-close" id="companyFormCloseBtn" aria-label="Close">✕</button>
+      <h3 id="tradeShowFormTitle">Add trade show</h3>
+      <button type="button" class="btn-close" id="tradeShowFormCloseBtn" aria-label="Close">✕</button>
     </div>
 
-    <form id="companyForm" class="modal-body company-form-body" novalidate>
-      <label class="form-field form-field--full">
-        <span class="form-label">Company name <span class="form-required">*</span></span>
-        <input type="text" class="form-input" id="companyFormName" autocomplete="off" required />
-        <span class="form-error" id="companyFormNameError" hidden>Company name is required.</span>
+    <form id="tradeShowForm" class="modal-body company-form-body" novalidate>
+      <div class="form-field form-field--full">
+        <span class="form-label">Trade show <span class="form-required">*</span></span>
+        <div class="form-toggle-row trade-show-picker" id="tradeShowFormShow" role="group" aria-label="Trade show"></div>
+      </div>
+
+      <label class="form-field">
+        <span class="form-label">Start date (Day 1) <span class="form-required">*</span></span>
+        <input type="date" class="form-input" id="tradeShowFormStart" required />
       </label>
 
-      <div class="form-field">
-        <span class="form-label">Owner</span>
-        <div class="combo-wrap" id="companyFormOwnerCombo">
-          <input type="text" class="form-input combo-input" id="companyFormOwner" role="combobox"
-                 aria-expanded="false" aria-autocomplete="list" aria-controls="companyFormOwnerList"
-                 autocomplete="off" placeholder="Search owners or type a new name" />
-          <div class="combo-list" id="companyFormOwnerList" role="listbox" aria-label="Owners" hidden></div>
-        </div>
-        <span class="form-hint" id="companyFormOwnerHint"></span>
-      </div>
+      <label class="form-field">
+        <span class="form-label">End date <span class="form-required">*</span></span>
+        <input type="date" class="form-input" id="tradeShowFormEnd" required />
+      </label>
 
-      <div class="form-field form-field--location">
-        <span class="form-label">Location</span>
-        <div class="form-location-row">
-          <input type="text" class="form-input" id="companyFormLocation" autocomplete="off" placeholder="City" aria-label="City" />
-          <select class="form-input form-state-select" id="companyFormState" aria-label="State"></select>
-        </div>
-        <span class="form-hint" id="companyFormStateHint"></span>
+      <div class="form-field form-field--full">
+        <span class="form-label">Email tasks</span>
+        <div id="tradeShowFormEmailPreview"></div>
       </div>
-
-      <!-- Payroll and Sales Tax own the settings nested under them; the
-           remaining services are plain on/off. -->
-      <div class="form-field--full service-block" data-service="payroll">
-        <div class="service-block-head">
-          <span class="service-block-name">Payroll</span>
-          <label class="switch">
-            <input type="checkbox" name="service" value="payroll" aria-label="Payroll service" />
-            <span class="switch-track"></span>
-            <span class="switch-thumb"></span>
-          </label>
-        </div>
-        <div class="service-block-body" data-body-for="payroll">
-          <div class="service-block-row">
-            <span class="form-label">Payroll schedule</span>
-            <div class="form-checkbox-row" id="companyFormPayroll"></div>
-          </div>
-          <div class="service-block-row">
-            <span class="form-label">Payroll tax</span>
-            <div class="form-toggle-row" id="companyFormPayrollTax"></div>
-          </div>
-        </div>
-      </div>
-
-      <div class="form-field--full service-block" data-service="salesTax">
-        <div class="service-block-head">
-          <span class="service-block-name">Sales Tax</span>
-          <label class="switch">
-            <input type="checkbox" name="service" value="salesTax" aria-label="Sales Tax service" />
-            <span class="switch-track"></span>
-            <span class="switch-thumb"></span>
-          </label>
-        </div>
-        <div class="service-block-body" data-body-for="salesTax">
-          <div class="service-block-row">
-            <span class="form-label">Sales tax schedule</span>
-            <div class="form-toggle-row" id="companyFormSalesTax"></div>
-          </div>
-        </div>
-      </div>
-
-      <div class="form-field--full service-toggles" id="companyFormServices"></div>
     </form>
 
     <div class="modal-footer">
-      <span class="modal-footer-message" id="companyFormMessage"></span>
-      <button type="button" class="btn" id="companyFormCancelBtn">Cancel</button>
-      <button type="button" class="btn btn-primary" id="companyFormSaveBtn">Save</button>
+      <span class="modal-footer-message" id="tradeShowFormMessage"></span>
+      <button type="button" class="btn" id="tradeShowFormCancelBtn">Cancel</button>
+      <button type="button" class="btn btn-primary" id="tradeShowFormSaveBtn">Save</button>
     </div>
   </div>
 </div>
@@ -386,7 +252,7 @@
 <!-- ── Sign in ────────────────────────────────────────────────── -->
 <div id="loginScreen" class="login-screen" hidden>
   <div class="login-card">
-    <div class="login-title">Practice CRM</div>
+    <div class="login-title">Mioumuse</div>
     <div class="login-subtitle">Sign in to continue</div>
     <form id="loginForm" class="login-form" novalidate>
       <label class="form-field form-field--full">
@@ -405,22 +271,18 @@
 
 <!-- Supabase JS client — auth.js and store.js both depend on the global it exports. -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
-<script src="js/config.js?v=20260828-1904"></script>
+<script src="js/config.js?v=20261008-1556"></script>
 <!-- Needs SUPABASE_URL/KEY from config.js and the CDN client above. -->
-<script src="js/auth.js?v=20260828-1904"></script>
-<script src="js/util.js?v=20260828-1904"></script>
-<script src="js/payroll-schedule.js?v=20260828-1904"></script>
-<script src="js/store.js?v=20260828-1904"></script>
-<script src="js/app-shell.js?v=20260828-1904"></script>
-<script src="js/companies-filters.js?v=20260828-1904"></script>
-<script src="js/companies.js?v=20260828-1904"></script>
-<script src="js/company-detail.js?v=20260828-1904"></script>
-<script src="js/company-form.js?v=20260828-1904"></script>
-<script src="js/payroll.js?v=20260828-1904"></script>
-<!-- After payroll.js — the sales tax section reuses its task checkbox. -->
-<script src="js/sales-tax.js?v=20260828-1904"></script>
-<script src="js/bookkeeping.js?v=20260828-1904"></script>
-<script src="js/calendar.js?v=20260828-1904"></script>
-<script src="js/main.js?v=20260828-1904"></script>
+<script src="js/auth.js?v=20261008-1556"></script>
+<script src="js/util.js?v=20261008-1556"></script>
+<script src="js/dates.js?v=20261008-1556"></script>
+<script src="js/store.js?v=20261008-1556"></script>
+<script src="js/tasks.js?v=20261008-1556"></script>
+<script src="js/app-shell.js?v=20261008-1556"></script>
+<script src="js/trade-shows.js?v=20261008-1556"></script>
+<script src="js/trade-show-detail.js?v=20261008-1556"></script>
+<script src="js/trade-show-form.js?v=20261008-1556"></script>
+<script src="js/calendar.js?v=20261008-1556"></script>
+<script src="js/main.js?v=20261008-1556"></script>
 </body>
 </html>

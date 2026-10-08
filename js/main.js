@@ -3,7 +3,7 @@
  *
  * Everything below the auth gate assumes a signed-in session — Row Level
  * Security would just return empty tables without one, which would read as
- * "no companies yet" rather than the actual problem. So: check for a
+ * "no trade shows yet" rather than the actual problem. So: check for a
  * session first, and only load data once there is one.
  */
 
@@ -15,7 +15,6 @@ async function loadAndShowApp() {
 
   try {
     await loadAppData();
-    applyCompanyFilters();
     switchAppView("home");
   } catch (err) {
     showIndicator(err.message || "Failed to load data.", "error");
@@ -26,16 +25,15 @@ async function loadAndShowApp() {
 
 async function bootApp() {
   setAppLoading(true, "Loading...");
+  document.title = APP_NAME;
 
   initAuthForm();
   initAppNav();
   initHeaderMenu();
-  initCompaniesView();
-  initCompanyDetail();
-  initCompanyForm();
+  initTradeShowsView();
+  initTradeShowDetail();
+  initTradeShowForm();
   initCalendar();
-  initCompanyMiniCal();
-  initBookkeepingView();
 
   if (!isSupabaseConfigured()) {
     setAppLoading(false);
