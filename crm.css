@@ -7066,3 +7066,333 @@ span.dash-event { cursor: pointer; /* clicking selects the day */ }
   .app-main > .table-scroll-y { padding: 0 16px 16px; }
   .app-main > .table-scroll-y > .table-scroll-x { margin-top: 12px; }
 }
+
+/* ============================================================
+   Style photos — thumbnails, gallery, folder status
+   ============================================================ */
+
+.style-thumb {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 44px;
+  height: 44px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  overflow: hidden;
+  vertical-align: middle;
+}
+
+.style-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.style-thumb.is-empty { border-style: dashed; background: transparent; }
+.style-thumb.has-image { cursor: zoom-in; }
+
+/* More than one photo: a small count in the corner. */
+.style-thumb[data-count]::after {
+  content: attr(data-count);
+  position: absolute;
+  right: 2px;
+  bottom: 2px;
+  padding: 0 4px;
+  border-radius: 4px;
+  background: rgba(15, 23, 42, 0.7);
+  color: #fff;
+  font-family: var(--font);
+  font-size: 9.5px;
+  font-weight: 700;
+  line-height: 14px;
+}
+
+.styles-table .col-image { width: 64px; min-width: 64px; }
+.styles-table td[data-col="image"] { padding-top: 4px; padding-bottom: 4px; }
+.styles-table th[data-col="image"] { cursor: default; }
+.styles-table tbody tr.clickable-row { cursor: pointer; }
+
+/* Banner form row and pane cell. */
+.banner-style-photo { width: 34px; height: 34px; }
+.banner-pane-photo { width: 30px; height: 30px; margin-right: 8px; }
+.banner-style-cell { display: flex; align-items: center; }
+
+/* Folder status in the Styles toolbar. */
+.style-image-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.style-image-text {
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font);
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+/* Gallery. */
+.style-gallery-card { width: min(1000px, 100%); }
+
+.style-gallery-head {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.style-gallery-sub {
+  font-family: var(--font);
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.style-gallery-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 12px;
+}
+
+.style-gallery-item {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+}
+
+.style-gallery-item a { display: block; }
+
+.style-gallery-item img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 3 / 4;
+  object-fit: contain;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+}
+
+.style-gallery-item figcaption {
+  font-family: var(--font);
+  font-size: 11.5px;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.style-gallery-item.is-error figcaption { color: var(--danger); }
+
+.style-gallery-empty {
+  padding: 30px 8px;
+  font-family: var(--font);
+  font-size: 13px;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+/* ============================================================
+   Selection — tick boxes on rows, and the bar of actions for them
+   ============================================================ */
+
+.col-select { width: 38px; min-width: 38px; }
+td[data-col="select"],
+th.th-select { text-align: center; cursor: default; padding-left: 4px; padding-right: 4px; }
+
+.row-select {
+  width: 15px;
+  height: 15px;
+  accent-color: var(--accent);
+  cursor: pointer;
+  vertical-align: middle;
+}
+
+.selection-bar {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 4px 3px 12px;
+  border: 1px solid var(--accent);
+  border-radius: 999px;
+  background: var(--accent-light);
+}
+
+.selection-bar[hidden] { display: none; }
+
+.selection-count {
+  font-family: var(--font);
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+}
+
+.selection-bar .btn { padding-top: 4px; padding-bottom: 4px; }
+
+.selection-select {
+  width: auto;
+  max-width: 240px;
+  padding-top: 4px;
+  padding-bottom: 4px;
+  font-size: 12.5px;
+}
+
+/* ============================================================
+   Photoshoots
+   ============================================================ */
+
+.shoot-controls {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.shoot-controls[hidden] { display: none; }
+
+.shoot-subtabs .filter-btn { font-weight: 600; }
+.shoot-show-shot { font-size: 12.5px; }
+
+/* Where a style stands: to shoot / scheduled / shot. */
+.shoot-status {
+  display: inline-block;
+  padding: 2px 9px;
+  border-radius: 10px;
+  font-family: var(--font);
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+  background: #eef0f3;
+  color: #4b5563;
+}
+
+.shoot-status[data-tone="needed"]    { background: #fdf0d5; color: #8a5a00; }
+.shoot-status[data-tone="scheduled"] { background: #e1ecfb; color: #1f56a5; }
+.shoot-status[data-tone="shot"]      { background: #e1f5ee; color: #0f6e56; }
+.shoot-status[title] { cursor: help; }
+
+.shoot-type {
+  display: inline-block;
+  padding: 2px 9px;
+  border-radius: 10px;
+  font-family: var(--font);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.shoot-type[data-type="studio"]    { background: #ece6fb; color: #5a3aa8; }
+.shoot-type[data-type="editorial"] { background: #fbe3f3; color: #9b1f74; }
+
+.styles-table .col-shoot { width: 170px; min-width: 140px; }
+.need-table .col-added { width: 110px; min-width: 100px; }
+
+.shoots-table { min-width: 860px; }
+.shoots-table .col-date   { width: 130px; }
+.shoots-table .col-name   { width: 220px; }
+.shoots-table .col-type   { width: 110px; }
+.shoots-table .col-model  { width: 160px; }
+.shoots-table .col-styles { width: auto; min-width: 220px; }
+.shoots-table .col-status { width: 110px; }
+.shoots-table td[data-col="name"],
+.shoots-table td[data-col="model"],
+.shoots-table td[data-col="styles"] { text-align: left; }
+.shoots-table td[data-col="name"] { font-weight: 600; }
+.shoots-table td.is-overdue { color: var(--danger); font-weight: 600; }
+
+.shoot-styles-preview {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.shoot-mini-thumb { width: 28px; height: 28px; border-radius: 4px; }
+.shoot-mini-thumb[data-count]::after { display: none; }
+
+.shoot-styles-count {
+  margin-left: 4px;
+  font-size: 11.5px;
+  color: var(--text-muted);
+}
+
+/* Pane. */
+.shoot-pane-action {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.shoot-style-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.shoot-style-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+}
+
+.shoot-style-text {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  font-family: var(--font);
+  font-size: 12.5px;
+}
+
+.shoot-style-text span {
+  color: var(--text-muted);
+  font-size: 11.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Form. */
+.shoot-form-card { width: 620px; }
+
+.shoot-form-styles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.shoot-form-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 4px 3px 3px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  font-family: var(--font);
+  font-size: 12px;
+}
+
+.shoot-form-chip-remove {
+  border: none;
+  background: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 11px;
+  padding: 2px 4px;
+}
+
+.shoot-form-chip-remove:hover { color: var(--danger); }

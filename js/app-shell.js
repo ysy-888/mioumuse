@@ -2,12 +2,13 @@
  * View switching and the header menu.
  *
  * Views: "home" (calendar + upcoming tasks), "campaigns" and "tradeShows"
- * (lists), "platforms" (banners) and "styles" (the style database). A record
- * opens in a side pane over whichever view is showing (js/item-pane.js,
- * js/banners.js), not as a view of its own.
+ * (lists), "platforms" (banners), "styles" (the style database) and
+ * "photoshoots" (Need to Shoot + shoots). A record opens in a side pane over
+ * whichever view is showing (js/item-pane.js, js/banners.js,
+ * js/photoshoots.js), not as a view of its own.
  */
 
-const APP_VIEWS = ["home", "campaigns", "tradeShows", "platforms", "styles"];
+const APP_VIEWS = ["home", "campaigns", "tradeShows", "platforms", "styles", "photoshoots"];
 
 let currentAppView = "home";
 
@@ -49,6 +50,7 @@ function switchAppView(view) {
   if (currentAppView !== view) {
     closeItemPane();
     closeBannerPane();
+    closeShootPane();
   }
   currentAppView = view;
 
@@ -61,6 +63,7 @@ function switchAppView(view) {
     bannersTableWrap: view === "platforms",
     stylesToolbar: view === "styles",
     stylesTableWrap: view === "styles",
+    photoshootsToolbar: view === "photoshoots",
     calendarWrap: view === "home",
   };
   Object.entries(panes).forEach(([id, visible]) => {
@@ -74,6 +77,7 @@ function switchAppView(view) {
     navTabTradeShows: view === "tradeShows",
     navTabPlatforms: view === "platforms",
     navTabStyles: view === "styles",
+    navTabPhotoshoots: view === "photoshoots",
   };
   Object.entries(tabs).forEach(([id, active]) => {
     const el = document.getElementById(id);
@@ -87,6 +91,13 @@ function switchAppView(view) {
   RECORD_LISTS[view]?.apply();
   if (view === "platforms") applyBannerFilters();
   if (view === "styles") applyStyleFilters();
+  if (view === "photoshoots") renderPhotoshootsView();
+  // The two photoshoot tables show and hide with their sub-view, but neither
+  // belongs anywhere else.
+  if (view !== "photoshoots") {
+    document.getElementById("needTableWrap").hidden = true;
+    document.getElementById("shootsTableWrap").hidden = true;
+  }
   updateAppBackButton();
 }
 
@@ -135,6 +146,7 @@ function initHeaderMenu() {
       switchAppView("home");
       refreshItemPane();
       refreshBannerViews();
+      refreshPhotoshootViews();
       showIndicator("All data cleared", "success");
     } catch (err) {
       showIndicator(err.message || "Could not clear data.", "error");
@@ -210,6 +222,7 @@ function initAppNav() {
   document.getElementById("navTabTradeShows")?.addEventListener("click", () => switchAppView("tradeShows"));
   document.getElementById("navTabPlatforms")?.addEventListener("click", () => switchAppView("platforms"));
   document.getElementById("navTabStyles")?.addEventListener("click", () => switchAppView("styles"));
+  document.getElementById("navTabPhotoshoots")?.addEventListener("click", () => switchAppView("photoshoots"));
   document.getElementById("navLogoHome")?.addEventListener("click", () => switchAppView("home"));
   document.getElementById("appBackBtn")?.addEventListener("click", () => goBackAppView("home"));
 
@@ -223,6 +236,7 @@ function initAppNav() {
       switchAppView(getCurrentAppView());
       refreshItemPane();
       refreshBannerViews();
+      refreshPhotoshootViews();
       showIndicator("Refreshed", "success");
     } catch (err) {
       showIndicator(err.message || "Could not refresh.", "error");

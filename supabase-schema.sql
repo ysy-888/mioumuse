@@ -176,3 +176,43 @@ alter table styles enable row level security;
 drop policy if exists "styles: own rows only" on styles;
 create policy "styles: own rows only" on styles
   for all using (user_id = auth.uid()) with check (user_id = auth.uid());
+
+-- ── Photoshoots ─────────────────────────────────────────────────────────────
+--
+-- shoot_list: the Need to Shoot flag on a Style # + Color. shot_shoot_id is
+-- set when a shoot with it is marked complete (and cleared if reopened).
+
+create table if not exists shoot_list (
+  user_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
+  style_no text not null,
+  color text not null,
+  added_at timestamptz not null default now(),
+  shot_shoot_id text,
+  shot_at timestamptz,
+  primary key (user_id, style_no, color)
+);
+
+create table if not exists photoshoots (
+  id text primary key,
+  user_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
+  name text not null default '',
+  shoot_date date not null,
+  model text not null default '',
+  shoot_type text not null default 'studio',   -- studio | editorial
+  notes text not null default '',
+  status text not null default 'planned',      -- planned | complete
+  completed_at timestamptz,
+  styles jsonb not null default '[]',          -- [{ styleNo, color }]
+  created_at timestamptz not null default now()
+);
+
+alter table shoot_list enable row level security;
+alter table photoshoots enable row level security;
+
+drop policy if exists "shoot_list: own rows only" on shoot_list;
+create policy "shoot_list: own rows only" on shoot_list
+  for all using (user_id = auth.uid()) with check (user_id = auth.uid());
+
+drop policy if exists "photoshoots: own rows only" on photoshoots;
+create policy "photoshoots: own rows only" on photoshoots
+  for all using (user_id = auth.uid()) with check (user_id = auth.uid());

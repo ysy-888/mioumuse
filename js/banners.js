@@ -302,6 +302,10 @@ function renderBannerPane(banner) {
           if (i === 0) cell.className = "banner-style-head";
           if (i > 0 && col === 3 && text) {
             cell.appendChild(createStyleStatusPill(text));
+          } else if (i > 0 && col === 0) {
+            // The style's photo beside its number, from the linked image folder.
+            cell.className = "banner-style-cell";
+            cell.append(createStyleThumb(cells[0], cells[1], "banner-pane-photo"), document.createTextNode(text || EMPTY_DISPLAY));
           } else {
             cell.textContent = text || EMPTY_DISPLAY;
           }
@@ -354,6 +358,14 @@ function closeBannerPaneMenu() {
 }
 
 function initBannerPane() {
+  // A style's photo opens its full gallery — in the pane and in the banner form.
+  ["bannerPaneStyles", "bannerFormStyles"].forEach(id => {
+    document.getElementById(id)?.addEventListener("click", e => {
+      const thumb = e.target.closest(".style-thumb.has-image");
+      if (thumb) openStyleGallery(thumb.dataset.style, thumb.dataset.color);
+    });
+  });
+
   const btn = document.getElementById("bannerPaneMenuBtn");
   const menu = document.getElementById("bannerPaneMenu");
 

@@ -61,6 +61,9 @@ reference in index.html so the URLs change on every deploy.
 | `supabase/functions/mailchimp/` | Edge Function the app calls for Mailchimp; holds the API key (secret `MAILCHIMP_API_KEY`) |
 | `js/styles.js` | Styles tab — the style database table, status / season / category filters, search |
 | `js/style-import.js` | Import Excel — reads the N41 ATS export in the browser, previews new / updated / unchanged, saves |
+| `js/style-images.js` | Style photos from a linked network folder — matched by file name, thumbnails, gallery |
+| `js/photoshoots.js` | Photoshoots tab — the Need to Shoot list, the shoots list, the shoot side pane, shoot status badges |
+| `js/photoshoot-form.js` | Create / edit photoshoot modal |
 | `js/calendar.js` | Home calendar of every campaign, show, and task, with the upcoming rail |
 | `js/main.js` | Boot |
 
@@ -187,3 +190,50 @@ colours, and its description and status under the row and in the banner pane.
 
 Styles live in the `styles` table (see `supabase-schema.sql`), keyed by
 user + Style # + Color, and are loaded 1,000 rows at a time.
+
+### Style photos
+
+Photos come straight from a folder on the network — nothing is uploaded.
+In the Styles tab, **Link image folder** picks the folder (Chrome or Edge;
+browsers only let a website read a folder the user chooses). Subfolders are
+searched too. File names say what each photo is:
+
+```
+STYLE COLOR NUMBER.ext        D1898 WHITE.BROWN 4.jpg
+```
+
+Separated by spaces; a `/` in the colour is written `.` (so `WHITE.BROWN`
+is `WHITE/BROWN`); colours can contain spaces; the number is optional and
+orders a style's photos. jpg, jpeg, png, webp and gif are read; anything
+else is ignored.
+
+Photos show as thumbnails in the Styles table (click a row for all of
+them), beside each Style # in the banner form, and in the banner pane. The
+folder and its list of file names are remembered in the browser; after a
+restart the browser may ask for permission again (**Reconnect image
+folder**, one click — or choose "Allow on every visit"). **Rescan** picks up
+new or renamed files straight away; a rescan also runs in the background on
+each visit. Only computers that can reach the server see the photos.
+
+## Photoshoots
+
+**Need to Shoot** is a flag on a Style # + Color. Tick styles in the Styles
+tab (the header box ticks everything in the current view) and use **Add to
+Need to Shoot**. The Photoshoots tab lists them with where each stands:
+
+| Status | Meaning |
+|---|---|
+| To shoot | On the list, not in any planned shoot |
+| Scheduled · date | In a planned shoot — the earliest one's (tentative) date |
+| Shot · date | In a shoot that was marked complete — off the list (shown with **Show shot**) |
+
+From the list, ticked styles can go into a **new photoshoot** (date, studio
+or editorial, model, optional name, notes), be **added to an existing**
+planned shoot, or be **removed from the list**. A shoot opens in a side
+pane, where styles that weren't shot can be taken out before **Mark shoot
+complete**, which records every style left in it as shot. **Reopen** undoes
+that and puts them back on the list; deleting a completed shoot does the
+same. Adding a shot style to the list again flags it to be shot again.
+
+Data: `shoot_list` (the flag, plus which shoot it was shot in) and
+`photoshoots` (see `supabase-schema.sql`).

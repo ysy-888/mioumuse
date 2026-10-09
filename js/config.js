@@ -96,6 +96,20 @@ const BANNER_BUCKET = "banners";
 /** Larger than any web banner needs to be; keeps a stray photo from going up. */
 const MAX_BANNER_FILE_BYTES = 10 * 1024 * 1024;
 
+// ── Photoshoots ──────────────────────────────────────────────────────────────
+
+/** What kind of shoot. The first is what a new shoot starts as. */
+const PHOTOSHOOT_TYPES = [
+  { key: "studio", label: "Studio" },
+  { key: "editorial", label: "Editorial" },
+];
+
+const PHOTOSHOOT_TYPE_KEYS = PHOTOSHOOT_TYPES.map(t => t.key);
+
+function getPhotoshootTypeLabel(key) {
+  return PHOTOSHOOT_TYPES.find(t => t.key === key)?.label ?? key;
+}
+
 // ── Campaigns ────────────────────────────────────────────────────────────────
 
 /**

@@ -5,6 +5,9 @@
  * and by season and category from the two selects, with search across all
  * of it. Thousands of rows, so the table draws a page at a time and grows
  * with "Show more".
+ *
+ * Rows can be ticked (or all of the current view at once) and added to the
+ * Need to Shoot list; the Shoot column shows where each style stands.
  */
 
 const STYLE_PAGE = 300;
@@ -16,6 +19,12 @@ let styleCategoryFilter = "";
 let styleSortCol = null;
 let styleSortDir = 1;
 let styleShown = STYLE_PAGE;
+
+/**
+ * Ticked rows, by styleKey. Kept across filtering and searching, so a
+ * selection can be built up from several searches before acting on it.
+ */
+let selectedStyleKeys = new Set();
 
 const STYLE_COLUMNS = {
   styleNo: { value: s => s.styleNo },
@@ -125,10 +134,17 @@ function renderStylesTable() {
 
   const rows = filteredStyles.slice(0, styleShown).map(style => {
     const tr = document.createElement("tr");
+    // Click a row for all of its photos.
+    tr.className = "clickable-row";
+    tr.dataset.styleNo = style.styleNo;
+    tr.dataset.color = style.color;
     cols.forEach(col => {
       const td = document.createElement("td");
       td.dataset.col = col;
-      if (col === "status") td.appendChild(createStyleStatusPill(style.status));
+      if (col === "select") td.appendChild(createStyleCheckbox(style));
+      else if (col === "image") td.appendChild(createStyleThumb(style.styleNo, style.color));
+      else if (col === "shoot") td.appendChild(createShootStatusBadge(style.styleNo, style.color));
+      else if (col === "status") td.appendChild(createStyleStatusPill(style.status));
       else mountSearchHighlightedText(td, STYLE_COLUMNS[col].value(style));
       if (col === "description" && style.description) td.title = style.description;
       tr.appendChild(td);
@@ -155,6 +171,66 @@ function renderStylesTable() {
     rows.push(tr);
   }
   tbody.replaceChildren(...rows);
+  syncStyleSelectionUi();
+}
+
+// ── Selection ────────────────────────────────────────────────────────────────
+
+function createStyleCheckbox(style) {
+  const cb = document.createElement("input");
+  cb.type = "checkbox";
+  cb.className = "row-select";
+  cb.checked = selectedStyleKeys.has(styleKey(style.styleNo, style.color));
+  cb.setAttribute("aria-label", `Select ${style.styleNo} ${style.color}`);
+  cb.addEventListener("change", () => {
+    const key = styleKey(style.styleNo, style.color);
+    if (cb.checked) selectedStyleKeys.add(key); else selectedStyleKeys.delete(key);
+    syncStyleSelectionUi();
+  });
+  return cb;
+}
+
+function getSelectedStyles() {
+  return getAllStyles().filter(s => selectedStyleKeys.has(styleKey(s.styleNo, s.color)));
+}
+
+/** The header box (all / some / none of the filtered rows) and the action bar. */
+function syncStyleSelectionUi() {
+  const all = document.getElementById("styleSelectAll");
+  if (all) {
+    const picked = filteredStyles.filter(s => selectedStyleKeys.has(styleKey(s.styleNo, s.color))).length;
+    all.checked = picked > 0 && picked === filteredStyles.length;
+    all.indeterminate = picked > 0 && picked < filteredStyles.length;
+    all.title = `Select all ${filteredStyles.length.toLocaleString()} in this view`;
+  }
+  const bar = document.getElementById("styleSelectionBar");
+  if (bar) {
+    const n = selectedStyleKeys.size;
+    bar.hidden = n === 0;
+    const count = document.getElementById("styleSelectionCount");
+    if (count) count.textContent = `${n.toLocaleString()} selected`;
+  }
+}
+
+function clearStyleSelection() {
+  selectedStyleKeys = new Set();
+  renderStylesTable();
+}
+
+async function addSelectedToShootList() {
+  const styles = getSelectedStyles();
+  if (!styles.length) return;
+  try {
+    const added = await addToShootList(styles);
+    const already = styles.length - added;
+    clearStyleSelection();
+    refreshPhotoshootViews();
+    showIndicator(added
+      ? `${added.toLocaleString()} added to Need to Shoot${already ? ` (${already.toLocaleString()} already on it)` : ""}`
+      : "Already on Need to Shoot", "success");
+  } catch (err) {
+    showIndicator(err.message || "Couldn't add to Need to Shoot.", "error");
+  }
 }
 
 /** Cycle: unsorted → ascending → descending → unsorted. */
@@ -181,6 +257,26 @@ function initStylesView() {
     th.addEventListener("click", () => sortStylesBy(th.dataset.col));
   });
   document.getElementById("styleSearchInput")?.addEventListener("input", () => applyStyleFilters());
+  document.getElementById("stylesTableBody")?.addEventListener("click", e => {
+    // The tick box (and its cell) selects; anywhere else opens the photos.
+    if (e.target.closest('td[data-col="select"]')) {
+      if (e.target.tagName !== "INPUT") e.target.closest("td").querySelector("input")?.click();
+      return;
+    }
+    const tr = e.target.closest("tr[data-style-no]");
+    if (tr) openStyleGallery(tr.dataset.styleNo, tr.dataset.color);
+  });
+
+  // Header box: every row in the current view, not just the ones drawn.
+  document.getElementById("styleSelectAll")?.addEventListener("change", e => {
+    filteredStyles.forEach(s => {
+      const key = styleKey(s.styleNo, s.color);
+      if (e.target.checked) selectedStyleKeys.add(key); else selectedStyleKeys.delete(key);
+    });
+    renderStylesTable();
+  });
+  document.getElementById("styleAddToShootBtn")?.addEventListener("click", addSelectedToShootList);
+  document.getElementById("styleClearSelectionBtn")?.addEventListener("click", clearStyleSelection);
   document.getElementById("styleSeasonFilter")?.addEventListener("change", e => {
     styleSeasonFilter = e.target.value;
     applyStyleFilters();

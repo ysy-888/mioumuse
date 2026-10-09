@@ -143,6 +143,12 @@ function updateBannerStyleMatch(row) {
   const colors = styleNo ? getStyleColors(styleNo) : [];
   colorList?.replaceChildren(...colors.map(s => new Option(s.color)));
 
+  // The photo for this Style # + Color, from the linked image folder.
+  const thumb = row.querySelector(".style-thumb");
+  if (thumb && typeof createStyleThumb === "function") {
+    thumb.replaceWith(createStyleThumb(styleNo, color, "banner-style-photo"));
+  }
+
   note.className = "banner-style-match";
   if (!styleNo || getAllStyles().length === 0) {
     note.textContent = "";
@@ -214,7 +220,10 @@ function createBannerStyleRow(style = {}) {
     syncBannerStyleRows();
   });
 
-  row.append(styleNo, color, remove, colorList, note);
+  const photo = document.createElement("span");
+  photo.className = "style-thumb banner-style-photo is-empty";
+
+  row.append(photo, styleNo, color, remove, colorList, note);
   updateBannerStyleMatch(row);
   return row;
 }

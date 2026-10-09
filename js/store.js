@@ -28,6 +28,13 @@
  *               status,              // N41 status, e.g. ACTIVE, SOLDOUT
  *               season, category, description,
  *               updatedAt }
+ *   ShootListEntry { styleNo, color, addedAt,
+ *               shotShootId, shotAt }    // set once a shoot with it is done
+ *   Photoshoot { id, name, date, model,
+ *               type,                // "studio" | "editorial"
+ *               notes, status,       // "planned" | "complete"
+ *               completedAt,
+ *               styles: [{ styleNo, color }] }
  *
  * A trade show's tasks are derived from its dates (see js/tasks.js); a
  * campaign's are chosen one by one and stored on it. Either way, only which
@@ -197,18 +204,27 @@ async function loadAppData() {
   }]));
 
   // The Styles database is an add-on too, and can run to thousands of rows.
-  setAllStyles(await loadAllStyleRows(client));
+  setAllStyles(await loadAllRows(client, "styles"));
+
+  // Photoshoots and the Need to Shoot list — add-ons as well.
+  const [shootRows, shootsRes] = await Promise.all([
+    loadAllRows(client, "shoot_list"),
+    client.from("photoshoots").select("*"),
+  ]);
+  setShootList(shootRows);
+  allPhotoshoots = (shootsRes.error ? [] : shootsRes.data).map(row => normalizePhotoshoot(photoshootRowToInput(row)));
 }
 
 /**
- * Every style, a page at a time — Supabase hands back at most 1,000 rows per
- * request. A missing table (SQL not run yet) reads as no styles.
+ * Every row of a style-keyed table, a page at a time — Supabase hands back at
+ * most 1,000 rows per request. A missing table (SQL not run yet) reads as
+ * empty, so the rest of the app still loads.
  */
-async function loadAllStyleRows(client) {
+async function loadAllRows(client, table) {
   const PAGE = 1000;
   const rows = [];
   for (let from = 0; ; from += PAGE) {
-    const res = await client.from("styles").select("*")
+    const res = await client.from(table).select("*")
       .order("style_no").order("color")
       .range(from, from + PAGE - 1);
     if (res.error) return rows;
@@ -522,6 +538,261 @@ async function saveStyles(styles, onProgress) {
   styles.forEach(s => byKey.set(styleKey(s.styleNo, s.color), { ...s, updatedAt: now }));
   allStyles = [...byKey.values()].sort((a, b) => a.styleNo.localeCompare(b.styleNo) || a.color.localeCompare(b.color));
   indexStyles();
+}
+
+// ── Need to Shoot list ───────────────────────────────────────────────────────
+//
+// A flag on a Style # + Color. It stays on the list — scheduled or not —
+// until a photoshoot with it is marked complete; then it's recorded as shot
+// (shotShootId / shotAt) and drops off. Reopening that shoot clears the
+// record, so the style needs shooting again.
+
+/** styleKey → ShootListEntry. */
+let shootList = new Map();
+let allPhotoshoots = [];
+
+function setShootList(rows) {
+  shootList = new Map(rows.map(row => {
+    const entry = {
+      styleNo: String(row.style_no ?? ""),
+      color: String(row.color ?? ""),
+      addedAt: String(row.added_at ?? ""),
+      shotShootId: row.shot_shoot_id ? String(row.shot_shoot_id) : "",
+      shotAt: String(row.shot_at ?? ""),
+    };
+    return [styleKey(entry.styleNo, entry.color), entry];
+  }));
+}
+
+function getShootListEntries() {
+  return [...shootList.values()];
+}
+
+function getShootListEntry(styleNo, color) {
+  return shootList.get(styleKey(styleNo, color)) ?? null;
+}
+
+/** On the list and not yet shot. */
+function needsShoot(styleNo, color) {
+  const entry = getShootListEntry(styleNo, color);
+  return Boolean(entry && !entry.shotShootId);
+}
+
+function shootListRow(entry) {
+  return {
+    style_no: entry.styleNo,
+    color: entry.color,
+    added_at: entry.addedAt,
+    shot_shoot_id: entry.shotShootId || null,
+    shot_at: entry.shotAt || null,
+  };
+}
+
+async function saveShootListEntries(entries) {
+  const BATCH = 500;
+  const client = requireClient();
+  for (let i = 0; i < entries.length; i += BATCH) {
+    throwIfError(await client.from("shoot_list")
+      .upsert(entries.slice(i, i + BATCH).map(shootListRow), { onConflict: "user_id,style_no,color" }));
+  }
+  entries.forEach(e => shootList.set(styleKey(e.styleNo, e.color), e));
+}
+
+/**
+ * Flag styles as needing a shoot. Ones already waiting are left as they
+ * are; ones that were shot before go back on the list.
+ * Returns how many were newly flagged.
+ */
+async function addToShootList(styles) {
+  const now = new Date().toISOString();
+  const changed = [];
+  const seen = new Set();
+  styles.forEach(({ styleNo, color }) => {
+    const key = styleKey(styleNo, color);
+    if (seen.has(key)) return;
+    seen.add(key);
+    const current = shootList.get(key);
+    if (current && !current.shotShootId) return;
+    changed.push({ styleNo, color, addedAt: now, shotShootId: "", shotAt: "" });
+  });
+  await saveShootListEntries(changed);
+  return changed.length;
+}
+
+/** Take styles off the list (they stay in any shoot they're in). */
+async function removeFromShootList(styles) {
+  const keys = [...new Set(styles.map(s => styleKey(s.styleNo, s.color)))].filter(k => shootList.has(k));
+  const client = requireClient();
+  // Two-column key, so one delete per style — ten at a time.
+  for (let i = 0; i < keys.length; i += 10) {
+    const chunk = keys.slice(i, i + 10);
+    const results = await Promise.all(chunk.map(key => {
+      const { styleNo, color } = shootList.get(key);
+      return client.from("shoot_list").delete().eq("style_no", styleNo).eq("color", color);
+    }));
+    results.forEach(throwIfError);
+    chunk.forEach(key => shootList.delete(key));
+  }
+  return keys.length;
+}
+
+// ── Photoshoots ──────────────────────────────────────────────────────────────
+
+function normalizePhotoshoot(raw) {
+  const seen = new Set();
+  return {
+    id: String(raw?.id ?? ""),
+    name: String(raw?.name ?? "").trim(),
+    date: normalizeYmd(raw?.date),
+    model: String(raw?.model ?? "").trim(),
+    type: PHOTOSHOOT_TYPE_KEYS.includes(raw?.type) ? raw.type : PHOTOSHOOT_TYPE_KEYS[0],
+    notes: String(raw?.notes ?? ""),
+    status: raw?.status === "complete" ? "complete" : "planned",
+    completedAt: String(raw?.completedAt ?? ""),
+    styles: (Array.isArray(raw?.styles) ? raw.styles : [])
+      .map(s => ({ styleNo: String(s?.styleNo ?? "").trim(), color: String(s?.color ?? "").trim() }))
+      .filter(s => {
+        const key = styleKey(s.styleNo, s.color);
+        if (!s.styleNo || seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      }),
+  };
+}
+
+function photoshootRowToInput(row) {
+  return {
+    id: row.id,
+    name: row.name,
+    date: row.shoot_date,
+    model: row.model,
+    type: row.shoot_type,
+    notes: row.notes,
+    status: row.status,
+    completedAt: row.completed_at,
+    styles: row.styles,
+  };
+}
+
+function photoshootToRow(shoot) {
+  return {
+    id: shoot.id,
+    name: shoot.name,
+    shoot_date: shoot.date,
+    model: shoot.model,
+    shoot_type: shoot.type,
+    notes: shoot.notes,
+    status: shoot.status,
+    completed_at: shoot.completedAt || null,
+    styles: shoot.styles,
+  };
+}
+
+async function persistPhotoshoot(shoot) {
+  throwIfError(await requireClient().from("photoshoots").upsert(photoshootToRow(shoot)));
+}
+
+function getAllPhotoshoots() {
+  return allPhotoshoots;
+}
+
+function getPhotoshootById(id) {
+  return allPhotoshoots.find(s => s.id === String(id)) ?? null;
+}
+
+/** "Fall Lookbook", or "Studio shoot" when it has no name. */
+function getPhotoshootTitle(shoot) {
+  return shoot?.name || `${getPhotoshootTypeLabel(shoot?.type)} shoot`;
+}
+
+/** Planned shoots a style is in, soonest first. */
+function getPlannedShootsFor(styleNo, color) {
+  const key = styleKey(styleNo, color);
+  return allPhotoshoots
+    .filter(s => s.status === "planned" && s.styles.some(x => styleKey(x.styleNo, x.color) === key))
+    .sort((a, b) => a.date.localeCompare(b.date));
+}
+
+function validatePhotoshoot(shoot) {
+  if (!shoot.date) throw new Error("Pick a shoot date.");
+}
+
+/** Everything in a shoot is on the Need to Shoot list too. */
+async function ensureOnShootList(styles) {
+  const missing = styles.filter(s => !shootList.has(styleKey(s.styleNo, s.color)));
+  if (missing.length) await addToShootList(missing);
+}
+
+async function createPhotoshoot(fields) {
+  const shoot = normalizePhotoshoot({ ...fields, id: newRecordId("ps"), status: "planned" });
+  validatePhotoshoot(shoot);
+  await persistPhotoshoot(shoot);
+  allPhotoshoots.push(shoot);
+  await ensureOnShootList(shoot.styles);
+  return shoot;
+}
+
+async function updatePhotoshoot(id, patch) {
+  const shoot = getPhotoshootById(id);
+  if (!shoot) throw new Error(`Photoshoot ${id} not found.`);
+  const merged = normalizePhotoshoot({ ...shoot, ...patch });
+  validatePhotoshoot(merged);
+  await persistPhotoshoot(merged);
+  Object.assign(shoot, merged);
+  await ensureOnShootList(shoot.styles);
+  return shoot;
+}
+
+/** Add styles to a shoot that already exists. Returns how many were new to it. */
+async function addStylesToPhotoshoot(id, styles) {
+  const shoot = getPhotoshootById(id);
+  if (!shoot) throw new Error(`Photoshoot ${id} not found.`);
+  const before = shoot.styles.length;
+  await updatePhotoshoot(id, { styles: [...shoot.styles, ...styles] });
+  return shoot.styles.length - before;
+}
+
+/**
+ * Done: every style in it is recorded as shot, and leaves Need to Shoot.
+ */
+async function completePhotoshoot(id) {
+  const shoot = getPhotoshootById(id);
+  if (!shoot) throw new Error(`Photoshoot ${id} not found.`);
+  const now = new Date().toISOString();
+  await ensureOnShootList(shoot.styles);
+  await saveShootListEntries(shoot.styles.map(s => ({
+    ...shootList.get(styleKey(s.styleNo, s.color)),
+    shotShootId: shoot.id,
+    shotAt: now,
+  })));
+  await updatePhotoshoot(id, { status: "complete", completedAt: now });
+  return shoot;
+}
+
+/** Undo a completion: its styles need shooting again. */
+async function reopenPhotoshoot(id) {
+  const shoot = getPhotoshootById(id);
+  if (!shoot) throw new Error(`Photoshoot ${id} not found.`);
+  const unshot = getShootListEntries()
+    .filter(e => e.shotShootId === shoot.id)
+    .map(e => ({ ...e, shotShootId: "", shotAt: "" }));
+  await saveShootListEntries(unshot);
+  await updatePhotoshoot(id, { status: "planned", completedAt: "" });
+  return shoot;
+}
+
+/**
+ * Delete a shoot. A completed one's styles are no longer recorded as shot by
+ * it, so they go back on the list.
+ */
+async function deletePhotoshoot(id) {
+  const index = allPhotoshoots.findIndex(s => s.id === String(id));
+  if (index === -1) throw new Error(`Photoshoot ${id} not found.`);
+  const shoot = allPhotoshoots[index];
+  if (shoot.status === "complete") await reopenPhotoshoot(shoot.id);
+  throwIfError(await requireClient().from("photoshoots").delete().eq("id", shoot.id));
+  allPhotoshoots.splice(index, 1);
+  return shoot;
 }
 
 // ── Banners ──────────────────────────────────────────────────────────────────
