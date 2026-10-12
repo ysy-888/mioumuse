@@ -341,11 +341,18 @@ function getTradeShowById(id) {
   return allTradeShows.find(t => t.id === String(id)) ?? null;
 }
 
-/** "Magic Las Vegas 2027" — the show plus the year it opens. */
+/** "[Oct 2026]" — the month and year the show opens, or "" without a date. */
+function getTradeShowMonthTag(tradeShow) {
+  const start = parseYmd(tradeShow?.startDate);
+  if (!start) return "";
+  return `[${start.toLocaleString("en-US", { month: "short" })} ${start.getFullYear()}]`;
+}
+
+/** "Dallas Market [Oct 2026]" — the show plus the month it opens. */
 function getTradeShowTitle(tradeShow) {
   const label = getTradeShowLabel(tradeShow?.show);
-  const year = tradeShow?.startDate?.slice(0, 4);
-  return year ? `${label} ${year}` : label;
+  const tag = getTradeShowMonthTag(tradeShow);
+  return tag ? `${label} ${tag}` : label;
 }
 
 function validateTradeShowFields(fields) {

@@ -100,6 +100,23 @@ function formatLongDate(value) {
 }
 
 /**
+ * A short range for email copy, no year: "Oct 14–17", "Oct 30 – Nov 2",
+ * "Oct 14". Month names are always English, since the copy is.
+ */
+function formatShortDateRange(startYmd, endYmd) {
+  const start = parseYmd(startYmd);
+  const end = parseYmd(endYmd);
+  if (!start) return "";
+  const month = d => d.toLocaleString("en-US", { month: "short" });
+  const left = `${month(start)} ${start.getDate()}`;
+  if (!end || startYmd === endYmd) return left;
+  if (start.getFullYear() === end.getFullYear() && start.getMonth() === end.getMonth()) {
+    return `${left}–${end.getDate()}`;
+  }
+  return `${left} – ${month(end)} ${end.getDate()}`;
+}
+
+/**
  * A date range, collapsing whatever the two ends share:
  * "Oct 13 – 16, 2026", "Oct 30 – Nov 2, 2026", "Dec 30, 2026 – Jan 2, 2027".
  */

@@ -48,6 +48,8 @@ function buildTradeShowEmailTasks(tradeShow) {
     id: buildEmailTaskId(tradeShow.id, email.key),
     kind: TASK_KIND_EMAIL,
     dueDate: ymd(addDays(dayOne, -email.daysBefore)),
+    emailKey: email.key,
+    daysBefore: email.daysBefore,
     label: email.label,
   }));
 }

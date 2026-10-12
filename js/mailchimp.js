@@ -542,6 +542,33 @@ function validateMcSendTo() {
   return "";
 }
 
+/**
+ * Suggested name for a new draft. Trade show emails follow the house format,
+ * "[Oct 2026] Dallas Market D-21"; campaign tasks keep "Title — Task".
+ */
+function getDefaultMcCampaignName(item, task) {
+  if (item.type === ITEM_TYPE_TRADE_SHOW && task.daysBefore != null) {
+    const show = getTradeShowLabel(item.record.show);
+    return `${getTradeShowMonthTag(item.record)} ${show} D-${task.daysBefore}`.trim();
+  }
+  return `${item.title} — ${task.label}`;
+}
+
+/**
+ * Suggested subject line and preview text for a new draft, from the trade
+ * show email's template. Empty for campaign tasks, which have no template.
+ */
+function getDefaultMcCopy(item, task) {
+  const template = item.type === ITEM_TYPE_TRADE_SHOW
+    ? TRADE_SHOW_EMAIL_TASKS.find(e => e.key === task.emailKey)
+    : null;
+  if (!template) return { subject: "", previewText: "" };
+  const fill = text => text
+    .replaceAll("{show}", getTradeShowLabel(item.record.show))
+    .replaceAll("{dates}", formatShortDateRange(item.startDate, item.endDate));
+  return { subject: fill(template.subject), previewText: fill(template.previewText) };
+}
+
 function syncMcScheduleFields() {
   const on = document.getElementById("mcFormSchedule")?.checked === true;
   const row = document.getElementById("mcFormSendRow");
@@ -564,9 +591,10 @@ async function openMcForm({ mode, task, item, campaign = null }) {
   const name = document.getElementById("mcFormName");
   const subject = document.getElementById("mcFormSubject");
   const preview = document.getElementById("mcFormPreview");
-  name.value = campaign?.title ?? `${item.title} — ${task.label}`;
-  subject.value = campaign?.subject ?? "";
-  preview.value = campaign?.previewText ?? "";
+  name.value = campaign?.title ?? getDefaultMcCampaignName(item, task);
+  const copy = getDefaultMcCopy(item, task);
+  subject.value = campaign?.subject ?? copy.subject;
+  preview.value = campaign?.previewText ?? copy.previewText;
 
   // Audience: picked when creating, changeable until it's sent. Moving an
   // existing campaign clears any segment or tag targeting set in Mailchimp.

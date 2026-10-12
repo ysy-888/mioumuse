@@ -5,7 +5,7 @@
  * through it and knows nothing about where the data actually lives.
  */
 
-const APP_NAME = "Mioumuse";
+const APP_NAME = "MIOU MUSE";
 const STORAGE_PREFIX = "mioumuse";
 
 /** localStorage key namespaced to this app — used only for small UI prefs now. */
@@ -49,11 +49,26 @@ function getTradeShowLabel(key) {
  * The email tasks every show creates, counted back from Day 1. `key` is part
  * of the task id, so these stay stable even if a show's dates move — a
  * checked-off email stays checked off.
+ *
+ * `subject` and `previewText` prefill a new Mailchimp draft. {show} becomes
+ * the show's name and {dates} its dates, e.g. "Oct 14–17".
  */
 const TRADE_SHOW_EMAIL_TASKS = [
-  { key: "email-3w", label: "Email · 3 weeks out", daysBefore: 21 },
-  { key: "email-1w", label: "Email · 1 week out", daysBefore: 7 },
-  { key: "email-1d", label: "Email · Day before", daysBefore: 1 },
+  {
+    key: "email-3w", label: "Email · 3 weeks out", daysBefore: 21,
+    subject: "Save the date: MIOU MUSE at {show}, {dates}",
+    previewText: "Our newest collection is coming to {show}, {dates}. Plan your visit and come see it first.",
+  },
+  {
+    key: "email-1w", label: "Email · 1 week out", daysBefore: 7,
+    subject: "One week until {show} · {dates}",
+    previewText: "Shop the new MIOU MUSE collection in person at {show}, {dates}. We'd love to see you there.",
+  },
+  {
+    key: "email-1d", label: "Email · Day before", daysBefore: 1,
+    subject: "See you tomorrow at {show} · {dates}",
+    previewText: "{show} opens tomorrow, {dates}. Stop by and see what's new from MIOU MUSE.",
+  },
 ];
 
 // ── Platforms ────────────────────────────────────────────────────────────────
