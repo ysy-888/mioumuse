@@ -4762,13 +4762,10 @@ span.dash-event { cursor: pointer; /* clicking selects the day */ }
   font-size: 12.5px;
   font-weight: 600;
   color: var(--text);
-  cursor: pointer;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-
-.payroll-run-company:hover { text-decoration: underline; }
 
 /* A left edge in the family colour, so a card's service reads at a glance. */
 .payroll-run { border-left: 3px solid #cfe2f4; }
@@ -4906,7 +4903,27 @@ span.dash-event { cursor: pointer; /* clicking selects the day */ }
    Task group selection — card and its calendar events light up together
    ============================================================ */
 
-.payroll-run.is-selectable { cursor: pointer; }
+/* The whole card is one click target — it lifts a little on hover. */
+.payroll-run.is-selectable {
+  cursor: pointer;
+  transition: background-color 120ms ease, border-color 120ms ease, box-shadow 120ms ease;
+}
+
+/* The left edge keeps its family colour; only the other three sides shift. */
+.payroll-run.is-selectable:hover:not(.is-selected) {
+  background: #f6f9fd;
+  border-top-color: #c9d9ea;
+  border-right-color: #c9d9ea;
+  border-bottom-color: #c9d9ea;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.08);
+}
+
+.payroll-run.is-selectable.is-selected:hover { box-shadow: 0 2px 8px rgba(15, 23, 42, 0.08); }
+
+.payroll-run.is-selectable:focus-visible {
+  outline: 2px solid #1c72c4;
+  outline-offset: 2px;
+}
 
 /* Selection reads as a change of colour, not a ring drawn around things —
    the card fills with a tint and its left edge deepens. */

@@ -324,6 +324,8 @@ function closeItemPane() {
   const pane = document.getElementById("itemPane");
   if (pane) pane.hidden = true;
   syncPaneRowHighlight();
+  // On Home, the card and calendar days lit up for this item go with it.
+  if (typeof clearCalGroupSelection === "function") clearCalGroupSelection();
 }
 
 /** Re-render the open pane after a change; closes it if its record is gone. */

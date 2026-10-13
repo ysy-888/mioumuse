@@ -67,14 +67,30 @@ function isCalGroupSelected(taskIds) {
   return taskIds.length > 0 && taskIds.every(id => calSelectedTaskIds.has(id));
 }
 
-function selectCalGroup(taskIds) {
-  // Clicking the selected card again clears it.
-  if (isCalGroupSelected(taskIds) && calSelectedTaskIds.size === taskIds.length) {
-    calSelectedTaskIds = new Set();
-  } else {
-    calSelectedTaskIds = new Set(taskIds);
-  }
+function isCalGroupSelectedExactly(taskIds) {
+  return isCalGroupSelected(taskIds) && calSelectedTaskIds.size === taskIds.length;
+}
+
+function clearCalGroupSelection() {
+  if (calSelectedTaskIds.size === 0) return;
+  calSelectedTaskIds = new Set();
   applyCalGroupSelection();
+}
+
+/**
+ * One click does both: highlight the card and its days, and open the item
+ * in the side pane. Clicking the open, highlighted card again closes both.
+ */
+function selectCalGroup(taskIds, item) {
+  const ref = paneItemRef;
+  const isOpen = ref && ref.type === item.type && ref.id === item.id;
+  if (isOpen && (taskIds.length === 0 || isCalGroupSelectedExactly(taskIds))) {
+    closeItemPane(); // clears the highlight too
+    return;
+  }
+  calSelectedTaskIds = new Set(taskIds);
+  applyCalGroupSelection();
+  openItemPane(item.type, item.id);
 }
 
 /** Paint the selection across both the grid chips and the cards. */
@@ -96,14 +112,22 @@ function applyCalGroupSelection() {
  * live on the element as a real array — they contain "|" as a separator, so
  * a joined data attribute would shred them.
  */
-function attachCalGroupSelection(card, taskIds) {
+function attachCalGroupSelection(card, taskIds, item) {
   card.groupTaskIds = taskIds;
   card.classList.add("is-selectable");
   card.classList.toggle("is-selected", isCalGroupSelected(taskIds));
+  card.tabIndex = 0;
+  card.setAttribute("role", "button");
+  card.setAttribute("aria-label", `Open ${item.title}`);
   card.addEventListener("click", e => {
-    // Checkboxes and the show name keep their own behaviour.
-    if (e.target.closest("input, button, label")) return;
-    selectCalGroup(taskIds);
+    // Task rows still tick their checkbox rather than opening the card.
+    if (e.target.closest("input, button, label, a")) return;
+    selectCalGroup(taskIds, item);
+  });
+  card.addEventListener("keydown", e => {
+    if (e.target !== card || (e.key !== "Enter" && e.key !== " ")) return;
+    e.preventDefault();
+    selectCalGroup(taskIds, item);
   });
 }
 
@@ -633,7 +657,7 @@ function renderCalDayPane() {
 
   body.replaceChildren(...shown.map(entry => {
     const card = createScheduleCard(entry.item);
-    attachCalGroupSelection(card, entry.taskIds);
+    attachCalGroupSelection(card, entry.taskIds, entry.item);
     return card;
   }));
   applyCalGroupSelection();
@@ -834,7 +858,7 @@ function renderUpcomingTasks() {
 
   list.replaceChildren(...shown.map(entry => {
     const card = createScheduleCard(entry.item, { tasks: entry.buckets[homeTaskStatus] });
-    attachCalGroupSelection(card, entry.taskIds);
+    attachCalGroupSelection(card, entry.taskIds, entry.item);
     return card;
   }));
 }

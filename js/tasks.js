@@ -386,11 +386,10 @@ function createScheduleCard(item, { showName = true, onChange, tasks } = {}) {
   head.className = "payroll-run-head";
 
   if (showName) {
-    const name = document.createElement("button");
-    name.type = "button";
+    // Plain text — the whole card is what you click (see attachCalGroupSelection).
+    const name = document.createElement("span");
     name.className = "payroll-run-company";
     name.textContent = item.title;
-    name.addEventListener("click", () => openItemPane(item.type, item.id));
     head.appendChild(name);
   }
 
