@@ -7429,3 +7429,112 @@ th.th-select { text-align: center; cursor: default; padding-left: 4px; padding-r
 }
 
 .shoot-form-chip-remove:hover { color: var(--danger); }
+
+/* ============================================================
+   Editable date cell (Styles → IHD)
+
+   Looks like plain text until hovered or focused, so a long table of dates
+   doesn't read as a wall of form fields.
+   ============================================================ */
+
+.styles-table .col-ihd { width: 150px; min-width: 140px; }
+.styles-table td[data-col="ihd"] { padding: 2px 4px; cursor: default; }
+
+.cell-date {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  border-radius: 5px;
+  transition: background 120ms ease;
+}
+
+.cell-date-input {
+  flex: 1;
+  min-width: 0;
+  padding: 4px 6px;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  background: transparent;
+  font-family: var(--font);
+  font-size: 12px;
+  color: var(--text);
+  cursor: pointer;
+}
+
+/* An empty date shows the browser's mm/dd/yyyy faintly. */
+.cell-date-input.is-empty { color: var(--empty-display); }
+
+.cell-date:hover .cell-date-input,
+.cell-date-input:focus {
+  border-color: var(--border-strong);
+  background: var(--surface);
+  color: var(--text);
+  outline: none;
+}
+
+.cell-date-clear {
+  flex: 0 0 auto;
+  border: none;
+  background: none;
+  padding: 2px 4px;
+  font-size: 10px;
+  color: var(--text-muted);
+  cursor: pointer;
+  visibility: hidden;
+}
+
+.cell-date-clear[hidden] { display: none; }
+.cell-date:hover .cell-date-clear { visibility: visible; }
+.cell-date-clear:hover { color: var(--danger); }
+
+/* Saving / saved, as a brief tint. */
+.cell-date.is-saving { opacity: 0.6; }
+.cell-date.is-saved { background: #e1f5ee; }
+
+/* ── IHD in Photoshoots ── */
+.need-table .col-ihd { width: 150px; min-width: 140px; }
+.need-table td[data-col="ihd"] { padding: 2px 4px; cursor: default; }
+.need-table .col-shoot { width: 260px; }
+.shoots-table .col-latest-ihd { width: 130px; }
+
+/* Goods arrive after the shoot date. */
+.ihd-warning {
+  display: inline-block;
+  padding: 1px 7px;
+  border-radius: 10px;
+  background: var(--danger-tint);
+  color: var(--danger);
+  font-family: var(--font);
+  font-size: 10.5px;
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: help;
+}
+
+.shoot-status-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* Shoot pane rows. */
+.shoot-style-ihd {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: 0 0 auto;
+}
+
+.shoot-style-ihd .cell-date { width: 136px; }
+
+.shoot-style-ihd-label {
+  font-family: var(--font);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+}
+
+.shoot-style-row { flex-wrap: wrap; }
+.shoot-style-row.is-late { border-color: #f3c4c4; }

@@ -33,6 +33,8 @@ const STYLE_COLUMNS = {
   category: { value: s => s.category },
   season: { value: s => s.season },
   status: { value: s => s.status },
+  // "YYYY-MM-DD" sorts as a date; blanks sort last either way.
+  ihd: { value: s => s.ihd },
 };
 
 /** Distinct values of a field, most common first — for the filter controls. */
@@ -144,6 +146,7 @@ function renderStylesTable() {
       if (col === "select") td.appendChild(createStyleCheckbox(style));
       else if (col === "image") td.appendChild(createStyleThumb(style.styleNo, style.color));
       else if (col === "shoot") td.appendChild(createShootStatusBadge(style.styleNo, style.color));
+      else if (col === "ihd") td.appendChild(createIhdInput(style));
       else if (col === "status") td.appendChild(createStyleStatusPill(style.status));
       else mountSearchHighlightedText(td, STYLE_COLUMNS[col].value(style));
       if (col === "description" && style.description) td.title = style.description;
@@ -172,6 +175,60 @@ function renderStylesTable() {
   }
   tbody.replaceChildren(...rows);
   syncStyleSelectionUi();
+}
+
+// ── IHD (in-house date) ──────────────────────────────────────────────────────
+//
+// Edited right in the table: pick a date and it saves; clear it to remove.
+
+/** `onSaved` runs after a successful save — for views whose warnings depend on it. */
+function createIhdInput(style, { onSaved } = {}) {
+  const wrap = document.createElement("span");
+  wrap.className = "cell-date";
+
+  const input = document.createElement("input");
+  input.type = "date";
+  input.className = "cell-date-input" + (style.ihd ? "" : " is-empty");
+  input.value = style.ihd;
+  input.setAttribute("aria-label", `IHD for ${style.styleNo} ${style.color}`);
+
+  const clear = document.createElement("button");
+  clear.type = "button";
+  clear.className = "cell-date-clear";
+  clear.textContent = "✕";
+  clear.title = "Clear IHD";
+  clear.setAttribute("aria-label", `Clear IHD for ${style.styleNo} ${style.color}`);
+  clear.hidden = !style.ihd;
+
+  const save = async value => {
+    const before = style.ihd;
+    if (value === before) return;
+    wrap.classList.add("is-saving");
+    try {
+      await setStyleIhd(style.styleNo, style.color, value);
+      input.classList.toggle("is-empty", !value);
+      clear.hidden = !value;
+      wrap.classList.remove("is-saving");
+      wrap.classList.add("is-saved");
+      setTimeout(() => wrap.classList.remove("is-saved"), 1200);
+      onSaved?.();
+    } catch (err) {
+      input.value = before;
+      wrap.classList.remove("is-saving");
+      showIndicator(err.message || "Couldn't save the IHD.", "error");
+    }
+  };
+
+  // "change" fires once a full date is picked or the field is cleared —
+  // not on every keystroke of a half-typed date.
+  input.addEventListener("change", () => save(input.value));
+  clear.addEventListener("click", () => {
+    input.value = "";
+    save("");
+  });
+
+  wrap.append(input, clear);
+  return wrap;
 }
 
 // ── Selection ────────────────────────────────────────────────────────────────
@@ -258,11 +315,13 @@ function initStylesView() {
   });
   document.getElementById("styleSearchInput")?.addEventListener("input", () => applyStyleFilters());
   document.getElementById("stylesTableBody")?.addEventListener("click", e => {
-    // The tick box (and its cell) selects; anywhere else opens the photos.
+    // The tick box (and its cell) selects; the IHD cell edits; anywhere else
+    // opens the photos.
     if (e.target.closest('td[data-col="select"]')) {
       if (e.target.tagName !== "INPUT") e.target.closest("td").querySelector("input")?.click();
       return;
     }
+    if (e.target.closest('td[data-col="ihd"]')) return;
     const tr = e.target.closest("tr[data-style-no]");
     if (tr) openStyleGallery(tr.dataset.styleNo, tr.dataset.color);
   });

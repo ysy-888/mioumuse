@@ -27,6 +27,7 @@
  *   Style     { styleNo, color,      // together, the record's identity
  *               status,              // N41 status, e.g. ACTIVE, SOLDOUT
  *               season, category, description,
+ *               ihd,                 // in-house date, "YYYY-MM-DD" or ""
  *               updatedAt }
  *   ShootListEntry { styleNo, color, addedAt,
  *               shotShootId, shotAt }    // set once a shoot with it is done
@@ -476,10 +477,17 @@ function styleRowToStyle(row) {
     season: String(row.season ?? ""),
     category: String(row.category ?? ""),
     description: String(row.description ?? ""),
+    // In-house date — entered in the app, not part of the ATS export.
+    ihd: normalizeYmd(row.ihd),
     updatedAt: String(row.updated_at ?? ""),
   };
 }
 
+/**
+ * Note: IHD isn't in here on purpose. An import upserts these columns only,
+ * and Supabase leaves the columns it isn't sent alone — so re-importing the
+ * ATS export never wipes an IHD typed into the app.
+ */
 function styleToRow(style) {
   return {
     style_no: style.styleNo,
@@ -521,6 +529,18 @@ function findStyle(styleNo, color) {
   return getStyleColors(styleNo).find(s => s.color.toUpperCase() === c) ?? null;
 }
 
+/** Set (or clear, with "") one style's IHD. */
+async function setStyleIhd(styleNo, color, ihd) {
+  const style = findStyle(styleNo, color);
+  if (!style) throw new Error(`${styleNo} ${color} isn't in the Styles database.`);
+  const value = normalizeYmd(ihd);
+  throwIfError(await requireClient().from("styles")
+    .update({ ihd: value || null })
+    .eq("style_no", style.styleNo).eq("color", style.color));
+  style.ihd = value;
+  return style;
+}
+
 /** Distinct Style #s, for suggestions as you type. */
 function getStyleNumbers() {
   return [...new Set(allStyles.map(s => s.styleNo))];
@@ -542,7 +562,11 @@ async function saveStyles(styles, onProgress) {
   // Fold the saved records into the cache without a full reload.
   const byKey = new Map(allStyles.map(s => [styleKey(s.styleNo, s.color), s]));
   const now = new Date().toISOString();
-  styles.forEach(s => byKey.set(styleKey(s.styleNo, s.color), { ...s, updatedAt: now }));
+  // Merged over what's cached, so fields the import doesn't carry (IHD) stay.
+  styles.forEach(s => {
+    const key = styleKey(s.styleNo, s.color);
+    byKey.set(key, { ihd: "", ...byKey.get(key), ...s, updatedAt: now });
+  });
   allStyles = [...byKey.values()].sort((a, b) => a.styleNo.localeCompare(b.styleNo) || a.color.localeCompare(b.color));
   indexStyles();
 }

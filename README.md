@@ -185,6 +185,10 @@ and blank rows between styles) is skipped. A preview shows what's new,
 updated and unchanged before anything is saved; confirming saves only new
 and changed styles. Styles missing from a newer file are left as they are.
 
+**IHD** (in-house date) is edited right in the Styles table: click the cell,
+pick a date, and it saves; hover for ✕ to clear it. It isn't part of the
+ATS export, and re-importing never touches it.
+
 Banner Style # fields look styles up as you type: suggestions, the style's
 colours, and its description and status under the row and in the banner pane.
 
@@ -234,6 +238,10 @@ pane, where styles that weren't shot can be taken out before **Mark shoot
 complete**, which records every style left in it as shot. **Reopen** undoes
 that and puts them back on the list; deleting a completed shoot does the
 same. Adding a shot style to the list again flags it to be shot again.
+
+IHD shows (and can be edited) on Need to Shoot and in the shoot pane, and
+the Shoots list shows each shoot's latest IHD. A style whose IHD is after its
+shoot date is flagged **IHD after shoot** — the goods won't be in yet.
 
 Data: `shoot_list` (the flag, plus which shoot it was shot in) and
 `photoshoots` (see `supabase-schema.sql`).

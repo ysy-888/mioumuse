@@ -216,3 +216,7 @@ create policy "shoot_list: own rows only" on shoot_list
 drop policy if exists "photoshoots: own rows only" on photoshoots;
 create policy "photoshoots: own rows only" on photoshoots
   for all using (user_id = auth.uid()) with check (user_id = auth.uid());
+
+-- Styles gained an IHD (in-house date), entered in the app — the ATS import
+-- never sends it, so re-importing leaves it alone.
+alter table styles add column if not exists ihd date;

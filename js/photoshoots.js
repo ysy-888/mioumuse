@@ -50,6 +50,23 @@ function describeShootStatus(styleNo, color) {
   return { tone: "needed", label: "To shoot", shoots: [] };
 }
 
+/**
+ * IHD is when the goods arrive in-house. A style can't be shot before it
+ * arrives, so an IHD after the shoot date is worth flagging.
+ */
+function isIhdAfterShoot(styleNo, color, shootDate) {
+  const ihd = findStyle(styleNo, color)?.ihd;
+  return Boolean(ihd && shootDate && ihd > shootDate);
+}
+
+function createIhdWarning(ihd) {
+  const warn = document.createElement("span");
+  warn.className = "ihd-warning";
+  warn.textContent = "IHD after shoot";
+  warn.title = `In-house ${formatTaskDate(ihd)} — after the shoot date`;
+  return warn;
+}
+
 function createShootStatusBadge(styleNo, color) {
   const status = describeShootStatus(styleNo, color);
   const el = document.createElement("span");
@@ -63,7 +80,23 @@ function createShootStatusBadge(styleNo, color) {
   if (status.shoots.length) {
     el.title = status.shoots.map(s => `${getPhotoshootTitle(s)} · ${getPhotoshootTypeLabel(s.type)} · ${formatShootDate(s.date)}${s.model ? ` · ${s.model}` : ""}`).join("\n");
   }
+  // Scheduled before the goods are in: say so beside the date.
+  if (status.tone === "scheduled" && isIhdAfterShoot(styleNo, color, status.shoots[0].date)) {
+    const wrap = document.createElement("span");
+    wrap.className = "shoot-status-wrap";
+    wrap.append(el, createIhdWarning(findStyle(styleNo, color).ihd));
+    return wrap;
+  }
   return el;
+}
+
+/** The last arrival among a shoot's styles — when everything is finally in. */
+function getShootLatestIhd(shoot) {
+  return shoot.styles
+    .map(s => findStyle(s.styleNo, s.color)?.ihd ?? "")
+    .filter(Boolean)
+    .sort()
+    .pop() ?? "";
 }
 
 // ── Sub-views ────────────────────────────────────────────────────────────────
@@ -190,6 +223,13 @@ function renderNeedTable() {
         case "image": td.appendChild(createStyleThumb(r.styleNo, r.color)); break;
         case "shoot": td.appendChild(createShootStatusBadge(r.styleNo, r.color)); break;
         case "n41": td.appendChild(createStyleStatusPill(r.n41)); break;
+        case "ihd": {
+          // Editable here too; saving re-checks the "IHD after shoot" warnings.
+          const style = findStyle(r.styleNo, r.color);
+          if (style) td.appendChild(createIhdInput(style, { onSaved: refreshPhotoshootViews }));
+          else setDisplayText(td, EMPTY_DISPLAY);
+          break;
+        }
         case "added": setDisplayText(td, r.addedAt ? formatLongDate(r.addedAt.slice(0, 10)) : EMPTY_DISPLAY); break;
         default:
           mountSearchHighlightedText(td, r[col] ?? "");
@@ -316,6 +356,15 @@ function renderShootsTable() {
           break;
         }
         case "model": mountSearchHighlightedText(td, s.model); break;
+        case "latestIhd": {
+          const latest = getShootLatestIhd(s);
+          setDisplayText(td, latest ? formatShootDate(latest) : EMPTY_DISPLAY);
+          if (latest && s.status === "planned" && s.date && latest > s.date) {
+            td.classList.add("is-overdue");
+            td.title = "Some styles arrive in-house after the shoot date";
+          }
+          break;
+        }
         case "styles": td.appendChild(createShootStylesPreview(s)); break;
         case "status": {
           const pill = document.createElement("span");
@@ -413,6 +462,22 @@ function renderShootPane(shoot) {
     sub.textContent = style ? [style.description, style.category].filter(Boolean).join(" · ") : "Not in the Styles database";
     text.append(top, sub);
     row.append(thumb, text);
+
+    // IHD, editable here, with a warning when it lands after this shoot.
+    if (style) {
+      const ihd = document.createElement("span");
+      ihd.className = "shoot-style-ihd";
+      const label = document.createElement("span");
+      label.className = "shoot-style-ihd-label";
+      label.textContent = "IHD";
+      ihd.append(label, createIhdInput(style, { onSaved: refreshPhotoshootViews }));
+      if (shoot.status === "planned" && isIhdAfterShoot(s.styleNo, s.color, shoot.date)) {
+        ihd.appendChild(createIhdWarning(style.ihd));
+        row.classList.add("is-late");
+      }
+      row.appendChild(ihd);
+    }
+
     if (shoot.status === "planned") {
       const remove = document.createElement("button");
       remove.type = "button";
@@ -503,6 +568,7 @@ function initPhotoshoots() {
       if (e.target.tagName !== "INPUT") e.target.closest("td").querySelector("input")?.click();
       return;
     }
+    if (e.target.closest('td[data-col="ihd"]')) return;
     const tr = e.target.closest("tr[data-style-no]");
     if (tr) openStyleGallery(tr.dataset.styleNo, tr.dataset.color);
   });

@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>MIOU MUSE</title>
 <link rel="icon" href="favicon.svg" type="image/svg+xml" />
-<link rel="stylesheet" href="crm.css?v=20261013-1523" />
+<link rel="stylesheet" href="crm.css?v=20261019-1629" />
 </head>
 <body>
 
@@ -414,6 +414,7 @@
         <col class="col-category" />
         <col class="col-season" />
         <col class="col-status" />
+        <col class="col-ihd" />
         <col class="col-shoot" />
       </colgroup>
       <thead>
@@ -426,11 +427,12 @@
           <th data-col="category">Category</th>
           <th data-col="season">Season</th>
           <th data-col="status">N41 Status</th>
+          <th data-col="ihd" title="In-house date">IHD</th>
           <th data-col="shoot">Shoot</th>
         </tr>
       </thead>
       <tbody id="stylesTableBody">
-        <tr class="state-row"><td colspan="9">Loading styles…</td></tr>
+        <tr class="state-row"><td colspan="10">Loading styles…</td></tr>
       </tbody>
     </table>
     </div>
@@ -449,6 +451,7 @@
         <col class="col-category" />
         <col class="col-season" />
         <col class="col-status" />
+        <col class="col-ihd" />
         <col class="col-shoot" />
         <col class="col-added" />
       </colgroup>
@@ -462,12 +465,13 @@
           <th data-col="category">Category</th>
           <th data-col="season">Season</th>
           <th data-col="n41">N41 Status</th>
+          <th data-col="ihd" title="In-house date">IHD</th>
           <th data-col="shoot">Shoot</th>
           <th data-col="added">Added</th>
         </tr>
       </thead>
       <tbody id="needTableBody">
-        <tr class="state-row"><td colspan="10">Loading…</td></tr>
+        <tr class="state-row"><td colspan="11">Loading…</td></tr>
       </tbody>
     </table>
     </div>
@@ -482,6 +486,7 @@
         <col class="col-name" />
         <col class="col-type" />
         <col class="col-model" />
+        <col class="col-latest-ihd" />
         <col class="col-styles" />
         <col class="col-status" />
       </colgroup>
@@ -491,12 +496,13 @@
           <th data-col="name">Shoot</th>
           <th data-col="type">Type</th>
           <th data-col="model">Model</th>
+          <th data-col="latestIhd" title="The last in-house date among its styles">Latest IHD</th>
           <th data-col="styles">Styles</th>
           <th data-col="status">Status</th>
         </tr>
       </thead>
       <tbody id="shootsTableBody">
-        <tr class="state-row"><td colspan="6">Loading…</td></tr>
+        <tr class="state-row"><td colspan="7">Loading…</td></tr>
       </tbody>
     </table>
     </div>
@@ -987,27 +993,27 @@
 
 <!-- Supabase JS client — auth.js and store.js both depend on the global it exports. -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
-<script src="js/config.js?v=20261013-1523"></script>
+<script src="js/config.js?v=20261019-1629"></script>
 <!-- Needs SUPABASE_URL/KEY from config.js and the CDN client above. -->
-<script src="js/auth.js?v=20261013-1523"></script>
-<script src="js/util.js?v=20261013-1523"></script>
-<script src="js/dates.js?v=20261013-1523"></script>
-<script src="js/store.js?v=20261013-1523"></script>
-<script src="js/tasks.js?v=20261013-1523"></script>
-<script src="js/app-shell.js?v=20261013-1523"></script>
-<script src="js/record-list.js?v=20261013-1523"></script>
-<script src="js/item-pane.js?v=20261013-1523"></script>
-<script src="js/campaign-form.js?v=20261013-1523"></script>
-<script src="js/trade-show-form.js?v=20261013-1523"></script>
-<script src="js/banners.js?v=20261013-1523"></script>
-<script src="js/banner-form.js?v=20261013-1523"></script>
-<script src="js/mailchimp.js?v=20261013-1523"></script>
-<script src="js/style-import.js?v=20261013-1523"></script>
-<script src="js/styles.js?v=20261013-1523"></script>
-<script src="js/style-images.js?v=20261013-1523"></script>
-<script src="js/photoshoots.js?v=20261013-1523"></script>
-<script src="js/photoshoot-form.js?v=20261013-1523"></script>
-<script src="js/calendar.js?v=20261013-1523"></script>
-<script src="js/main.js?v=20261013-1523"></script>
+<script src="js/auth.js?v=20261019-1629"></script>
+<script src="js/util.js?v=20261019-1629"></script>
+<script src="js/dates.js?v=20261019-1629"></script>
+<script src="js/store.js?v=20261019-1629"></script>
+<script src="js/tasks.js?v=20261019-1629"></script>
+<script src="js/app-shell.js?v=20261019-1629"></script>
+<script src="js/record-list.js?v=20261019-1629"></script>
+<script src="js/item-pane.js?v=20261019-1629"></script>
+<script src="js/campaign-form.js?v=20261019-1629"></script>
+<script src="js/trade-show-form.js?v=20261019-1629"></script>
+<script src="js/banners.js?v=20261019-1629"></script>
+<script src="js/banner-form.js?v=20261019-1629"></script>
+<script src="js/mailchimp.js?v=20261019-1629"></script>
+<script src="js/style-import.js?v=20261019-1629"></script>
+<script src="js/styles.js?v=20261019-1629"></script>
+<script src="js/style-images.js?v=20261019-1629"></script>
+<script src="js/photoshoots.js?v=20261019-1629"></script>
+<script src="js/photoshoot-form.js?v=20261019-1629"></script>
+<script src="js/calendar.js?v=20261019-1629"></script>
+<script src="js/main.js?v=20261019-1629"></script>
 </body>
 </html>
