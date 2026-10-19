@@ -206,6 +206,7 @@ async function loadAppData() {
 
   // The Styles database is an add-on too, and can run to thousands of rows.
   setAllStyles(await loadAllRows(client, "styles"));
+  repairTwoDigitYearIhds();
 
   // Photoshoots and the Need to Shoot list — add-ons as well.
   const [shootRows, shootsRes] = await Promise.all([
@@ -529,11 +530,30 @@ function findStyle(styleNo, color) {
   return getStyleColors(styleNo).find(s => s.color.toUpperCase() === c) ?? null;
 }
 
+/**
+ * IHDs saved before typed years were fixed can read 0026 for 2026. Put them
+ * right — in the background, once, as the styles load.
+ */
+async function repairTwoDigitYearIhds() {
+  const broken = allStyles.filter(s => s.ihd && Number(s.ihd.slice(0, 4)) < 100);
+  for (const style of broken) {
+    try {
+      await setStyleIhd(style.styleNo, style.color, fixTwoDigitYear(style.ihd));
+    } catch {
+      /* left as is; it can be re-entered by hand */
+    }
+  }
+  if (broken.length && typeof applyStyleFilters === "function" && getCurrentAppView() === "styles") {
+    applyStyleFilters({ keepShown: true });
+  }
+}
+
 /** Set (or clear, with "") one style's IHD. */
 async function setStyleIhd(styleNo, color, ihd) {
   const style = findStyle(styleNo, color);
   if (!style) throw new Error(`${styleNo} ${color} isn't in the Styles database.`);
-  const value = normalizeYmd(ihd);
+  const value = normalizeYmd(fixTwoDigitYear(ihd));
+  if (value && !isPlausibleYmd(value)) throw new Error(`${value.slice(0, 4)} isn't a year.`);
   throwIfError(await requireClient().from("styles")
     .update({ ihd: value || null })
     .eq("style_no", style.styleNo).eq("color", style.color));

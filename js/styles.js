@@ -203,6 +203,11 @@ function createIhdInput(style, { onSaved } = {}) {
   const save = async value => {
     const before = style.ihd;
     if (value === before) return;
+    if (value && !isPlausibleYmd(value)) {
+      input.value = before;
+      showIndicator(`"${value.slice(0, 4)}" isn't a year — enter the date again (e.g. 10/28/2026).`, "error");
+      return;
+    }
     wrap.classList.add("is-saving");
     try {
       await setStyleIhd(style.styleNo, style.color, value);
@@ -219,9 +224,33 @@ function createIhdInput(style, { onSaved } = {}) {
     }
   };
 
-  // "change" fires once a full date is picked or the field is cleared —
-  // not on every keystroke of a half-typed date.
-  input.addEventListener("change", () => save(input.value));
+  // Typing: Chrome reports a "complete" date on every digit of the year
+  // (0002, 0020, 0202, 2026), so a typed date saves only when you leave the
+  // cell or press Enter. Picking from the calendar saves straight away.
+  let typing = false;
+  const commit = () => {
+    typing = false;
+    const value = fixTwoDigitYear(input.value);
+    if (value !== input.value) input.value = value;
+    save(value);
+  };
+  input.addEventListener("focus", () => { typing = false; });
+  input.addEventListener("keydown", e => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      commit();
+      return;
+    }
+    if (e.key === "Escape") {
+      input.value = style.ihd;
+      typing = false;
+      input.blur();
+      return;
+    }
+    if (e.key.length === 1 || e.key === "Backspace" || e.key === "Delete" || e.key.startsWith("Arrow")) typing = true;
+  });
+  input.addEventListener("change", () => { if (!typing) commit(); });
+  input.addEventListener("blur", commit);
   clear.addEventListener("click", () => {
     input.value = "";
     save("");

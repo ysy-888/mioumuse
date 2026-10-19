@@ -22,9 +22,41 @@ function ymd(date) {
 function parseYmd(value) {
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(value ?? "").trim());
   if (!m) return null;
-  const date = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  // setFullYear, not the constructor: new Date(26, …) means 1926.
+  const date = new Date(2000, 0, 1);
+  date.setFullYear(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
   return Number.isNaN(date.getTime()) ? null : date;
 }
+
+/**
+ * Typing into a date box, the browser takes the year digit by digit — "26"
+ * lands as 0026. Any year under 100 is read as 20xx.
+ */
+function fixTwoDigitYear(value) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(value ?? "").trim());
+  if (!m || Number(m[1]) >= 100) return String(value ?? "");
+  return `${2000 + Number(m[1])}-${m[2]}-${m[3]}`;
+}
+
+/** A year anyone would mean: 1900–2100. Catches half-typed years like 0202. */
+function isPlausibleYmd(value) {
+  const year = Number(String(value ?? "").slice(0, 4));
+  return Boolean(parseYmd(value)) && year >= 1900 && year <= 2100;
+}
+
+/**
+ * Every date box in the app: when you leave it, a two-digit year becomes
+ * 20xx. Runs before the field's own handlers (capture phase), so forms read
+ * the corrected value when they save.
+ */
+document.addEventListener("focusout", e => {
+  const input = e.target;
+  if (!(input instanceof HTMLInputElement) || input.type !== "date" || !input.value) return;
+  const fixed = fixTwoDigitYear(input.value);
+  if (fixed === input.value) return;
+  input.value = fixed;
+  input.dispatchEvent(new Event("change", { bubbles: true }));
+}, true);
 
 function addDays(date, days) {
   const next = new Date(date.getFullYear(), date.getMonth(), date.getDate());
