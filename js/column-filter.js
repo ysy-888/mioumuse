@@ -9,7 +9,9 @@
  *   });
  *   columnFilterPasses("stylesTable", "ihd", key)  // in the table's filter
  *
- * Used for IHD by month (monthFilterKey / monthFilterOptions below).
+ * Used for IHD by month (monthFilterKey / monthFilterOptions below), and
+ * for the Magento products table, where the ticked keys go to Magento
+ * (getColumnFilterSelection) instead of filtering rows here.
  */
 
 const columnFilters = new Map(); // "table:col" → { selected: Set | null, options, onChange, th }
@@ -28,6 +30,20 @@ function columnFilterPasses(tableId, col, key) {
 
 function isColumnFilterActive(tableId, col) {
   return Boolean(columnFilters.get(columnFilterId(tableId, col))?.selected);
+}
+
+/** The ticked keys, or null when the column isn't filtered. */
+function getColumnFilterSelection(tableId, col) {
+  const selected = columnFilters.get(columnFilterId(tableId, col))?.selected;
+  return selected ? [...selected] : null;
+}
+
+/** Set a filter from code (null shows everything). Doesn't call onChange. */
+function setColumnFilterSelection(tableId, col, keys) {
+  const entry = columnFilters.get(columnFilterId(tableId, col));
+  if (!entry) return;
+  entry.selected = keys ? new Set(keys) : null;
+  entry.th.classList.toggle("filter-active", Boolean(entry.selected));
 }
 
 function clearColumnFilter(tableId, col) {

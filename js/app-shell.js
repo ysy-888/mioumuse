@@ -3,12 +3,13 @@
  *
  * Views: "home" (calendar + upcoming tasks), "campaigns" and "tradeShows"
  * (lists), "platforms" (banners), "styles" (the style database) and
- * "photoshoots" (Need to Shoot + shoots). A record opens in a side pane over
+ * "photoshoots" (Need to Shoot + shoots), and "magento" (the store's
+ * products and categories, live). A record opens in a side pane over
  * whichever view is showing (js/item-pane.js, js/banners.js,
- * js/photoshoots.js), not as a view of its own.
+ * js/photoshoots.js, js/magento.js), not as a view of its own.
  */
 
-const APP_VIEWS = ["home", "campaigns", "tradeShows", "platforms", "styles", "photoshoots"];
+const APP_VIEWS = ["home", "campaigns", "tradeShows", "platforms", "styles", "photoshoots", "magento"];
 
 let currentAppView = "home";
 
@@ -39,6 +40,8 @@ function goBackAppView(fallback = "") {
 
 function switchAppView(view) {
   if (!APP_VIEWS.includes(view)) return;
+  // An unsaved Magento edit isn't dropped without asking.
+  if (currentAppView !== view && !closeMagentoPane({ force: false })) return;
 
   if (!navigatingBack && currentAppView !== view) {
     appViewHistory.push(currentAppView);
@@ -64,6 +67,7 @@ function switchAppView(view) {
     stylesToolbar: view === "styles",
     stylesTableWrap: view === "styles",
     photoshootsToolbar: view === "photoshoots",
+    magentoToolbar: view === "magento",
     calendarWrap: view === "home",
   };
   Object.entries(panes).forEach(([id, visible]) => {
@@ -78,6 +82,7 @@ function switchAppView(view) {
     navTabPlatforms: view === "platforms",
     navTabStyles: view === "styles",
     navTabPhotoshoots: view === "photoshoots",
+    navTabMagento: view === "magento",
   };
   Object.entries(tabs).forEach(([id, active]) => {
     const el = document.getElementById(id);
@@ -92,11 +97,17 @@ function switchAppView(view) {
   if (view === "platforms") applyBannerFilters();
   if (view === "styles") applyStyleFilters();
   if (view === "photoshoots") renderPhotoshootsView();
-  // The two photoshoot tables show and hide with their sub-view, but neither
-  // belongs anywhere else.
+  if (view === "magento") enterMagentoView();
+  // The photoshoot and Magento tables show and hide with their sub-view, but
+  // none of them belongs anywhere else.
   if (view !== "photoshoots") {
     document.getElementById("needTableWrap").hidden = true;
     document.getElementById("shootsTableWrap").hidden = true;
+  }
+  if (view !== "magento") {
+    document.getElementById("mgProductsWrap").hidden = true;
+    document.getElementById("mgCategoriesWrap").hidden = true;
+    document.getElementById("mgPager").hidden = true; // in the app footer
   }
   updateAppBackButton();
 }
@@ -135,24 +146,6 @@ function initHeaderMenu() {
   document.getElementById("headerMenuExportCsv")?.addEventListener("click", () => {
     closeHeaderMenu();
     exportCurrentViewCsv(); // js/exports.js — follows the page you're on
-  });
-
-  document.getElementById("headerMenuResetData")?.addEventListener("click", async () => {
-    closeHeaderMenu();
-    if (!confirm("Permanently delete every campaign, trade show, banner (with its image), and completed task? This cannot be undone.")) return;
-    setAppLoading(true, "Clearing…");
-    try {
-      await clearAllData();
-      switchAppView("home");
-      refreshItemPane();
-      refreshBannerViews();
-      refreshPhotoshootViews();
-      showIndicator("All data cleared", "success");
-    } catch (err) {
-      showIndicator(err.message || "Could not clear data.", "error");
-    } finally {
-      setAppLoading(false);
-    }
   });
 
   document.getElementById("headerMenuSignOut")?.addEventListener("click", async () => {
@@ -223,6 +216,7 @@ function initAppNav() {
   document.getElementById("navTabPlatforms")?.addEventListener("click", () => switchAppView("platforms"));
   document.getElementById("navTabStyles")?.addEventListener("click", () => switchAppView("styles"));
   document.getElementById("navTabPhotoshoots")?.addEventListener("click", () => switchAppView("photoshoots"));
+  document.getElementById("navTabMagento")?.addEventListener("click", () => switchAppView("magento"));
   document.getElementById("navLogoHome")?.addEventListener("click", () => switchAppView("home"));
   document.getElementById("appBackBtn")?.addEventListener("click", () => goBackAppView("home"));
 
@@ -230,6 +224,8 @@ function initAppNav() {
     setAppLoading(true, "Refreshing…");
     try {
       await loadAppData();
+      // A view saved on another computer since this one loaded.
+      await syncTableViewsFromAccount();
       syncMailchimp();
       // Re-render from the fresh data. A record in the pane that was deleted
       // elsewhere closes the pane.
@@ -237,6 +233,8 @@ function initAppNav() {
       refreshItemPane();
       refreshBannerViews();
       refreshPhotoshootViews();
+      // Magento isn't part of the app's data; it's asked again only when showing.
+      if (getCurrentAppView() === "magento") await reloadMagento();
       showIndicator("Refreshed", "success");
     } catch (err) {
       showIndicator(err.message || "Could not refresh.", "error");

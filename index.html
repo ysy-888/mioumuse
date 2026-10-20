@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>MIOU MUSE</title>
 <link rel="icon" href="favicon.svg" type="image/svg+xml" />
-<link rel="stylesheet" href="crm.css?v=20261019-1700" />
+<link rel="stylesheet" href="crm.css?v=20261020-1928" />
 </head>
 <body>
 
@@ -21,6 +21,7 @@
     <button type="button" class="app-title-tab" id="navTabPlatforms" role="tab" aria-selected="false">Platforms</button>
     <button type="button" class="app-title-tab" id="navTabStyles" role="tab" aria-selected="false">Styles</button>
     <button type="button" class="app-title-tab" id="navTabPhotoshoots" role="tab" aria-selected="false">Photoshoots</button>
+    <button type="button" class="app-title-tab" id="navTabMagento" role="tab" aria-selected="false">Magento</button>
   </nav>
   <div class="header-right">
     <button type="button" class="btn btn-primary btn-icon" id="refreshBtn" aria-label="Refresh">
@@ -35,9 +36,9 @@
           <svg class="header-menu-item-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5"/><path d="M12 3v12"/></svg>
           <span>Export CSV</span>
         </button>
-        <button type="button" class="header-menu-item" id="headerMenuResetData" role="menuitem">
-          <svg class="header-menu-item-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 2v6h6"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L3 8"/></svg>
-          <span>Clear all data</span>
+        <button type="button" class="header-menu-item" id="headerMenuTableView" role="menuitem">
+          <svg class="header-menu-item-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9M15 21V9"/></svg>
+          <span>Table view</span>
         </button>
         <button type="button" class="header-menu-item header-menu-item-separator" id="headerMenuSignOut" role="menuitem">
           <svg class="header-menu-item-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="M16 17l5-5-5-5"/><path d="M21 12H9"/></svg>
@@ -213,6 +214,71 @@
       <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
       New shoot
     </button>
+  </div>
+</div>
+
+<!-- ── Magento toolbar ───────────────────────────────────────── -->
+<div id="magentoToolbar" class="toolbar" hidden>
+  <div class="toolbar-filter-cluster">
+    <div class="toolbar-filter-section">
+      <div class="filter-btn-group shoot-subtabs" id="mgSubtabs" role="tablist" aria-label="Magento">
+        <button type="button" class="filter-btn" data-view="products">Products</button>
+        <button type="button" class="filter-btn" data-view="categories">Categories</button>
+      </div>
+    </div>
+    <span class="toolbar-filter-divider" aria-hidden="true"></span>
+
+    <!-- Products: quick filters (Status, Type), and changes to the ticked products. -->
+    <div class="toolbar-filter-section mg-controls" id="mgProductControls">
+      <div class="filter-btn-group" id="mgStatusFilters" role="group" aria-label="Status">
+        <button type="button" class="filter-btn" data-status="">All</button>
+        <button type="button" class="filter-btn" data-status="1">Enabled</button>
+        <button type="button" class="filter-btn" data-status="2">Disabled</button>
+      </div>
+      <span class="toolbar-filter-divider" aria-hidden="true"></span>
+      <div class="filter-btn-group" id="mgTypeFilters" role="group" aria-label="Type">
+        <button type="button" class="filter-btn" data-type="">All</button>
+        <button type="button" class="filter-btn" data-type="grouped">Grouped</button>
+        <button type="button" class="filter-btn" data-type="simple">Simple</button>
+      </div>
+      <div class="selection-bar" id="mgSelectionBar" hidden>
+        <span class="selection-count" id="mgSelectionCount"></span>
+        <button type="button" class="btn" id="mgBulkEnableBtn">Enable</button>
+        <button type="button" class="btn" id="mgBulkDisableBtn">Disable</button>
+        <select class="form-input selection-select" id="mgBulkAddCategory" aria-label="Add to a category"></select>
+        <select class="form-input selection-select" id="mgBulkRemoveCategory" aria-label="Remove from a category"></select>
+        <button type="button" class="btn-close" id="mgClearSelectionBtn" title="Clear selection" aria-label="Clear selection">✕</button>
+      </div>
+    </div>
+
+    <!-- Categories. -->
+    <div class="toolbar-filter-section mg-controls" id="mgCategoryControls" hidden>
+      <label class="form-check">
+        <input type="checkbox" id="mgShowInactive" checked />
+        <span class="form-check-box" aria-hidden="true"></span>
+        <span>Show inactive</span>
+      </label>
+    </div>
+  </div>
+
+  <div class="toolbar-end">
+    <div class="counter toolbar-row-counter" id="mgRowCounter">— products</div>
+    <div class="search-wrap toolbar-search-wrap">
+      <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+      <input type="search" id="mgSearchInput" placeholder="Search SKU or name" />
+    </div>
+    <span class="mg-connection" id="mgConnection"></span>
+    <!-- Groups come from a Magento export (js/magento-groups.js). -->
+    <span class="mg-groups-status" id="mgGroupsStatus"></span>
+    <button type="button" class="btn" id="mgImportGroupsBtn" title="Read the group links from a Magento product export">
+      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M17 8l-5-5-5 5"/><path d="M12 3v12"/></svg>
+      Import groups
+    </button>
+    <button type="button" class="btn" id="mgExportCsvBtn" title="Download the products as a CSV">
+      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5"/><path d="M12 3v12"/></svg>
+      Export CSV
+    </button>
+    <input type="file" id="mgImportGroupsFile" accept=".csv,text/csv" hidden />
   </div>
 </div>
 
@@ -572,6 +638,160 @@
     </div>
   </aside>
 
+  <!-- ── Magento: products ───────────────────────────────────── -->
+  <div id="mgProductsWrap" class="table-scroll-y" hidden>
+    <div class="table-scroll-x">
+    <table id="mgProductsTable" class="record-table mg-products-table">
+      <colgroup>
+        <col class="col-select" />
+        <col class="col-image" />
+        <col class="col-name" />
+        <col class="col-sku" />
+        <col class="col-color" />
+        <col class="col-type" />
+        <col class="col-price" />
+        <col class="col-qty" />
+        <col class="col-visibility" />
+        <col class="col-status" />
+        <col class="col-categories" />
+        <col class="col-updated" />
+      </colgroup>
+      <thead>
+        <tr>
+          <th data-col="select" class="th-select"><input type="checkbox" class="row-select" id="mgSelectAll" aria-label="Select all on this page" /></th>
+          <th data-col="image">Image</th>
+          <th data-col="name">Name</th>
+          <th data-col="sku">SKU</th>
+          <th data-col="color">Color</th>
+          <th data-col="type">Type</th>
+          <th data-col="price">Price</th>
+          <th data-col="qty">Qty</th>
+          <th data-col="visibility">Visibility</th>
+          <th data-col="status">Status</th>
+          <th data-col="categories">Categories</th>
+          <th data-col="updatedAt">Updated</th>
+        </tr>
+      </thead>
+      <tbody id="mgProductsBody">
+        <tr class="state-row"><td colspan="12">Loading products…</td></tr>
+      </tbody>
+    </table>
+    </div>
+  </div>
+
+  <!-- ── Magento: categories ─────────────────────────────────── -->
+  <div id="mgCategoriesWrap" class="table-scroll-y" hidden>
+    <div class="table-scroll-x">
+    <table id="mgCategoriesTable" class="record-table mg-categories-table">
+      <colgroup>
+        <col class="col-name" />
+        <col class="col-id" />
+        <col class="col-count" />
+        <col class="col-status" />
+        <col class="col-actions" />
+      </colgroup>
+      <thead>
+        <tr>
+          <th data-col="name" class="th-no-sort">Category</th>
+          <th data-col="id" class="th-no-sort">ID</th>
+          <th data-col="count" class="th-no-sort">Products</th>
+          <th data-col="active" class="th-no-sort">Active</th>
+          <th data-col="actions" class="th-no-sort"></th>
+        </tr>
+      </thead>
+      <tbody id="mgCategoriesBody">
+        <tr class="state-row"><td colspan="5">Loading categories…</td></tr>
+      </tbody>
+    </table>
+    </div>
+  </div>
+
+  <!-- ── Magento product side pane ───────────────────────────── -->
+  <aside class="item-pane mg-pane" id="mgProductPane" hidden aria-label="Product details">
+    <div class="item-pane-header">
+      <div class="item-pane-title-group">
+        <span class="item-pane-title" id="mgPaneTitle"></span>
+        <span class="item-pane-subtitle" id="mgPaneSubtitle"></span>
+      </div>
+      <div class="item-pane-header-actions">
+        <button type="button" class="item-pane-icon-btn item-pane-close" id="mgPaneClose" aria-label="Close" title="Close">✕</button>
+      </div>
+    </div>
+    <div class="item-pane-body">
+      <div class="mg-pane-preview" id="mgPanePreview"></div>
+      <form class="company-form-body mg-pane-form" id="mgPaneForm" novalidate>
+        <div class="form-field">
+          <span class="form-label">Status</span>
+          <div class="filter-btn-group mg-pane-status" id="mgPaneStatus" role="group" aria-label="Status">
+            <button type="button" class="filter-btn" data-value="1">Enabled</button>
+            <button type="button" class="filter-btn" data-value="2">Disabled</button>
+          </div>
+        </div>
+        <label class="form-field">
+          <span class="form-label">Visibility</span>
+          <select class="form-input" id="mgPaneVisibility" data-field="visibility"></select>
+        </label>
+        <label class="form-field form-field--full">
+          <span class="form-label">Name</span>
+          <input type="text" class="form-input" id="mgPaneName" data-field="name" autocomplete="off" />
+        </label>
+        <!-- Hidden when the store's Color isn't a dropdown (js/magento.js). -->
+        <label class="form-field" id="mgPaneColorField">
+          <span class="form-label">Color</span>
+          <select class="form-input" id="mgPaneColor" data-field="colorId"></select>
+        </label>
+        <div class="form-field form-field--full mg-pane-group-field" id="mgPaneGroupField" hidden>
+          <span class="form-label" id="mgPaneGroupLabel">Simple items</span>
+          <span class="mg-pane-group-list" id="mgPaneGroupList"></span>
+        </div>
+        <label class="form-field">
+          <span class="form-label">Price</span>
+          <input type="number" class="form-input" id="mgPanePrice" data-field="price" min="0" step="0.01" />
+        </label>
+        <label class="form-field">
+          <span class="form-label">Special price</span>
+          <input type="number" class="form-input" id="mgPaneSpecialPrice" data-field="specialPrice" min="0" step="0.01" placeholder="None" />
+        </label>
+        <label class="form-field">
+          <span class="form-label">Weight</span>
+          <input type="number" class="form-input" id="mgPaneWeight" data-field="weight" min="0" step="0.01" />
+        </label>
+        <label class="form-field">
+          <span class="form-label">URL key</span>
+          <input type="text" class="form-input" id="mgPaneUrlKey" data-field="urlKey" autocomplete="off" spellcheck="false" />
+        </label>
+        <div class="form-field form-field--full">
+          <span class="form-label">Categories <span class="mg-pane-cat-count" id="mgPaneCategoryCount"></span></span>
+          <div class="mg-pane-cat-chips" id="mgPaneCategoryChips"></div>
+          <input type="search" class="form-input mg-pane-cat-search" id="mgPaneCategorySearch" placeholder="Find a category" autocomplete="off" />
+          <div class="mg-pane-cat-list" id="mgPaneCategoryList"></div>
+        </div>
+        <label class="form-field form-field--full">
+          <span class="form-label">Short description</span>
+          <textarea class="form-input form-notes" id="mgPaneShortDescription" data-field="shortDescription" rows="3"></textarea>
+        </label>
+        <label class="form-field form-field--full">
+          <span class="form-label">Description</span>
+          <textarea class="form-input form-notes mg-pane-description" id="mgPaneDescription" data-field="description" rows="6" spellcheck="false"></textarea>
+          <span class="form-hint">HTML, as Magento stores it.</span>
+        </label>
+        <label class="form-field form-field--full">
+          <span class="form-label">Meta title</span>
+          <input type="text" class="form-input" id="mgPaneMetaTitle" data-field="metaTitle" autocomplete="off" />
+        </label>
+        <label class="form-field form-field--full">
+          <span class="form-label">Meta description</span>
+          <textarea class="form-input form-notes" id="mgPaneMetaDescription" data-field="metaDescription" rows="2"></textarea>
+        </label>
+      </form>
+    </div>
+    <div class="mg-pane-footer">
+      <span class="modal-footer-message" id="mgPaneMessage"></span>
+      <button type="button" class="btn" id="mgPaneRevertBtn" disabled>Revert</button>
+      <button type="button" class="btn btn-primary" id="mgPaneSaveBtn" disabled>Save to Magento</button>
+    </div>
+  </aside>
+
   <!-- ── Calendar ────────────────────────────────────────────── -->
   <div id="calendarWrap" class="dashboard-wrap" hidden>
     <div class="dashboard-main">
@@ -624,7 +844,69 @@
       <button type="button" class="message-dismiss-btn save-indicator-dismiss" id="saveIndicatorDismiss" aria-label="Dismiss message" hidden>✕</button>
     </div>
   </div>
+  <!-- Magento products: paging (js/magento.js). Shown only on that view. -->
+  <div class="app-footer-end mg-pager" id="mgPager" hidden></div>
 </footer>
+
+<!-- ── Table view: show / hide and order columns (js/table-view.js) ── -->
+<div id="tableViewOverlay" class="modal-backdrop">
+  <div class="modal-card company-form-card table-view-card" role="dialog" aria-modal="true" aria-labelledby="tableViewTitle">
+    <div class="modal-header">
+      <h3 id="tableViewTitle">Table view</h3>
+      <button type="button" class="btn-close" id="tableViewCloseBtn" aria-label="Close">✕</button>
+    </div>
+    <div class="modal-body table-view-body">
+      <div class="edit-table-target-row">
+        <span class="form-label">Table</span>
+        <select class="form-input edit-table-target-select" id="tableViewTarget" aria-label="Table"></select>
+      </div>
+      <p class="edit-table-subtitle">Tick the columns to show, and drag them into the order you want. Saved to your account as this table's default view, on every computer you sign in on.</p>
+      <div class="edit-table-panels">
+        <div class="edit-table-panel">
+          <div class="table-view-panel-head">
+            <span class="form-label">Show columns</span>
+            <span class="edit-table-toolbar-links">
+              <button type="button" class="column-filter-link" id="tableViewShowAll">Show all</button>
+            </span>
+          </div>
+          <div class="edit-table-picker-list" id="tableViewPicker"></div>
+        </div>
+        <div class="edit-table-panel">
+          <div class="table-view-panel-head">
+            <span class="form-label">Column order</span>
+          </div>
+          <div class="edit-table-order-list" id="tableViewOrder"></div>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button type="button" class="btn table-view-reset" id="tableViewResetBtn" title="Every column, in the original order">Reset to original</button>
+      <span class="modal-footer-message" id="tableViewMessage"></span>
+      <button type="button" class="btn" id="tableViewCancelBtn">Cancel</button>
+      <button type="button" class="btn btn-primary" id="tableViewSaveBtn">Save as default</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Magento: import groups (js/magento-groups.js) ─────────── -->
+<div id="mgGroupsImportOverlay" class="modal-backdrop">
+  <div class="modal-card company-form-card mg-groups-import-card" role="dialog" aria-modal="true" aria-labelledby="mgGroupsImportTitle">
+    <div class="modal-header">
+      <h3 id="mgGroupsImportTitle">Import groups</h3>
+      <button type="button" class="btn-close" id="mgGroupsImportCloseBtn" aria-label="Close">✕</button>
+    </div>
+    <div class="modal-body mg-groups-import-body">
+      <p class="mg-groups-import-intro" id="mgGroupsImportIntro"></p>
+      <div class="item-pane-summary mg-groups-import-summary" id="mgGroupsImportSummary"></div>
+      <div class="mg-groups-import-changes" id="mgGroupsImportChanges"></div>
+    </div>
+    <div class="modal-footer">
+      <span class="modal-footer-message" id="mgGroupsImportMessage"></span>
+      <button type="button" class="btn" id="mgGroupsImportCancelBtn">Cancel</button>
+      <button type="button" class="btn btn-primary" id="mgGroupsImportSaveBtn" disabled>Update groups</button>
+    </div>
+  </div>
+</div>
 
 <!-- ── Campaign form (add / edit) ────────────────────────────── -->
 <div id="campaignFormOverlay" class="modal-backdrop">
@@ -1031,29 +1313,32 @@
   </div>
 </div>
 
-<script src="js/config.js?v=20261019-1700"></script>
+<script src="js/config.js?v=20261020-1928"></script>
 <!-- Needs SUPABASE_URL/KEY from config.js and the CDN client above. -->
-<script src="js/auth.js?v=20261019-1700"></script>
-<script src="js/util.js?v=20261019-1700"></script>
-<script src="js/dates.js?v=20261019-1700"></script>
-<script src="js/store.js?v=20261019-1700"></script>
-<script src="js/tasks.js?v=20261019-1700"></script>
-<script src="js/app-shell.js?v=20261019-1700"></script>
-<script src="js/record-list.js?v=20261019-1700"></script>
-<script src="js/item-pane.js?v=20261019-1700"></script>
-<script src="js/campaign-form.js?v=20261019-1700"></script>
-<script src="js/trade-show-form.js?v=20261019-1700"></script>
-<script src="js/banners.js?v=20261019-1700"></script>
-<script src="js/banner-form.js?v=20261019-1700"></script>
-<script src="js/mailchimp.js?v=20261019-1700"></script>
-<script src="js/style-import.js?v=20261019-1700"></script>
-<script src="js/column-filter.js?v=20261019-1700"></script>
-<script src="js/styles.js?v=20261019-1700"></script>
-<script src="js/style-images.js?v=20261019-1700"></script>
-<script src="js/photoshoots.js?v=20261019-1700"></script>
-<script src="js/photoshoot-form.js?v=20261019-1700"></script>
-<script src="js/exports.js?v=20261019-1700"></script>
-<script src="js/calendar.js?v=20261019-1700"></script>
-<script src="js/main.js?v=20261019-1700"></script>
+<script src="js/auth.js?v=20261020-1928"></script>
+<script src="js/util.js?v=20261020-1928"></script>
+<script src="js/dates.js?v=20261020-1928"></script>
+<script src="js/store.js?v=20261020-1928"></script>
+<script src="js/tasks.js?v=20261020-1928"></script>
+<script src="js/app-shell.js?v=20261020-1928"></script>
+<script src="js/record-list.js?v=20261020-1928"></script>
+<script src="js/item-pane.js?v=20261020-1928"></script>
+<script src="js/campaign-form.js?v=20261020-1928"></script>
+<script src="js/trade-show-form.js?v=20261020-1928"></script>
+<script src="js/banners.js?v=20261020-1928"></script>
+<script src="js/banner-form.js?v=20261020-1928"></script>
+<script src="js/mailchimp.js?v=20261020-1928"></script>
+<script src="js/style-import.js?v=20261020-1928"></script>
+<script src="js/column-filter.js?v=20261020-1928"></script>
+<script src="js/styles.js?v=20261020-1928"></script>
+<script src="js/style-images.js?v=20261020-1928"></script>
+<script src="js/photoshoots.js?v=20261020-1928"></script>
+<script src="js/photoshoot-form.js?v=20261020-1928"></script>
+<script src="js/magento.js?v=20261020-1928"></script>
+<script src="js/magento-groups.js?v=20261020-1928"></script>
+<script src="js/table-view.js?v=20261020-1928"></script>
+<script src="js/exports.js?v=20261020-1928"></script>
+<script src="js/calendar.js?v=20261020-1928"></script>
+<script src="js/main.js?v=20261020-1928"></script>
 </body>
 </html>

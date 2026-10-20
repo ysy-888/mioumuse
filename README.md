@@ -64,10 +64,38 @@ reference in index.html so the URLs change on every deploy.
 | `js/style-images.js` | Style photos from a linked network folder — matched by file name, thumbnails, gallery |
 | `js/photoshoots.js` | Photoshoots tab — the Need to Shoot list, the shoots list, the shoot side pane, shoot status badges |
 | `js/photoshoot-form.js` | Create / edit photoshoot modal |
-| `js/column-filter.js` | Header filters (the PO app's design): click a column's funnel to tick which values show — used for IHD by month |
+| `js/magento-groups.js` | Magento tab → Import groups: reads a Magento product export's `associated_skus` and saves the exact group links; the "Not in group" flag |
+| `js/magento.js` | Magento tab — live products (filters, sort, paging, status switch, bulk changes, edit pane) and categories (rename, active, jump to products) |
+| `supabase/functions/magento/` | Edge Function the app calls for Magento; holds the store address and token (secrets `MAGENTO_BASE_URL`, `MAGENTO_ACCESS_TOKEN`) |
+| `js/column-filter.js` | Header filters (the PO app's design): click a column's funnel to tick which values show — used for IHD by month and the Magento products table |
+| `js/table-view.js` | Header menu → Table view: show / hide and reorder any table's columns, saved as that table's default to your account (`table_views`) |
 | `js/exports.js` | CSV downloads and printable (Save as PDF) reports — Need to Shoot, each photoshoot, and the header menu's Export CSV |
 | `js/calendar.js` | Home calendar of every campaign, show, and task, with the upcoming rail |
 | `js/main.js` | Boot |
+
+## Table view
+
+Header menu (⋮) → **Table view** sets which columns a table shows and in
+what order. It opens on the table of the page you're on; the **Table** list
+switches to any other (Campaigns, Trade Shows, Banners, Styles, Need to
+Shoot, Shoots, Magento Products).
+
+- **Show columns**: tick or untick. The tick-box column always stays, and
+  at least one other column has to.
+- **Column order**: drag a column up or down (or focus it and press Alt+↑ /
+  Alt+↓).
+- **Save as default** applies it and remembers it for that table. A column
+  you hide loses its header filter, if it had one.
+- **Reset to original** puts back every column in the original order (Save
+  to keep it).
+
+Views are saved to your account (the `table_views` table — see
+`supabase-schema.sql`), so they follow your login to any computer; Refresh
+picks up a view saved on another computer since. The browser also keeps a
+copy, so the columns are right from the first moment. A view saved on a
+computer before the table existed is uploaded the first time you sign in
+there. Until the table is added, views are saved on that computer only (the
+app says so). Columns added to a table later show up in their original spot.
 
 ## Campaigns
 
@@ -134,6 +162,103 @@ On the Home calendar each show appears on every day it runs (Day 1, Day 2,
 a show or its card highlights the whole thing — show days and all three
 emails. Once every email for a show is done, its email chips are hidden
 unless **Show completed** is on.
+
+## Magento
+
+The **Magento** tab is the store's catalog (Magento 2 / Adobe Commerce),
+read and edited live — nothing is copied into Supabase, so what you see is
+what the store has right now, and a save goes straight to the store.
+
+**Products** lists one page at a time (25–200 per page); Magento does the
+filtering and sorting, so it stays quick on a big catalog.
+
+- Filter from the **Type**, **Visibility**, **Status** and **Categories**
+  column headers: click the funnel side of the header and tick the values to
+  show — any of them match (Tops and Dresses shows products in either).
+  Each filter lists only values some product has, with how many (counted
+  in Magento when the tab loads, and again after bulk enable / disable);
+  categories with no products are left out. A filtered header turns dark;
+  Select all removes the filter. The toolbar's quick filters are shortcuts
+  for the header ones: All / Enabled / Disabled for Status, All / Grouped /
+  Simple for Type. Search matches SKU or name.
+- Products open sorted by **Name**, A–Z. Click a column's label to sort:
+  ascending, descending, then back to Name A–Z (Name itself flips between
+  A–Z and Z–A). Categories, color, image and qty don't sort. Products with
+  the same name put the Grouped item first, then go by SKU.
+- **Color** comes from Magento's Color attribute. It's a dropdown there, so
+  each product stores an option number and the app looks up the names:
+  through the admin API when the integration may read attributes (Stores →
+  Attributes → Product — the reliable way), otherwise from the store's
+  public GraphQL. If neither works, Color shows the numbers and the app
+  says why. It can be changed in the pane.
+- **Grouped items**: each shows how many Simple items it has (the number
+  beside its name — hover for their SKUs). While Type
+  isn't filtered, a Grouped item's Simple items on the same page are moved
+  right under it, and the group is set apart — a light grey tint, a bar
+  down the left, a line above the Grouped item and below its last Simple
+  item, the Simple items indented. With a Type filter on, the list is
+  shown just as sorted. A Grouped item's pane lists its Simple items' SKUs;
+  a Simple item's pane shows its group.
+- **Groups come from a Magento export.** Magento's API lists only a group's
+  *enabled* items and can't say which group a product is in, so the exact
+  links come from a product export instead. **Import groups** (toolbar)
+  reads the file in the browser — it's never uploaded — and saves only the
+  group links (`magento_groups`); nothing else in the app or in Magento
+  changes. A preview shows the counts and what changed since the last
+  import before **Update groups** saves. To get the file: Magento admin →
+  System → Data Transfer → Export → Entity Type: Products, format CSV.
+  Import a fresh one after changing groups in Magento; the toolbar shows
+  the date of the one in use. Until the first import (or for a group added
+  since), a group shows only its enabled items.
+- **Not in group** flag: a Simple item whose SKU is a group's SKU plus
+  "-…" (`T4339-WHITE/BLACK` → `T4339`) but which isn't in that group on
+  Magento is flagged "Not in T4339".
+- **Shared SKUs**: Magento doesn't strictly stop two products sharing a
+  SKU. The import lists any it finds (fix them in Magento), and combines a
+  shared Grouped SKU's items.
+- **Export CSV** (toolbar, or the header menu) downloads the products as
+  the app reads them from Magento's API — every product matching the
+  filters — with the imported groups. It isn't Magento's own export format:
+  Magento's API can't produce that, so the file for Import groups has to
+  come from the Magento admin.
+- The **Status** switch in each row enables or disables the product
+  straight away.
+- Tick rows (they stay ticked across pages) to **Enable**, **Disable**,
+  **Add to category…** or **Remove from category…** all at once. Anything
+  that fails stays ticked, with the reason shown.
+- Click a row to edit it in the side pane: status, visibility, name, price,
+  special price (blank clears it), weight, URL key, categories, short
+  description, description (HTML), meta title and meta description. Only
+  the fields you changed are sent. **Save to Magento** (or Ctrl+S) saves,
+  and **Revert** throws the edit away.
+
+**Categories** shows the tree with each category's product count. Click a
+name to rename it (Enter or click away saves, Esc undoes), switch it active
+or inactive, or **View products** to see the products in it.
+
+Saves are made at the "All Store Views" scope — the default values, as in
+the Magento admin with no store view chosen. A store view that overrides a
+value (a translated name, say) keeps its own.
+
+### Setup (one time)
+
+1. Magento admin → System → Extensions → **Integrations** → Add New
+   Integration. Name it (e.g. "Mioumuse"), and under API give it
+   **Catalog → Inventory → Products** and **Categories**. Save, then
+   **Activate** → Allow, and copy the **Access Token**.
+2. Magento 2.4.4 and later: Stores → Configuration → Services → OAuth →
+   Consumer Settings → **Allow OAuth Access Tokens to be used as standalone
+   Bearer tokens** → Yes.
+3. Add the secrets in Supabase (Project → Edge Functions → Secrets):
+   `MAGENTO_BASE_URL` (the store's address, e.g. `https://shop.example.com`)
+   and `MAGENTO_ACCESS_TOKEN`.
+4. Deploy the function:
+
+```bash
+supabase functions deploy magento --project-ref anzrcautqhbxdyobdyxp --use-api
+```
+
+Until then the tab shows "Not connected" with the reason.
 
 ## Not built yet
 
@@ -274,6 +399,11 @@ descending, then back to the default order. Blank values always sort last.
   - Shoots: the open shoot, or every shoot with its styles.
   - Styles: the filtered styles.
   - Platforms: banners.
+  - Magento → Products: every product matching the filters, search and
+    sort (all pages, fetched from Magento 200 at a time), with color,
+    each Grouped item's simple-item count and SKUs, category paths, prices,
+    stock and image URLs.
+  - Magento → Categories: the category tree as shown.
   - Anywhere else: the campaign and trade show schedule.
 
 Data: `shoot_list` (the flag, plus which shoot it was shot in) and

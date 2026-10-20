@@ -407,6 +407,7 @@ function exportCurrentViewCsv() {
       return exportShootsListCsv();
     case "styles": return exportStylesCsv();
     case "platforms": return exportBannersCsv();
+    case "magento": return exportMagentoCsv(); // js/magento.js
     default: return exportScheduleCsv();
   }
 }

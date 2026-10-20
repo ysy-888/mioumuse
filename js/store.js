@@ -257,6 +257,62 @@ async function clearAllData() {
   return loadAppData();
 }
 
+// ── Magento groups ───────────────────────────────────────────────────────────
+
+/**
+ * The imported Magento groups: { groups: Map(groupSku → [childSku]),
+ * importedAt } — or null when the magento_groups table isn't there yet.
+ */
+async function loadMagentoGroupRows() {
+  const client = requireClient();
+  const rows = [];
+  // Supabase hands back 1,000 rows at a time.
+  for (let from = 0; ; from += 1000) {
+    const res = await client.from("magento_groups").select("group_sku, child_skus, imported_at").range(from, from + 999);
+    if (res.error) {
+      if (from === 0) return null; // the table isn't set up yet
+      throw new Error(res.error.message);
+    }
+    rows.push(...res.data);
+    if (res.data.length < 1000) break;
+  }
+  const groups = new Map(rows.map(r => [r.group_sku, Array.isArray(r.child_skus) ? r.child_skus.map(String) : []]));
+  const importedAt = rows.reduce((latest, r) => (r.imported_at > latest ? r.imported_at : latest), "");
+  return { groups, importedAt };
+}
+
+/** Replace every imported group with these (Map groupSku → [childSku]). */
+async function replaceMagentoGroupRows(groups) {
+  const client = requireClient();
+  const importedAt = new Date().toISOString();
+  throwIfError(await client.from("magento_groups").delete().neq("group_sku", ""));
+  const rows = [...groups].map(([group_sku, child_skus]) => ({ group_sku, child_skus, imported_at: importedAt }));
+  for (let i = 0; i < rows.length; i += 500) {
+    throwIfError(await client.from("magento_groups").insert(rows.slice(i, i + 500)));
+  }
+  return importedAt;
+}
+
+// ── Table views ──────────────────────────────────────────────────────────────
+
+/**
+ * Every saved table view, as { tableId: { order, hidden } } — or null when
+ * the table_views table isn't there yet (an add-on: the app works without it).
+ */
+async function loadTableViewRows() {
+  const res = await requireClient().from("table_views").select("table_id, col_order, hidden");
+  if (res.error) return null;
+  return Object.fromEntries(res.data.map(row => [row.table_id, {
+    order: Array.isArray(row.col_order) ? row.col_order : [],
+    hidden: Array.isArray(row.hidden) ? row.hidden : [],
+  }]));
+}
+
+async function saveTableViewRow(tableId, { order, hidden }) {
+  const row = { table_id: tableId, col_order: order, hidden, updated_at: new Date().toISOString() };
+  throwIfError(await requireClient().from("table_views").upsert(row, { onConflict: "user_id,table_id" }));
+}
+
 // ── Shared helpers ───────────────────────────────────────────────────────────
 
 /** Unique, and sortable by when it was made. */

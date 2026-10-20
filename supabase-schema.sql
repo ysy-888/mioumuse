@@ -220,3 +220,45 @@ create policy "photoshoots: own rows only" on photoshoots
 -- Styles gained an IHD (in-house date), entered in the app — the ATS import
 -- never sends it, so re-importing leaves it alone.
 alter table styles add column if not exists ihd date;
+
+-- ── Magento groups (Magento tab → Import groups) ────────────────────────────
+--
+-- Which Simple items belong to each Grouped product, exactly as Magento has
+-- them — read from a Magento product export (its associated_skus column),
+-- since Magento's API leaves disabled items out of a group. One row per
+-- Grouped product; an import replaces them all. Nothing else is stored.
+
+create table if not exists magento_groups (
+  user_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
+  group_sku text not null,
+  child_skus jsonb not null default '[]',     -- in the group's order
+  imported_at timestamptz not null default now(),
+  primary key (user_id, group_sku)
+);
+
+alter table magento_groups enable row level security;
+
+drop policy if exists "magento_groups: own rows only" on magento_groups;
+create policy "magento_groups: own rows only" on magento_groups
+  for all using (user_id = auth.uid()) with check (user_id = auth.uid());
+
+-- ── Table views (header menu → Table view) ──────────────────────────────────
+--
+-- One row per user per table: which columns show, and in what order, so a
+-- view follows the login from computer to computer. `table_id` is the
+-- table's id in index.html, e.g. 'mgProductsTable'.
+
+create table if not exists table_views (
+  user_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
+  table_id text not null,
+  col_order jsonb not null default '[]',      -- every column key, in order
+  hidden jsonb not null default '[]',         -- the keys not shown
+  updated_at timestamptz not null default now(),
+  primary key (user_id, table_id)
+);
+
+alter table table_views enable row level security;
+
+drop policy if exists "table_views: own rows only" on table_views;
+create policy "table_views: own rows only" on table_views
+  for all using (user_id = auth.uid()) with check (user_id = auth.uid());

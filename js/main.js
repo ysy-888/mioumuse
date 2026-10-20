@@ -15,6 +15,8 @@ async function loadAndShowApp() {
 
   try {
     await loadAppData();
+    // Your saved column layouts, before anything is drawn with them.
+    await syncTableViewsFromAccount();
     // Mailchimp catches up in the background; the app doesn't wait on it.
     syncMailchimp();
     restoreStyleImageFolder();
@@ -41,6 +43,7 @@ async function bootApp() {
   initBannersView();
   initBannerForm();
   initMailchimp();
+  initMagento();
   initColumnFilterPopover();
   initStylesView();
   initStyleImages();
@@ -48,6 +51,8 @@ async function bootApp() {
   initPhotoshootForm();
   initExports();
   initCalendar();
+  // Last: rearranges the headers every table above has set up.
+  initTableViews();
 
   if (!isSupabaseConfigured()) {
     setAppLoading(false);
