@@ -7889,9 +7889,9 @@ th.th-select { text-align: center; cursor: default; padding-left: 4px; padding-r
 .mg-pager-size { width: auto; padding-top: 4px; padding-bottom: 4px; }
 
 /* Categories */
-.mg-categories-table { min-width: 720px; }
-.mg-categories-table .col-name    { width: auto;  min-width: 300px; }
-.mg-categories-table .col-id      { width: 80px;  min-width: 70px; }
+/* Only four columns — sized to them rather than the page. */
+.mg-categories-table { width: 760px; min-width: 0; max-width: 100%; margin: 0 auto; }
+.mg-categories-table .col-name    { width: 380px; min-width: 240px; }
 .mg-categories-table .col-count   { width: 100px; min-width: 90px; }
 .mg-categories-table .col-status  { width: 130px; min-width: 120px; }
 .mg-categories-table .col-actions { width: 150px; min-width: 140px; }

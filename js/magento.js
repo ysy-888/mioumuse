@@ -1014,7 +1014,7 @@ function renderMgCategoriesTable() {
   const tbody = document.getElementById("mgCategoriesBody");
   if (!tbody) return;
   const message = text => {
-    tbody.innerHTML = `<tr class="state-row"><td colspan="5">${escapeHtml(text)}</td></tr>`;
+    tbody.innerHTML = `<tr class="state-row"><td colspan="4">${escapeHtml(text)}</td></tr>`;
   };
   if (mgStore?.error) return message(mgStore.error);
   if (!mgStore) return message("Loading categories…");
@@ -1039,10 +1039,6 @@ function renderMgCategoriesTable() {
       name.appendChild(path);
     }
 
-    const id = document.createElement("td");
-    id.className = "mg-num";
-    id.textContent = c.id;
-
     const count = document.createElement("td");
     count.className = "mg-num";
     count.textContent = c.productCount.toLocaleString();
@@ -1064,7 +1060,7 @@ function renderMgCategoriesTable() {
     });
     actions.appendChild(view);
 
-    tr.append(name, id, count, active, actions);
+    tr.append(name, count, active, actions);
     return tr;
   }));
 }
