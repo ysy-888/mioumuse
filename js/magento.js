@@ -1234,6 +1234,8 @@ function initMagento() {
     initColumnFilter("mgProductsTable", col, {
       options: () => mgHeaderFilterOptions(col),
       onChange: applyMgHeaderFilters,
+      // Category names are long and nested — give them room.
+      width: col === "categories" ? 380 : null,
     });
   });
   document.querySelectorAll("#mgStatusFilters .filter-btn").forEach(btn => {

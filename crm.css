@@ -948,21 +948,14 @@ th:not(.th-filterable).sorted-desc::after { content: '↓'; }
   opacity: 1;
 }
 
-.record-table thead th.th-filterable:not(.sorted-asc):not(.sorted-desc):not(.filter-active):has(.th-label:hover)::before {
+/* Filterable headers: the sort hint sits right after the label — and only
+   on columns that sort. */
+.record-table thead th.th-filterable:not(.th-no-sort):not(.sorted-asc):not(.sorted-desc):not(.filter-active) .th-label:hover::after {
   content: '↑';
-  position: absolute;
-  top: 50%;
-  right: 26px;
-  transform: translateY(-50%);
+  margin-left: 3px;
   font-weight: 600;
   color: var(--text-muted);
   opacity: 0.45;
-}
-
-.record-table thead th.th-filterable.sorted-asc::before,
-.record-table thead th.th-filterable.sorted-desc::before {
-  color: var(--text);
-  opacity: 1;
 }
 
 th.col-leading,
@@ -1057,52 +1050,48 @@ th:hover { background: var(--accent-heavy); color: var(--text); }
 
 th.th-filterable {
   cursor: pointer;
-  padding-right: 26px;
 }
 
+/* The filter funnel: right beside the header text (js/column-filter.js puts
+   it after the label); its popover opens under it. */
 .th-filter-hit {
-  position: absolute;
-  right: 0;
-  top: 0;
-  bottom: 0;
-  width: 28px;
-  z-index: 1;
+  display: inline-block;
+  width: 20px;
+  height: 20px;
+  margin: -4px 0 -4px 2px;
+  vertical-align: middle;
   cursor: pointer;
-}
-
-th.th-filterable::after {
   color: var(--filter-icon);
-  width: 14px;
-  height: 14px;
-  opacity: 0.4;
+  background-color: currentColor;
+  opacity: 0.55;
   mask-image: var(--icon-filter);
   -webkit-mask-image: var(--icon-filter);
+  mask-repeat: no-repeat;
+  -webkit-mask-repeat: no-repeat;
+  mask-position: center;
+  -webkit-mask-position: center;
+  mask-size: 13px;
+  -webkit-mask-size: 13px;
   transition: opacity 0.15s ease, transform 0.15s ease;
 }
 
-th.th-filterable:has(.th-filter-hit:hover):not(.filter-active)::after {
-  opacity: 0.85;
-  transform: translateY(-50%) scale(1.08);
+th.th-filterable:not(.filter-active) .th-filter-hit:hover,
+th.th-filterable .th-filter-hit.is-open {
+  opacity: 1;
+  color: var(--filter-icon-active);
+  transform: scale(1.1);
 }
 
-th.th-filterable.sorted-asc,
-th.th-filterable.sorted-desc {
-  padding-right: 40px;
-}
-
-th.th-filterable.sorted-asc::before,
-th.th-filterable.sorted-desc::before {
-  position: absolute;
-  top: 50%;
-  right: 26px;
-  transform: translateY(-50%);
+/* Sorted: the arrow follows the label too. */
+th.th-filterable.sorted-asc .th-label::after,
+th.th-filterable.sorted-desc .th-label::after {
+  margin-left: 3px;
   font-weight: 600;
 }
 
-th.th-filterable.sorted-asc::before { content: '↑'; }
-th.th-filterable.sorted-desc::before { content: '↓'; }
+th.th-filterable.sorted-asc .th-label::after { content: '↑'; }
+th.th-filterable.sorted-desc .th-label::after { content: '↓'; }
 
-th.th-filterable::after,
 td.select-cell.select-cell-hover::after,
 td.select-cell.select-cell-open::after {
   content: '';
@@ -1158,7 +1147,7 @@ td.select-cell.select-cell-open::after {
   color: var(--text);
 }
 
-th.th-filterable.filter-active::after {
+th.th-filterable.filter-active .th-filter-hit {
   color: #fff;
   opacity: 1;
 }
@@ -1174,16 +1163,13 @@ th.th-filterable.filter-active:hover {
 }
 
 th.th-filterable .th-label {
-  display: block;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  display: inline;
   white-space: pre-line;
   line-height: 1.25;
   cursor: pointer;
-  padding-right: 2px;
-  max-width: 100%;
-  box-sizing: border-box;
 }
+
+th.th-filterable.th-no-sort .th-label { cursor: default; }
 
 .th-tooltip-card {
   position: fixed;
@@ -7599,7 +7585,7 @@ th.th-select { text-align: center; cursor: default; padding-left: 4px; padding-r
 
 /* Columns that don't sort: no hover arrow, no pointer. */
 .record-table thead th.th-no-sort { cursor: default; }
-.record-table thead th.th-no-sort:hover::after { content: none !important; }
+.record-table thead th.th-no-sort:not(.th-filterable):hover::after { content: none !important; }
 
 /* Header filter: month counts on the right; nothing-to-filter note. */
 .column-filter-option-label { flex: 1; }

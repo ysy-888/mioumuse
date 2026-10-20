@@ -54,10 +54,11 @@ function clearColumnFilter(tableId, col) {
   entry.onChange();
 }
 
-function initColumnFilter(tableId, col, { options, onChange }) {
+/** `width` (px) widens the popover for long option lists, e.g. category paths. */
+function initColumnFilter(tableId, col, { options, onChange, width = null }) {
   const th = document.querySelector(`#${tableId} thead th[data-col="${col}"]`);
   if (!th) return;
-  const entry = { selected: null, options, onChange, th };
+  const entry = { selected: null, options, onChange, th, width };
   columnFilters.set(columnFilterId(tableId, col), entry);
 
   th.classList.add("th-filterable");
@@ -68,10 +69,12 @@ function initColumnFilter(tableId, col, { options, onChange }) {
     label.append(...th.childNodes);
     th.appendChild(label);
   }
+  // The funnel, right after the label; the popover opens under it.
   const hit = document.createElement("span");
   hit.className = "th-filter-hit";
   hit.setAttribute("aria-hidden", "true");
   th.appendChild(hit);
+  entry.hit = hit;
 
   // Capture phase, so a click outside the label opens the filter instead of
   // reaching the table's sort handler.
@@ -88,17 +91,23 @@ function initColumnFilter(tableId, col, { options, onChange }) {
 function openColumnFilterPopover(entry) {
   const pop = document.getElementById("columnFilterPopover");
   if (!pop) return;
+  openColumnFilter?.hit?.classList.remove("is-open");
   openColumnFilter = entry;
   const all = entry.options().map(o => o.key);
   columnFilterDraft = new Set(entry.selected ? all.filter(k => entry.selected.has(k)) : all);
   renderColumnFilterList();
+  pop.style.width = entry.width ? `${entry.width}px` : "";
+  pop.style.maxWidth = entry.width ? `min(${entry.width}px, calc(100vw - 16px))` : "";
+  entry.hit?.classList.add("is-open");
   pop.hidden = false;
-  requestAnimationFrame(() => positionColumnFilterPopover(entry.th));
+  // Right away — reading its width lays it out — so it never shows misplaced.
+  positionColumnFilterPopover(entry);
 }
 
 function closeColumnFilterPopover() {
   const pop = document.getElementById("columnFilterPopover");
   if (pop) pop.hidden = true;
+  openColumnFilter?.hit?.classList.remove("is-open");
   openColumnFilter = null;
 }
 
@@ -133,12 +142,15 @@ function renderColumnFilterList() {
   }));
 }
 
-function positionColumnFilterPopover(th) {
+/** Under the funnel — centred on it, kept inside the window — just below the header. */
+function positionColumnFilterPopover(entry) {
   const pop = document.getElementById("columnFilterPopover");
-  if (!pop || !th) return;
-  const rect = th.getBoundingClientRect();
-  const left = Math.min(Math.max(8, rect.left), window.innerWidth - pop.offsetWidth - 8);
-  pop.style.top = `${rect.bottom + 4}px`;
+  if (!pop || !entry?.th) return;
+  const header = entry.th.getBoundingClientRect();
+  const icon = (entry.hit ?? entry.th).getBoundingClientRect();
+  const centre = icon.left + icon.width / 2;
+  const left = Math.min(Math.max(8, centre - pop.offsetWidth / 2), window.innerWidth - pop.offsetWidth - 8);
+  pop.style.top = `${header.bottom + 4}px`;
   pop.style.left = `${left}px`;
 }
 
@@ -179,7 +191,7 @@ function initColumnFilterPopover() {
     }
   });
   window.addEventListener("resize", () => {
-    if (openColumnFilter) positionColumnFilterPopover(openColumnFilter.th);
+    if (openColumnFilter) positionColumnFilterPopover(openColumnFilter);
   });
   // The tables scroll under a fixed popover — close it rather than leave it floating.
   document.addEventListener("scroll", e => {
