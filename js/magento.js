@@ -69,8 +69,27 @@ let mgSelected = new Set();
 /** The product in the pane: what Magento has (`saved`) and the edit in progress (`draft`). */
 let mgPane = null;
 
+/** The helper version this app expects (HELPER_VERSION in supabase/functions/magento). */
+const MG_HELPER_VERSION = "2026-10-20.7";
+
+/** Per action, the last call's timing: { roundTripMs, totalMs, authMs, magentoCalls, magentoMs, slowest… }. */
+const mgTimings = {};
+let mgHelperWarned = false;
+
+/** Notes where a call's time went, and warns once if the helper is older than the app. */
+function noteMgTiming(action, timing, roundTripMs) {
+  mgTimings[action] = { ...(timing ?? {}), roundTripMs: Math.round(roundTripMs) };
+  if (mgHelperWarned) return;
+  const version = timing?.version ?? "";
+  if (version !== MG_HELPER_VERSION) {
+    mgHelperWarned = true;
+    showIndicator(`The Magento helper in Supabase is out of date (${version || "an older version"}; the app needs ${MG_HELPER_VERSION}) — paste the latest supabase/functions/magento/index.ts into Edge Functions → magento and Deploy.`, "error");
+  }
+}
+
 async function callMagento(action, params = {}) {
   if (!supabaseClient) throw new Error("Supabase isn't configured.");
+  const started = performance.now();
   const { data, error } = await supabaseClient.functions.invoke(MG_FUNCTION, {
     body: { action, ...params },
   });
@@ -80,17 +99,44 @@ async function callMagento(action, params = {}) {
     try {
       const body = await error.context?.json?.();
       if (body?.error) message = body.error;
+      if (body) noteMgTiming(action, body.timing, performance.now() - started);
     } catch {
       /* keep the generic message */
     }
     if (/Failed to send a request|not found/i.test(message) && !/Magento/.test(message)) {
       message = "The Magento helper isn't set up yet — deploy the magento Edge Function.";
     }
+    // The app is newer than the helper running in Supabase.
+    if (/^Unknown action/.test(message)) {
+      message = `The Magento helper in Supabase is out of date (it doesn't know "${action}") — paste the latest supabase/functions/magento/index.ts into Edge Functions → magento and Deploy.`;
+    }
     const err = new Error(message);
     err.status = error.context?.status;
     throw err;
   }
+  noteMgTiming(action, data?.timing, performance.now() - started);
   return data?.data;
+}
+
+/** "1.8s" / "240ms". */
+function formatMgMs(ms) {
+  return ms >= 1000 ? `${(ms / 1000).toFixed(1)}s` : `${Math.round(ms)}ms`;
+}
+
+/**
+ * Where the last page's time went — on hover over the product count:
+ * the whole wait, Magento's share (and how many calls), the sign-in check.
+ */
+function describeMgPageTiming(action) {
+  const t = mgTimings[action];
+  if (!t) return "";
+  const parts = [`Loaded in ${formatMgMs(t.roundTripMs)}`];
+  if (t.magentoCalls !== undefined) {
+    parts.push(`Magento: ${t.magentoCalls} call${t.magentoCalls === 1 ? "" : "s"}, ${formatMgMs(t.magentoMs)}${t.magentoCalls > 1 ? ` (slowest ${formatMgMs(t.slowestMs)}: ${t.slowest})` : ""}`);
+    parts.push(`sign-in check: ${formatMgMs(t.authMs)}`);
+    parts.push(`helper ${t.version}`);
+  }
+  return parts.join("\n");
 }
 
 // ── Formatting ───────────────────────────────────────────────────────────────
@@ -105,9 +151,28 @@ function formatMgPrice(value) {
 }
 
 function formatMgQty(product) {
+  // A grouped style has no qty of its own — left blank.
+  if (product.type === "grouped") return "";
   if (product.qty === null) return EMPTY_DISPLAY;
-  const n = Number.isInteger(product.qty) ? product.qty : product.qty.toFixed(2);
-  return product.inStock === false ? `${n} · out` : String(n);
+  return String(Number.isInteger(product.qty) ? product.qty : product.qty.toFixed(2));
+}
+
+/** Magento's Stock Status — set on its own, so it can disagree with the qty. */
+function mgStockStatusText(product) {
+  if (product.inStock === null || product.inStock === undefined) return "";
+  return product.inStock ? "In Stock" : "Out of Stock";
+}
+
+function createMgStockPill(product) {
+  const text = mgStockStatusText(product);
+  const pill = document.createElement("span");
+  if (!text) {
+    pill.textContent = EMPTY_DISPLAY;
+    return pill;
+  }
+  pill.className = `mg-stock-pill ${product.inStock ? "is-in" : "is-out"}`;
+  pill.textContent = text;
+  return pill;
 }
 
 /** Magento's "2026-10-20 14:03:11" (UTC) as MM/DD/YY. */
@@ -185,9 +250,12 @@ async function loadMagentoProducts() {
   mgError = "";
   renderMgProducts();
   try {
-    const page = await callMagento("products", mgQuery);
+    // Availability and flags aren't Magento filters — those pages are picked
+    // here (js/magento-availability.js).
+    const page = hasMgClientFilter() ? await loadMgClientFilteredPage() : await callMagento("products", { ...mgQuery, ...mgStockParams() });
     if (seq !== mgRequestSeq) return;
-    page.items.forEach(applyMgGroups);
+    // Stock from the catalog when the page came without it (mgStockParams).
+    page.items.forEach(p => absorbMgProduct(applyMgGroups(mgIndex && p.qty === null && p.inStock === null ? fillMgStockFromIndex(p) : p)));
     mgPage = page;
   } catch (err) {
     if (seq !== mgRequestSeq) return;
@@ -211,6 +279,10 @@ async function reloadMagento() {
   mgLoading = true;
   renderMgProducts();
   renderMgCategoriesTable();
+  // The catalog in brief, for availability: started right away, alongside
+  // everything else (last time's answer shows meanwhile).
+  forgetMgSkuList();
+  const index = loadMgIndex({ force: true });
   const ok = await loadMagentoBasics();
   if (!ok) {
     mgLoading = false;
@@ -220,6 +292,7 @@ async function reloadMagento() {
   }
   renderMgCategoriesTable();
   await loadMagentoProducts();
+  await index;
 }
 
 // ── Toolbar ──────────────────────────────────────────────────────────────────
@@ -310,6 +383,12 @@ function updateMgCounter() {
     const n = mgPage.total;
     counter.textContent = n === 1 ? "1 product" : `${n.toLocaleString()} products`;
   }
+  // Hover: where the last page's time went (and the SKU list's, for
+  // Available / Flagged).
+  counter.title = mgSubview === "categories" ? "" : [
+    describeMgPageTiming("products"),
+    hasMgClientFilter() && mgTimings.skuList ? `Matching SKUs — ${describeMgPageTiming("skuList")}` : "",
+  ].filter(Boolean).join("\n\n");
 }
 
 /** Any filter change starts again from page 1. */
@@ -374,8 +453,12 @@ function createMgStatusSwitch(product) {
     try {
       const saved = await callMagento("update", { sku: product.sku, changes: { status: next } });
       Object.assign(product, pickMgSummary(applyMgGroups(saved)));
-      paint();
-      btn.closest("tr")?.classList.toggle("mg-row-disabled", product.status !== 1);
+      // Enabling or disabling can change what's available — this row's
+      // group and items included — so the table is redrawn.
+      absorbMgProduct(product);
+      forgetMgSkuList();
+      renderMgProducts();
+      renderMgAvailControls();
       if (mgPane?.saved.sku === product.sku) {
         mgPane.saved.status = saved.status;
         mgPane.draft.status = saved.status;
@@ -540,7 +623,7 @@ function renderMgProducts() {
   if (mgError) return message(mgError);
   if (mgLoading && !mgPage.items.length) return message("Loading products…");
   if (!mgPage.items.length) {
-    const filtered = mgQuery.search || Object.values(MG_HEADER_FILTERS).some(field => mgQuery[field]);
+    const filtered = mgQuery.search || hasMgClientFilter() || Object.values(MG_HEADER_FILTERS).some(field => mgQuery[field]);
     return message(filtered ? "No products match the current filters." : "No products in Magento yet.");
   }
 
@@ -550,7 +633,9 @@ function renderMgProducts() {
     tr.className = "clickable-row";
     tr.dataset.sku = product.sku;
     if (mgPane?.saved.sku === product.sku) tr.classList.add("is-open");
-    if (product.status !== 1) tr.classList.add("mg-row-disabled");
+    // Name and SKU go grey when the product isn't showing on the webstore
+    // (not just when it's disabled); while that's still unknown, they don't.
+    if (mgAvailability(product.sku).available === false) tr.classList.add("mg-row-unavailable");
     if (role) tr.classList.add(`mg-group-${role}`);
     cols.forEach(col => {
       const td = document.createElement("td");
@@ -578,8 +663,9 @@ function renderMgProducts() {
       } else if (col === "qty") {
         td.className = "mg-num";
         td.textContent = formatMgQty(product);
-        if (product.inStock === false) td.classList.add("mg-out-of-stock");
-      } else if (col === "visibility") td.textContent = MG_VISIBILITY[product.visibility] ?? EMPTY_DISPLAY;
+      } else if (col === "stockStatus") td.appendChild(createMgStockPill(product));
+      else if (col === "available") td.appendChild(createMgAvailCell(product));
+      else if (col === "visibility") td.textContent = MG_VISIBILITY[product.visibility] ?? EMPTY_DISPLAY;
       else if (col === "updatedAt") td.textContent = formatMgDate(product.updatedAt);
       if (col === "name" && product.name) td.title = product.name;
       tr.appendChild(td);
@@ -732,7 +818,17 @@ async function runMgBulk(op, categoryId = "") {
       renderMgCategoriesTable();
     }
     // Enabling or disabling moves the Status filter's counts.
-    if (op === "enable" || op === "disable") mgFacets = await callMagento("facets").catch(() => mgFacets);
+    if (op === "enable" || op === "disable") {
+      mgFacets = await callMagento("facets").catch(() => mgFacets);
+      // The changed products' status, for availability (they may be on other pages).
+      const status = op === "enable" ? 1 : 2;
+      results.filter(r => r.ok).forEach(r => {
+        const entry = mgIndex?.get(r.sku);
+        if (entry) entry.status = status;
+      });
+      forgetMgSkuList();
+      renderMgAvailControls();
+    }
     await loadMagentoProducts();
     if (failed.length) {
       const first = failed.slice(0, 3).map(r => `${r.sku}: ${r.error}`).join("; ");
@@ -977,6 +1073,8 @@ async function saveMagentoPane() {
   syncMgPaneFooter();
   try {
     const saved = applyMgGroups(await callMagento("update", { sku, changes }));
+    absorbMgProduct(saved);
+    forgetMgSkuList();
     if (mgPane?.saved.sku === sku) mgPane = { saved, draft: structuredClone(saved), loading: false };
     const row = mgPage.items.find(p => p.sku === sku);
     if (row) Object.assign(row, pickMgSummary(saved));
@@ -1167,12 +1265,22 @@ async function exportMagentoCsv() {
   const products = new Map(); // by SKU — a product edited mid-export can move pages
   setAppLoading(true, "Exporting from Magento…");
   try {
-    for (let page = 1; ; page++) {
-      const res = await callMagento("products", { ...mgQuery, page, pageSize: EXPORT_PAGE });
-      (res?.items ?? []).forEach(p => products.set(p.sku, applyMgGroups(p)));
-      setAppLoading(true, `Exporting from Magento… ${products.size.toLocaleString()} of ${res.total.toLocaleString()}`);
-      if (!res?.items?.length || page * EXPORT_PAGE >= res.total) break;
+    if (hasMgClientFilter()) {
+      // Availability / Flagged: the SKUs that pass, fetched 200 at a time.
+      const skus = await mgFilteredSkus();
+      for (let i = 0; i < skus.length; i += EXPORT_PAGE) {
+        (await loadMgProductsBySku(skus.slice(i, i + EXPORT_PAGE))).forEach(p => products.set(p.sku, applyMgGroups(mgIndex ? fillMgStockFromIndex(p) : p)));
+        setAppLoading(true, `Exporting from Magento… ${products.size.toLocaleString()} of ${skus.length.toLocaleString()}`);
+      }
+    } else {
+      for (let page = 1; ; page++) {
+        const res = await callMagento("products", { ...mgQuery, ...mgStockParams(), page, pageSize: EXPORT_PAGE });
+        (res?.items ?? []).forEach(p => products.set(p.sku, applyMgGroups(mgIndex ? fillMgStockFromIndex(p) : p)));
+        setAppLoading(true, `Exporting from Magento… ${products.size.toLocaleString()} of ${res.total.toLocaleString()}`);
+        if (!res?.items?.length || page * EXPORT_PAGE >= res.total) break;
+      }
     }
+    products.forEach(absorbMgProduct);
   } catch (err) {
     showIndicator(err.message || "Couldn't export from Magento.", "error");
     return;
@@ -1194,7 +1302,8 @@ async function exportMagentoCsv() {
     p.price ?? "",
     p.specialPrice ?? "",
     p.qty ?? "",
-    p.inStock === null ? "" : p.inStock ? "Yes" : "No",
+    mgStockStatusText(p),
+    ...(a => [a.available === true ? "Yes" : a.available === false ? "No" : "", a.reasons.join("; ")])(mgAvailability(p.sku)),
     (p.categoryIds ?? []).map(getMgCategoryPath).join(" | "),
     (p.categoryIds ?? []).join(", "),
     p.urlKey,
@@ -1203,7 +1312,7 @@ async function exportMagentoCsv() {
     p.updatedAt,
   ]);
   downloadCsv(`Magento products ${todayYmd()}`,
-    ["SKU", "Name", "Color", "Type", "Simple Items", "Simple Item SKUs", "Group", "Group Flag", "Status", "Visibility", "Price", "Special Price", "Qty", "In Stock", "Categories", "Category IDs", "URL Key", "Image URL", "Created", "Updated"],
+    ["SKU", "Name", "Color", "Type", "Simple Items", "Simple Item SKUs", "Group", "Group Flag", "Status", "Visibility", "Price", "Special Price", "Qty", "Stock Status", "Available", "Why Not Available", "Categories", "Category IDs", "URL Key", "Image URL", "Created", "Updated"],
     rows);
   showIndicator(`Exported ${rows.length.toLocaleString()} products`, "success");
 }
@@ -1225,6 +1334,7 @@ function exportMgCategoriesCsv() {
 function initMagento() {
   document.getElementById("mgExportCsvBtn")?.addEventListener("click", exportMagentoCsv);
   initMagentoGroups(); // js/magento-groups.js
+  initMagentoAvailability(); // js/magento-availability.js
 
   document.getElementById("mgPaneVisibility")?.replaceChildren(...Object.entries(MG_VISIBILITY).map(([k, v]) => new Option(v, k)));
 

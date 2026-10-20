@@ -7634,7 +7634,9 @@ th.th-select { text-align: center; cursor: default; padding-left: 4px; padding-r
 }
 .mg-connection.is-error { color: var(--danger); font-weight: 600; cursor: help; }
 
-.mg-products-table { min-width: 1640px; }
+.mg-products-table { min-width: 1910px; }
+.mg-products-table .col-available  { width: 150px; min-width: 140px; }
+.mg-products-table .col-stock      { width: 120px; min-width: 110px; }
 .mg-products-table .col-color      { width: 120px; min-width: 100px; }
 .mg-products-table .col-image      { width: 64px;  min-width: 64px; }
 .mg-products-table .col-name       { width: 240px; min-width: 200px; }
@@ -7743,8 +7745,9 @@ th.th-select { text-align: center; cursor: default; padding-left: 4px; padding-r
 .mg-groups-import-summary { border: 1px solid var(--border); border-radius: 6px; }
 .mg-groups-import-changes { font-size: 12.5px; color: var(--text-muted); white-space: pre-wrap; line-height: 1.5; }
 
-.mg-row-disabled td[data-col="name"],
-.mg-row-disabled td[data-col="sku"],
+/* Products: grey when not available on the webstore. Categories: grey when inactive. */
+.mg-row-unavailable td[data-col="name"],
+.mg-row-unavailable td[data-col="sku"],
 .mg-row-disabled .mg-cat-name-input { color: var(--text-muted); }
 
 .mg-sku { font-family: var(--font-mono); font-size: 12px; }
@@ -7762,7 +7765,7 @@ th.th-select { text-align: center; cursor: default; padding-left: 4px; padding-r
 }
 .mg-type-pill[data-type="simple"]       { background: #e1ecfb; color: #1f56a5; }
 .mg-type-pill[data-type="configurable"] { background: #efe6fb; color: #6b3fb0; }
-.mg-type-pill[data-type="grouped"]      { background: #fdf0d5; color: #8a5a00; }
+.mg-type-pill[data-type="grouped"]      { background: #fbe4f5; color: #a3197f; }
 .mg-type-pill[data-type="bundle"]       { background: #e1f5ee; color: #0f6e56; }
 .mg-type-pill[data-type="virtual"]      { background: #eef0f3; color: #4a5568; }
 .mg-type-pill[data-type="downloadable"] { background: #fde7ea; color: #a3233a; }
@@ -7774,7 +7777,41 @@ th.th-select { text-align: center; cursor: default; padding-left: 4px; padding-r
   font-size: 11.5px;
   font-weight: 600;
 }
-.mg-out-of-stock { color: var(--danger); }
+/* Stock Status: Magento's In Stock / Out of Stock. */
+.mg-stock-pill {
+  display: inline-block;
+  padding: 2px 9px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.mg-stock-pill.is-in  { background: #e1f5ee; color: #0f6e56; }
+.mg-stock-pill.is-out { background: #fde7ea; color: #a3233a; }
+
+/* Available: showing on the webstore (js/magento-availability.js). */
+.mg-avail-cell { display: inline-flex; flex-direction: column; align-items: center; gap: 2px; max-width: 100%; }
+.mg-avail-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 9px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.mg-avail-pill::before {
+  content: "";
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+}
+.mg-avail-pill.is-yes { background: #dff3e6; color: #13703a; }
+.mg-avail-pill.is-no { background: #eef0f3; color: #6b7280; }
+.mg-avail-pill.is-unknown { background: transparent; color: var(--text-muted); border: 1px dashed var(--border-strong); }
+.mg-flagged-btn.active { background: #a3233a; border-color: #a3233a; color: #fff; }
 
 .mg-thumb {
   display: block;
@@ -7854,9 +7891,10 @@ th.th-select { text-align: center; cursor: default; padding-left: 4px; padding-r
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
   transition: transform 140ms;
 }
-.mg-status-switch.is-on { color: var(--success); }
-.mg-status-switch.is-on .mg-switch-track { background: var(--success); }
-.mg-status-switch.is-on .mg-switch-knob { transform: translateX(13px); }
+/* On: the In Stock label's greens — a light track, a green knob. */
+.mg-status-switch.is-on { color: #0f6e56; }
+.mg-status-switch.is-on .mg-switch-track { background: #e1f5ee; box-shadow: inset 0 0 0 1px #a8dcc9; }
+.mg-status-switch.is-on .mg-switch-knob { transform: translateX(13px); background: #0f6e56; box-shadow: none; }
 
 /* Paging lives in the app footer, on the right. */
 .mg-pager {

@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>MIOU MUSE</title>
 <link rel="icon" href="favicon.svg" type="image/svg+xml" />
-<link rel="stylesheet" href="crm.css?v=20261020-2030" />
+<link rel="stylesheet" href="crm.css?v=20261020-2215" />
 </head>
 <body>
 
@@ -241,6 +241,15 @@
         <button type="button" class="filter-btn" data-type="grouped">Grouped</button>
         <button type="button" class="filter-btn" data-type="simple">Simple</button>
       </div>
+      <span class="toolbar-filter-divider" aria-hidden="true"></span>
+      <!-- Showing on the webstore? (js/magento-availability.js) -->
+      <div class="filter-btn-group" id="mgAvailFilters" role="group" aria-label="Availability">
+        <button type="button" class="filter-btn" data-avail="">All</button>
+        <button type="button" class="filter-btn" data-avail="available">Available</button>
+        <button type="button" class="filter-btn" data-avail="unavailable">Not available</button>
+      </div>
+      <span class="toolbar-filter-divider" aria-hidden="true"></span>
+      <button type="button" class="filter-btn mg-flagged-btn" id="mgFlaggedBtn">Flagged</button>
       <div class="selection-bar" id="mgSelectionBar" hidden>
         <span class="selection-count" id="mgSelectionCount"></span>
         <button type="button" class="btn" id="mgBulkEnableBtn">Enable</button>
@@ -651,8 +660,10 @@
         <col class="col-type" />
         <col class="col-price" />
         <col class="col-qty" />
+        <col class="col-stock" />
         <col class="col-visibility" />
         <col class="col-status" />
+        <col class="col-available" />
         <col class="col-categories" />
         <col class="col-updated" />
       </colgroup>
@@ -666,14 +677,16 @@
           <th data-col="type">Type</th>
           <th data-col="price">Price</th>
           <th data-col="qty">Qty</th>
+          <th data-col="stockStatus">Stock Status</th>
           <th data-col="visibility">Visibility</th>
           <th data-col="status">Status</th>
+          <th data-col="available" title="Showing on the webstore: enabled, in stock, qty 1+, and (for an item) in an available group">Available</th>
           <th data-col="categories">Categories</th>
           <th data-col="updatedAt">Updated</th>
         </tr>
       </thead>
       <tbody id="mgProductsBody">
-        <tr class="state-row"><td colspan="12">Loading products…</td></tr>
+        <tr class="state-row"><td colspan="14">Loading products…</td></tr>
       </tbody>
     </table>
     </div>
@@ -1311,32 +1324,33 @@
   </div>
 </div>
 
-<script src="js/config.js?v=20261020-2030"></script>
+<script src="js/config.js?v=20261020-2215"></script>
 <!-- Needs SUPABASE_URL/KEY from config.js and the CDN client above. -->
-<script src="js/auth.js?v=20261020-2030"></script>
-<script src="js/util.js?v=20261020-2030"></script>
-<script src="js/dates.js?v=20261020-2030"></script>
-<script src="js/store.js?v=20261020-2030"></script>
-<script src="js/tasks.js?v=20261020-2030"></script>
-<script src="js/app-shell.js?v=20261020-2030"></script>
-<script src="js/record-list.js?v=20261020-2030"></script>
-<script src="js/item-pane.js?v=20261020-2030"></script>
-<script src="js/campaign-form.js?v=20261020-2030"></script>
-<script src="js/trade-show-form.js?v=20261020-2030"></script>
-<script src="js/banners.js?v=20261020-2030"></script>
-<script src="js/banner-form.js?v=20261020-2030"></script>
-<script src="js/mailchimp.js?v=20261020-2030"></script>
-<script src="js/style-import.js?v=20261020-2030"></script>
-<script src="js/column-filter.js?v=20261020-2030"></script>
-<script src="js/styles.js?v=20261020-2030"></script>
-<script src="js/style-images.js?v=20261020-2030"></script>
-<script src="js/photoshoots.js?v=20261020-2030"></script>
-<script src="js/photoshoot-form.js?v=20261020-2030"></script>
-<script src="js/magento.js?v=20261020-2030"></script>
-<script src="js/magento-groups.js?v=20261020-2030"></script>
-<script src="js/table-view.js?v=20261020-2030"></script>
-<script src="js/exports.js?v=20261020-2030"></script>
-<script src="js/calendar.js?v=20261020-2030"></script>
-<script src="js/main.js?v=20261020-2030"></script>
+<script src="js/auth.js?v=20261020-2215"></script>
+<script src="js/util.js?v=20261020-2215"></script>
+<script src="js/dates.js?v=20261020-2215"></script>
+<script src="js/store.js?v=20261020-2215"></script>
+<script src="js/tasks.js?v=20261020-2215"></script>
+<script src="js/app-shell.js?v=20261020-2215"></script>
+<script src="js/record-list.js?v=20261020-2215"></script>
+<script src="js/item-pane.js?v=20261020-2215"></script>
+<script src="js/campaign-form.js?v=20261020-2215"></script>
+<script src="js/trade-show-form.js?v=20261020-2215"></script>
+<script src="js/banners.js?v=20261020-2215"></script>
+<script src="js/banner-form.js?v=20261020-2215"></script>
+<script src="js/mailchimp.js?v=20261020-2215"></script>
+<script src="js/style-import.js?v=20261020-2215"></script>
+<script src="js/column-filter.js?v=20261020-2215"></script>
+<script src="js/styles.js?v=20261020-2215"></script>
+<script src="js/style-images.js?v=20261020-2215"></script>
+<script src="js/photoshoots.js?v=20261020-2215"></script>
+<script src="js/photoshoot-form.js?v=20261020-2215"></script>
+<script src="js/magento.js?v=20261020-2215"></script>
+<script src="js/magento-availability.js?v=20261020-2215"></script>
+<script src="js/magento-groups.js?v=20261020-2215"></script>
+<script src="js/table-view.js?v=20261020-2215"></script>
+<script src="js/exports.js?v=20261020-2215"></script>
+<script src="js/calendar.js?v=20261020-2215"></script>
+<script src="js/main.js?v=20261020-2215"></script>
 </body>
 </html>

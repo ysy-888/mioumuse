@@ -189,6 +189,44 @@ filtering and sorting, so it stays quick on a big catalog.
   Magento's inventory for each page's SKUs in one call — a SKU's qty is the
   total across its sources, in stock if any source is — falling back to
   each product's stock record. Grouped items hold no stock and show "–".
+- **Stock Status** (In Stock / Out of Stock) is Magento's own setting, kept
+  apart from the qty — so an item can have stock and still be Out of Stock.
+  Simple items' comes with the qty; Grouped items have their own, read from
+  each one's stock record.
+- **Available** — is it showing on the webstore? Grouped styles are
+  visible (Catalog, Search) and their Simple items (colours) are "Not
+  Visible Individually", so:
+  - a **Simple item** is available when it's Enabled, Qty ≥ 1 and In Stock,
+    *and* its group is Enabled and In Stock — an item in no group, or in an
+    unavailable group, doesn't show;
+  - a **Grouped style** is available when it's Enabled and In Stock (it has
+    no qty), *and* at least one of its items is available.
+  The column says Available / Not available and why not ("Qty 0", "Group
+  T2846 is Disabled", "No available items", "Not in a group"). It's worked
+  out from a brief index of the whole catalog (every product's status,
+  visibility, qty and Stock Status — loaded with the tab and on Refresh,
+  its pages fetched side by side) and the imported groups, and updates
+  straight away after an edit in the app. The browser keeps the last index,
+  so availability shows the moment the tab opens while a fresh one loads.
+  With the index in hand, a page of products is a single call to Magento:
+  Qty and Stock Status are filled in from the index rather than asked for
+  page by page (which took a call per Grouped item). They're as fresh as
+  the index — Refresh gets new ones.
+- **Speed check**: hover over the product count for where the last page's
+  time went — the whole wait, Magento's share and how many calls it took,
+  and the sign-in check. The helper also reports its version; if the copy
+  in Supabase is older than the app expects, the app says so. (Bump
+  `HELPER_VERSION` in the Edge Function and `MG_HELPER_VERSION` in
+  `js/magento.js` together whenever the function changes.)
+  **Available / Not available** (toolbar) filter by it, and **Flagged**
+  shows Simple items whose SKU matches a group they aren't in. Magento
+  can't filter by these, so with one on the app does the rest itself, from
+  the catalog index (which also carries each product's name, price, date
+  and categories): it applies the other filters and the search, sorts the
+  way Magento does, keeps the products that pass, and asks Magento only for
+  the page shown (10 SKUs per call, side by side) — paging, sorting and
+  Export CSV all follow. Export adds Available and Why Not
+  Available columns.
 - **Color** comes from Magento's Color attribute. It's a dropdown there, so
   each product stores an option number and the app looks up the names:
   through the admin API when the integration may read attributes (Stores →

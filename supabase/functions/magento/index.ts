@@ -20,10 +20,16 @@
  *   status                          is it connected, and which store
  *   categories                      the whole category tree, flattened
  *   products   { page, pageSize, sort, dir, search, status, type,
- *                visibility, categoryId }
+ *                visibility, categoryId, skus?, withStock? }
+ *                                   withStock: false leaves qty / Stock
+ *                                   Status out (the app has them already)
  *                                   one page of products; status, type,
  *                                   visibility and categoryId each take
  *                                   one value or a list (any matches)
+ *   skuList    { …products filters } every matching SKU, in sort order
+ *   catalogIndex                    every product's [sku, type, status,
+ *                                   visibility, qty, inStock], for
+ *                                   working out availability
  *   facets                          product counts per status, type and
  *                                   visibility value (for the filters)
  *   colorOptions                    Color's choices { options, problem }
@@ -46,9 +52,24 @@
  */
 
 import { createClient } from "jsr:@supabase/supabase-js@2";
+import { AsyncLocalStorage } from "node:async_hooks";
 
 // The store's address only — anything from "/rest" on (pasted from an API
 // URL) is dropped, so "https://shop.com/rest/V1" still works.
+/**
+ * This file's version — sent with every reply, so the app can tell when the
+ * copy running in Supabase is older than the app expects. Bump it (and
+ * MG_HELPER_VERSION in js/magento.js) whenever this file changes.
+ */
+const HELPER_VERSION = "2026-10-20.7";
+
+/**
+ * Where a request's time went: each Magento call is counted and timed, per
+ * request (AsyncLocalStorage keeps requests running side by side apart).
+ */
+type Timing = { magentoCalls: number; magentoMs: number; slowestMs: number; slowest: string };
+const timingStore = new AsyncLocalStorage<Timing>();
+
 const BASE = (Deno.env.get("MAGENTO_BASE_URL") ?? "").trim().replace(/\/rest(\/.*)?$/i, "").replace(/\/+$/, "");
 const TOKEN = Deno.env.get("MAGENTO_ACCESS_TOKEN") ?? "";
 
@@ -87,6 +108,24 @@ function magentoMessage(body: any) {
  * "all" for saves.
  */
 async function mg(path: string, init: RequestInit = {}, scope = "") {
+  const started = performance.now();
+  try {
+    return await mgCall(path, init, scope);
+  } finally {
+    const t = timingStore.getStore();
+    if (t) {
+      const ms = performance.now() - started;
+      t.magentoCalls += 1;
+      t.magentoMs += ms;
+      if (ms > t.slowestMs) {
+        t.slowestMs = ms;
+        t.slowest = path.split("?")[0];
+      }
+    }
+  }
+}
+
+async function mgCall(path: string, init: RequestInit, scope: string) {
   const res = await fetch(`${BASE}/rest/${scope ? `${scope}/` : ""}V1${path}`, {
     ...init,
     headers: {
@@ -101,7 +140,8 @@ async function mg(path: string, init: RequestInit = {}, scope = "") {
   try {
     body = text ? JSON.parse(text) : null;
   } catch {
-    // An HTML error page — usually the wrong MAGENTO_BASE_URL.
+    // An HTML error page from the web server rather than Magento.
+    if (res.status === 414) throw new UserError("The request to Magento was too long for its web server (414).", 502);
     if (!res.ok) throw new UserError(`Magento answered ${res.status} without JSON — check MAGENTO_BASE_URL.`, 502);
   }
   if (!res.ok) {
@@ -110,6 +150,34 @@ async function mg(path: string, init: RequestInit = {}, scope = "") {
     throw new UserError(message, res.status === 404 ? 404 : 502);
   }
   return body;
+}
+
+/**
+ * A long SKU list as small batches. Each SKU in a search adds three query
+ * parameters (~200 characters); 50 of them made a ~15,000-character web
+ * address, too long for the store's web server (414 — the usual limit is
+ * 8,000). 10 at a time stays near 4,000 even with every filter on.
+ */
+const SKU_BATCH = 10;
+
+function skuBatches(skus: string[]) {
+  const out: string[][] = [];
+  for (let i = 0; i < skus.length; i += SKU_BATCH) out.push(skus.slice(i, i + SKU_BATCH));
+  return out;
+}
+
+/**
+ * Every page of a product search: the first says how many there are, then
+ * the rest are fetched side by side (a few at a time) rather than in turn.
+ */
+// deno-lint-ignore no-explicit-any
+async function allProductPages(query: (page: number) => URLSearchParams, pageSize: number, limit = 4): Promise<any[]> {
+  const first = await mg(`/products?${query(1)}`);
+  const total = Number(first?.total_count ?? 0);
+  const pages = Math.min(Math.ceil(total / pageSize), 50);
+  const rest = await eachLimited(Array.from({ length: Math.max(pages - 1, 0) }, (_, i) => i + 2), limit,
+    page => mg(`/products?${query(page)}`));
+  return [first, ...rest].flatMap(b => b?.items ?? []);
 }
 
 /** Run `fn` over `items`, a few at a time, so a big batch doesn't swamp the store. */
@@ -146,9 +214,11 @@ const LIST_FIELDS = [
 //      Product (the most reliable);
 //   2. the storefront's GraphQL, which needs no token — the 2.4.7+ query,
 //      then the older one.
-// A found list is kept for 10 minutes; a failed lookup isn't kept, so
-// fixing the permission takes effect on the next page. `colorProblem` says
-// why the names couldn't be found, for the app to show.
+// The answer is kept for 10 minutes — a failed lookup too: trying all three
+// again on every page added three failing calls to each one. The tab's own
+// colorOptions call (on open and on Refresh) always asks afresh, so fixing
+// the permission takes effect on the next Refresh. `colorProblem` says why
+// the names couldn't be found, for the app to show.
 
 type ColorOption = { value: string; label: string };
 let colorCache: { options: ColorOption[]; at: number } | null = null;
@@ -173,8 +243,8 @@ async function storefrontGraphql(query: string) {
   return body.data;
 }
 
-async function getColorOptions(): Promise<ColorOption[]> {
-  if (colorCache && Date.now() - colorCache.at < 10 * 60 * 1000) return colorCache.options;
+async function getColorOptions({ fresh = false } = {}): Promise<ColorOption[]> {
+  if (!fresh && colorCache && Date.now() - colorCache.at < 10 * 60 * 1000) return colorCache.options;
   const attempts: [string, () => Promise<ColorOption[]>][] = [
     ["admin API", async () => toColorOptions(await mg("/products/attributes/color/options"))],
     ["storefront GraphQL", async () => {
@@ -201,6 +271,7 @@ async function getColorOptions(): Promise<ColorOption[]> {
     }
   }
   colorProblem = `Couldn't read Color's names (${why.join("; ")}). In Magento, give the integration Stores → Attributes → Product access, then Refresh.`;
+  colorCache = { options: [], at: Date.now() };
   return [];
 }
 
@@ -306,6 +377,8 @@ function buildSearchCriteria(p: Record<string, unknown>) {
   // categories go as a single "in" list instead.
   const categories = list(p.categoryId);
   if (categories.length) add([["category_id", categories.join(","), "in"]]);
+  // Exactly these SKUs — a page the app picked itself (availability, flags).
+  anyOf("sku", list(p.skus).slice(0, 200));
 
   // Unsorted means most recently updated first.
   const sort = SORT_FIELDS[String(p.sort ?? "")] ?? "updated_at";
@@ -385,32 +458,51 @@ async function getProduct(sku: string) {
 // ── Stock ────────────────────────────────────────────────────────────────────
 //
 // The product list doesn't carry stock on this Magento (its stock_item comes
-// back empty), so quantities are asked for separately:
-//   1. Inventory source items (MSI) — one call for the whole page; a SKU's
-//      qty is the total across its sources, in stock if any source is.
-//   2. Failing that, each product's legacy stock item, a few at a time.
-// Grouped products hold no stock of their own and are skipped.
+// back empty), so quantity and Stock Status (In Stock / Out of Stock — set
+// on its own in Magento, not worked out from qty) are asked for separately:
+//   Simple   1. Inventory source items (MSI) — a few short calls for the
+//               page (10 SKUs each), side by side; qty is the total across
+//               sources, in stock if any source is.
+//            2. Failing that, each product's legacy stock item.
+//   Grouped  no qty of its own, but its own Stock Status — from its legacy
+//            stock item (MSI keeps none for grouped products).
 
 type Stocked = { sku: string; type: string; qty: number | null; inStock: boolean | null };
 
 async function addStock<T extends Stocked>(items: T[]): Promise<T[]> {
-  const need = items.filter(p => p.type !== "grouped" && p.qty === null);
-  if (!need.length) return items;
+  const grouped = items.filter(p => p.type === "grouped" && p.inStock === null);
+  await Promise.all([
+    addSimpleStock(items.filter(p => p.type !== "grouped" && p.qty === null)),
+    eachLimited(grouped, 8, async p => {
+      try {
+        p.inStock = Boolean((await mg(`/stockItems/${encodeURIComponent(p.sku)}`))?.is_in_stock);
+      } catch {
+        /* left unknown */
+      }
+    }),
+  ]);
+  return items;
+}
+
+async function addSimpleStock(need: Stocked[]) {
+  if (!need.length) return;
   const bySku = new Map(need.map(p => [p.sku, p]));
 
   try {
-    const q = new URLSearchParams();
-    // Any of these SKUs (one filter group = OR).
-    need.forEach((p, i) => {
-      q.set(`searchCriteria[filter_groups][0][filters][${i}][field]`, "sku");
-      q.set(`searchCriteria[filter_groups][0][filters][${i}][value]`, p.sku);
-      q.set(`searchCriteria[filter_groups][0][filters][${i}][condition_type]`, "eq");
-    });
-    q.set("searchCriteria[pageSize]", String(need.length * 20));
-    const body = await mg(`/inventory/source-items?${q}`);
+    // Any of these SKUs (one filter group = OR) — in short batches, at once.
+    const bodies = await Promise.all(skuBatches(need.map(p => p.sku)).map(batch => {
+      const q = new URLSearchParams();
+      batch.forEach((sku, i) => {
+        q.set(`searchCriteria[filter_groups][0][filters][${i}][field]`, "sku");
+        q.set(`searchCriteria[filter_groups][0][filters][${i}][value]`, sku);
+        q.set(`searchCriteria[filter_groups][0][filters][${i}][condition_type]`, "eq");
+      });
+      q.set("searchCriteria[pageSize]", String(batch.length * 20));
+      return mg(`/inventory/source-items?${q}`);
+    }));
     const found = new Set<string>();
     // deno-lint-ignore no-explicit-any
-    (body?.items ?? []).forEach((s: any) => {
+    bodies.flatMap(b => b?.items ?? []).forEach((s: any) => {
       const p = bySku.get(String(s.sku));
       if (!p) return;
       found.add(p.sku);
@@ -424,12 +516,12 @@ async function addStock<T extends Stocked>(items: T[]): Promise<T[]> {
         p.inStock = false;
       }
     });
-    return items;
+    return;
   } catch {
     // No MSI (or not allowed): the legacy stock item, per product.
   }
 
-  await eachLimited(need, 4, async p => {
+  await eachLimited(need, 8, async p => {
     try {
       const s = await mg(`/stockItems/${encodeURIComponent(p.sku)}`);
       p.qty = Number(s?.qty ?? 0);
@@ -438,7 +530,43 @@ async function addStock<T extends Stocked>(items: T[]): Promise<T[]> {
       /* left unknown */
     }
   });
-  return items;
+}
+
+/**
+ * Every product's stock at once, for the catalog index: Magento's low-stock
+ * list with a ceiling no product reaches (all stock items, keyed by product
+ * id — grouped products included), or failing that the inventory source
+ * items (keyed by SKU — Simple items only).
+ */
+type StockEntry = { qty: number; inStock: boolean };
+
+async function catalogStock(): Promise<{ stockFrom: string; byId?: Map<string, StockEntry>; bySku?: Map<string, StockEntry> }> {
+  try {
+    const byId = new Map<string, StockEntry>();
+    for (let page = 1; page <= 20; page++) {
+      const q = new URLSearchParams({ scopeId: "0", qty: "1000000000", pageSize: "5000", currentPage: String(page) });
+      const items = (await mg(`/stockItems/lowStock/?${q}`))?.items ?? [];
+      // Some versions send only the qty here — then this list is no use.
+      // deno-lint-ignore no-explicit-any
+      if (items.length && items.some((s: any) => s.product_id === undefined || s.is_in_stock === undefined)) {
+        throw new Error("stock items without product or status");
+      }
+      // deno-lint-ignore no-explicit-any
+      items.forEach((s: any) => byId.set(String(s.product_id), { qty: Number(s.qty ?? 0), inStock: Boolean(s.is_in_stock) }));
+      if (items.length < 5000) break;
+    }
+    if (!byId.size) throw new Error("no stock items");
+    return { stockFrom: "stock items", byId };
+  } catch {
+    const bySku = new Map<string, StockEntry>();
+    const q = new URLSearchParams({ "searchCriteria[pageSize]": "100000" });
+    // deno-lint-ignore no-explicit-any
+    ((await mg(`/inventory/source-items?${q}`))?.items ?? []).forEach((s: any) => {
+      const now = bySku.get(String(s.sku)) ?? { qty: 0, inStock: false };
+      bySku.set(String(s.sku), { qty: now.qty + Number(s.quantity ?? 0), inStock: now.inStock || Number(s.status) === 1 });
+    });
+    return { stockFrom: "inventory sources", bySku };
+  }
 }
 
 // ── Categories ───────────────────────────────────────────────────────────────
@@ -508,17 +636,37 @@ const actions: Record<string, (p: any) => Promise<unknown>> = {
   },
 
   async products(params) {
-    const { query, pageSize } = buildSearchCriteria(params);
-    query.set("fields", `items[${LIST_FIELDS}],total_count`);
-    const [body, colors] = await Promise.all([mg(`/products?${query}`), getColorNames()]);
+    const colorsLoading = getColorNames();
     // deno-lint-ignore no-explicit-any
-    const items = await addStock((body?.items ?? []).map((p: any) => summarize(p, colors)));
-    return {
-      items,
-      total: Number(body?.total_count ?? 0),
-      page: Math.max(Number(params.page) || 1, 1),
-      pageSize,
-    };
+    let raw: any[];
+    let total: number;
+    let pageSize: number;
+    const skus = Array.isArray(params.skus) ? params.skus.map(String) : [];
+    if (skus.length) {
+      // Chosen SKUs: a few short searches at once, not one over-long one.
+      const bodies = await Promise.all(skuBatches(skus.slice(0, 200)).map(batch => {
+        const { query } = buildSearchCriteria({ ...params, skus: batch, page: 1, pageSize: batch.length });
+        query.set("fields", `items[${LIST_FIELDS}],total_count`);
+        return mg(`/products?${query}`);
+      }));
+      raw = bodies.flatMap(b => b?.items ?? []);
+      total = raw.length;
+      pageSize = skus.length;
+    } else {
+      const built = buildSearchCriteria(params);
+      built.query.set("fields", `items[${LIST_FIELDS}],total_count`);
+      const body = await mg(`/products?${built.query}`);
+      raw = body?.items ?? [];
+      total = Number(body?.total_count ?? 0);
+      pageSize = built.pageSize;
+    }
+    const colors = await colorsLoading;
+    const summaries = raw.map(p => summarize(p, colors));
+    // Stock costs extra calls (one per Grouped item). The app skips it
+    // (withStock: false) when its catalog index already has every product's
+    // qty and Stock Status — then a page is one call to Magento.
+    const items = params.withStock === false ? summaries : await addStock(summaries);
+    return { items, total, page: Math.max(Number(params.page) || 1, 1), pageSize };
   },
 
   /**
@@ -526,6 +674,66 @@ const actions: Record<string, (p: any) => Promise<unknown>> = {
    * header filters list only values that exist. One tiny count query per
    * value, a few at a time.
    */
+  /**
+   * Every SKU matching the filters, search and sort, in order — for filters
+   * Magento can't apply itself (availability, flags): the app picks the
+   * SKUs it wants and asks for that page with `skus`.
+   */
+  async skuList(params) {
+    const items = await allProductPages(page => {
+      const { query } = buildSearchCriteria({ ...params, skus: [], page, pageSize: 1000 });
+      query.set("searchCriteria[pageSize]", "1000");
+      query.set("fields", "items[sku],total_count");
+      return query;
+    }, 1000);
+    return items.map(p => String(p.sku));
+  },
+
+  /**
+   * The whole catalog in brief: each product's
+   *   [sku, type, status, visibility, qty, inStock, name, price, updatedAt, categoryIds]
+   * — enough for the app to work out availability, and to filter, search and
+   * sort by itself when a filter Magento can't apply (Available, Flagged) is
+   * on, so it only asks Magento for the page shown. Stock comes in bulk — the
+   * stock items of every product at once (Magento's low-stock list, with a
+   * ceiling no product reaches), or failing that the inventory source items
+   * (Simple items only; Grouped items' Stock Status is then unknown).
+   */
+  async catalogIndex() {
+    // Products and stock side by side — but only two product pages at a
+    // time, so the store has room left for the table's own requests.
+    const [products, stockResult] = await Promise.all([
+      allProductPages(page => new URLSearchParams({
+        "searchCriteria[pageSize]": "1000",
+        "searchCriteria[currentPage]": String(page),
+        fields: "items[id,sku,type_id,status,visibility,name,price,updated_at,extension_attributes[category_links[category_id]]],total_count",
+      }), 1000, 2),
+      catalogStock(),
+    ]);
+    const { stockFrom, byId, bySku } = stockResult;
+
+    return {
+      stockFrom,
+      products: products.map(p => {
+        const s = byId?.get(String(p.id)) ?? bySku?.get(String(p.sku));
+        const grouped = p.type_id === "grouped";
+        return [
+          String(p.sku),
+          String(p.type_id ?? ""),
+          Number(p.status ?? 0),
+          Number(p.visibility ?? 0),
+          grouped ? null : s ? s.qty : stockFrom === "inventory sources" ? 0 : null,
+          s ? s.inStock : grouped || stockFrom !== "inventory sources" ? null : false,
+          String(p.name ?? ""),
+          p.price ?? null,
+          String(p.updated_at ?? ""),
+          // deno-lint-ignore no-explicit-any
+          (p.extension_attributes?.category_links ?? []).map((l: any) => String(l.category_id)).join(","),
+        ];
+      }),
+    };
+  },
+
   async facets() {
     const fields: Record<string, [string, string[]]> = {
       status: ["status", ["1", "2"]],
@@ -554,7 +762,8 @@ const actions: Record<string, (p: any) => Promise<unknown>> = {
    * without one means Color isn't a dropdown in this store.
    */
   async colorOptions() {
-    const options = (await getColorOptions()).sort((a, b) => a.label.localeCompare(b.label));
+    // Always asked afresh here (tab open, Refresh) — pages reuse the answer.
+    const options = (await getColorOptions({ fresh: true })).sort((a, b) => a.label.localeCompare(b.label));
     return { options, problem: options.length ? "" : colorProblem };
   },
 
@@ -634,6 +843,7 @@ const actions: Record<string, (p: any) => Promise<unknown>> = {
 Deno.serve(async req => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
   if (req.method !== "POST") return reply({ error: "POST only." }, 405);
+  const started = performance.now();
 
   // Only a signed-in user of the app gets through — the anon key alone isn't enough.
   const supabase = createClient(Deno.env.get("SUPABASE_URL") ?? "", Deno.env.get("SUPABASE_ANON_KEY") ?? "", {
@@ -641,18 +851,30 @@ Deno.serve(async req => {
   });
   const { data: auth } = await supabase.auth.getUser();
   if (!auth?.user) return reply({ error: "Sign in to use Magento." }, 401);
+  const authMs = performance.now() - started;
 
   if (!BASE || !TOKEN) {
     return reply({ error: "Magento isn't connected yet — add the MAGENTO_BASE_URL and MAGENTO_ACCESS_TOKEN secrets in Supabase." }, 503);
   }
 
+  const t: Timing = { magentoCalls: 0, magentoMs: 0, slowestMs: 0, slowest: "" };
+  const timing = () => ({
+    version: HELPER_VERSION,
+    totalMs: Math.round(performance.now() - started),
+    authMs: Math.round(authMs),
+    magentoCalls: t.magentoCalls,
+    magentoMs: Math.round(t.magentoMs),
+    slowestMs: Math.round(t.slowestMs),
+    slowest: t.slowest,
+  });
   try {
     const { action, ...params } = await req.json();
     const run = actions[action];
-    if (!run) return reply({ error: `Unknown action "${action}".` }, 400);
-    return reply({ data: await run(params) });
+    if (!run) return reply({ error: `Unknown action "${action}".`, timing: timing() }, 400);
+    const data = await timingStore.run(t, () => run(params));
+    return reply({ data, timing: timing() });
   } catch (err) {
     const status = err instanceof UserError ? err.status : 500;
-    return reply({ error: err instanceof Error ? err.message : String(err) }, status);
+    return reply({ error: err instanceof Error ? err.message : String(err), timing: timing() }, status);
   }
 });

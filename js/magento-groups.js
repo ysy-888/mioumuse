@@ -273,6 +273,9 @@ async function saveMgGroupsImport() {
     setMagentoGroups(p.groups, importedAt);
     closeMgGroupsImport();
     // Redraw with the new groups.
+    // Groups decide availability and flags (js/magento-availability.js).
+    forgetMgSkuList();
+    renderMgAvailControls();
     if (getCurrentAppView() === "magento") await loadMagentoProducts();
     showIndicator(`Groups updated — ${p.groups.size.toLocaleString()} groups, ${p.links.toLocaleString()} items`, "success");
   } catch (err) {
