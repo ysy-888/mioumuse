@@ -382,6 +382,65 @@ async function getProduct(sku: string) {
   return mg(`/products/${encodeURIComponent(sku)}`);
 }
 
+// ── Stock ────────────────────────────────────────────────────────────────────
+//
+// The product list doesn't carry stock on this Magento (its stock_item comes
+// back empty), so quantities are asked for separately:
+//   1. Inventory source items (MSI) — one call for the whole page; a SKU's
+//      qty is the total across its sources, in stock if any source is.
+//   2. Failing that, each product's legacy stock item, a few at a time.
+// Grouped products hold no stock of their own and are skipped.
+
+type Stocked = { sku: string; type: string; qty: number | null; inStock: boolean | null };
+
+async function addStock<T extends Stocked>(items: T[]): Promise<T[]> {
+  const need = items.filter(p => p.type !== "grouped" && p.qty === null);
+  if (!need.length) return items;
+  const bySku = new Map(need.map(p => [p.sku, p]));
+
+  try {
+    const q = new URLSearchParams();
+    // Any of these SKUs (one filter group = OR).
+    need.forEach((p, i) => {
+      q.set(`searchCriteria[filter_groups][0][filters][${i}][field]`, "sku");
+      q.set(`searchCriteria[filter_groups][0][filters][${i}][value]`, p.sku);
+      q.set(`searchCriteria[filter_groups][0][filters][${i}][condition_type]`, "eq");
+    });
+    q.set("searchCriteria[pageSize]", String(need.length * 20));
+    const body = await mg(`/inventory/source-items?${q}`);
+    const found = new Set<string>();
+    // deno-lint-ignore no-explicit-any
+    (body?.items ?? []).forEach((s: any) => {
+      const p = bySku.get(String(s.sku));
+      if (!p) return;
+      found.add(p.sku);
+      p.qty = (p.qty ?? 0) + Number(s.quantity ?? 0);
+      p.inStock = Boolean(p.inStock) || Number(s.status) === 1;
+    });
+    // A SKU with no source rows has nothing in stock.
+    need.forEach(p => {
+      if (!found.has(p.sku)) {
+        p.qty = 0;
+        p.inStock = false;
+      }
+    });
+    return items;
+  } catch {
+    // No MSI (or not allowed): the legacy stock item, per product.
+  }
+
+  await eachLimited(need, 4, async p => {
+    try {
+      const s = await mg(`/stockItems/${encodeURIComponent(p.sku)}`);
+      p.qty = Number(s?.qty ?? 0);
+      p.inStock = Boolean(s?.is_in_stock);
+    } catch {
+      /* left unknown */
+    }
+  });
+  return items;
+}
+
 // ── Categories ───────────────────────────────────────────────────────────────
 
 type CategoryRow = {
@@ -453,7 +512,7 @@ const actions: Record<string, (p: any) => Promise<unknown>> = {
     query.set("fields", `items[${LIST_FIELDS}],total_count`);
     const [body, colors] = await Promise.all([mg(`/products?${query}`), getColorNames()]);
     // deno-lint-ignore no-explicit-any
-    const items = (body?.items ?? []).map((p: any) => summarize(p, colors));
+    const items = await addStock((body?.items ?? []).map((p: any) => summarize(p, colors)));
     return {
       items,
       total: Number(body?.total_count ?? 0),
@@ -502,17 +561,17 @@ const actions: Record<string, (p: any) => Promise<unknown>> = {
   async product({ sku }) {
     if (!sku) throw new UserError("Which product?");
     const [p, colors] = await Promise.all([getProduct(sku), getColorNames()]);
-    return detail(p, colors);
+    return (await addStock([detail(p, colors)]))[0];
   },
 
   async update({ sku, changes }) {
     if (!sku) throw new UserError("Which product?");
     const colors = await getColorNames();
-    if (!changes || typeof changes !== "object" || !Object.keys(changes).length) return detail(await getProduct(sku), colors);
+    if (!changes || typeof changes !== "object" || !Object.keys(changes).length) return (await addStock([detail(await getProduct(sku), colors)]))[0];
     const product = buildProductPayload(sku, changes);
     await mg(`/products/${encodeURIComponent(sku)}`, { method: "PUT", body: JSON.stringify({ product }) }, "all");
     // Read back what Magento actually kept.
-    return detail(await getProduct(sku), colors);
+    return (await addStock([detail(await getProduct(sku), colors)]))[0];
   },
 
   /** One change across many products. Each SKU's outcome is reported, so a partial run is visible. */

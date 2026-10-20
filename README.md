@@ -185,6 +185,10 @@ filtering and sorting, so it stays quick on a big catalog.
   ascending, descending, then back to Name A–Z (Name itself flips between
   A–Z and Z–A). Categories, color, image and qty don't sort. Products with
   the same name put the Grouped item first, then go by SKU.
+- **Qty**: Magento's product list doesn't carry stock, so the helper asks
+  Magento's inventory for each page's SKUs in one call — a SKU's qty is the
+  total across its sources, in stock if any source is — falling back to
+  each product's stock record. Grouped items hold no stock and show "–".
 - **Color** comes from Magento's Color attribute. It's a dropdown there, so
   each product stores an option number and the app looks up the names:
   through the admin API when the integration may read attributes (Stores →
