@@ -134,7 +134,7 @@ function initHeaderMenu() {
 
   document.getElementById("headerMenuExportCsv")?.addEventListener("click", () => {
     closeHeaderMenu();
-    exportScheduleCsv();
+    exportCurrentViewCsv(); // js/exports.js — follows the page you're on
   });
 
   document.getElementById("headerMenuResetData")?.addEventListener("click", async () => {

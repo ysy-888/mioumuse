@@ -44,6 +44,39 @@ function isPlausibleYmd(value) {
   return Boolean(parseYmd(value)) && year >= 1900 && year <= 2100;
 }
 
+/** "2026-10-28" → "10/28/26"; "" for no date. */
+function formatMdy(value) {
+  const m = /^\d{2}(\d{2})-(\d{2})-(\d{2})$/.exec(String(value ?? ""));
+  return m ? `${m[2]}/${m[3]}/${m[1]}` : "";
+}
+
+/**
+ * A typed or pasted date → "YYYY-MM-DD"; "" when blank; null when it isn't
+ * a date. Takes 10/28/26, 10/28/2026, 10-28-26, 10.28.26, 2026-10-28,
+ * 10/28 (this year), and the same as bare digits: 1028, 102826, 10282026.
+ */
+function parseDateText(text) {
+  const s = String(text ?? "").trim();
+  if (!s) return "";
+  let y, mo, d;
+  let m = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(s);
+  if (m) {
+    [y, mo, d] = [m[1], m[2], m[3]].map(Number);
+  } else if ((m = /^(\d{1,2})[/.-](\d{1,2})(?:[/.-](\d{2}|\d{4}))?$/.exec(s)) ||
+             (m = /^(\d{2})(\d{2})(\d{2}|\d{4})?$/.exec(s))) {
+    [mo, d] = [m[1], m[2]].map(Number);
+    y = m[3] ? Number(m[3]) : new Date().getFullYear();
+    if (y < 100) y += 2000;
+  } else {
+    return null;
+  }
+  const value = `${y}-${String(mo).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+  const date = parseYmd(value);
+  // Reject 2/30 and the like, which Date would roll into March.
+  if (!date || date.getMonth() !== mo - 1 || date.getDate() !== d || !isPlausibleYmd(value)) return null;
+  return value;
+}
+
 /**
  * Every date box in the app: when you leave it, a two-digit year becomes
  * 20xx. Runs before the field's own handlers (capture phase), so forms read

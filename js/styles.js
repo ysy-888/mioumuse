@@ -46,7 +46,8 @@ function countStyleValues(field) {
 
 function compareStyles(a, b) {
   if (styleSortCol) {
-    const primary = compareTextFieldValues(STYLE_COLUMNS[styleSortCol].value(a), STYLE_COLUMNS[styleSortCol].value(b)) * styleSortDir;
+    // compareSortValues (js/photoshoots.js) keeps blanks last in both directions.
+    const primary = compareSortValues(STYLE_COLUMNS[styleSortCol].value(a), STYLE_COLUMNS[styleSortCol].value(b), styleSortDir);
     if (primary !== 0) return primary;
   }
   return a.styleNo.localeCompare(b.styleNo, undefined, { numeric: true }) || a.color.localeCompare(b.color);
@@ -60,6 +61,7 @@ function applyStyleFilters({ keepShown = false } = {}) {
     if (styleStatusFilter && s.status !== styleStatusFilter) return false;
     if (styleSeasonFilter && s.season !== styleSeasonFilter) return false;
     if (styleCategoryFilter && s.category !== styleCategoryFilter) return false;
+    if (!columnFilterPasses("stylesTable", "ihd", monthFilterKey(s.ihd))) return false;
     if (!q) return true;
     return `${s.styleNo} ${s.color} ${s.description} ${s.category} ${s.season} ${s.status}`.toLowerCase().includes(q);
   });
@@ -121,6 +123,43 @@ function createStyleStatusPill(status) {
   return pill;
 }
 
+/**
+ * The Shoot cell: where the style stands, plus an "Add to Need to Shoot"
+ * button when it isn't waiting to be shot (never listed, or already shot).
+ */
+function createStyleShootCell(style) {
+  const wrap = document.createElement("span");
+  wrap.className = "style-shoot-cell";
+  const fill = () => {
+    const onList = needsShoot(style.styleNo, style.color);
+    const shot = describeShootStatus(style.styleNo, style.color)?.tone === "shot";
+    wrap.replaceChildren();
+    if (onList || shot) wrap.appendChild(createShootStatusBadge(style.styleNo, style.color));
+    if (onList) return;
+
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "btn style-add-shoot-btn";
+    btn.textContent = shot ? "+ Shoot again" : "+ Need to Shoot";
+    btn.title = shot ? "Add to Need to Shoot again" : "Add to Need to Shoot";
+    btn.addEventListener("click", async () => {
+      btn.disabled = true;
+      try {
+        await addToShootList([style]);
+        fill();
+        refreshPhotoshootViews();
+        showIndicator(`${style.styleNo} ${style.color} added to Need to Shoot`, "success");
+      } catch (err) {
+        btn.disabled = false;
+        showIndicator(err.message || "Couldn't add to Need to Shoot.", "error");
+      }
+    });
+    wrap.appendChild(btn);
+  };
+  fill();
+  return wrap;
+}
+
 function renderStylesTable() {
   const tbody = document.getElementById("stylesTableBody");
   if (!tbody) return;
@@ -145,7 +184,7 @@ function renderStylesTable() {
       td.dataset.col = col;
       if (col === "select") td.appendChild(createStyleCheckbox(style));
       else if (col === "image") td.appendChild(createStyleThumb(style.styleNo, style.color));
-      else if (col === "shoot") td.appendChild(createShootStatusBadge(style.styleNo, style.color));
+      else if (col === "shoot") td.appendChild(createStyleShootCell(style));
       else if (col === "ihd") td.appendChild(createIhdInput(style));
       else if (col === "status") td.appendChild(createStyleStatusPill(style.status));
       else mountSearchHighlightedText(td, STYLE_COLUMNS[col].value(style));
@@ -179,7 +218,10 @@ function renderStylesTable() {
 
 // ── IHD (in-house date) ──────────────────────────────────────────────────────
 //
-// Edited right in the table: pick a date and it saves; clear it to remove.
+// Edited right in the table, as text: the first click selects the whole date
+// (so it can be copied, or pasted over), and it shows as MM/DD/YY. Typed or
+// pasted dates save on Enter or when you leave the cell; the calendar button
+// picks one and saves straight away. Esc undoes the edit.
 
 /** `onSaved` runs after a successful save — for views whose warnings depend on it. */
 function createIhdInput(style, { onSaved } = {}) {
@@ -187,10 +229,28 @@ function createIhdInput(style, { onSaved } = {}) {
   wrap.className = "cell-date";
 
   const input = document.createElement("input");
-  input.type = "date";
-  input.className = "cell-date-input" + (style.ihd ? "" : " is-empty");
-  input.value = style.ihd;
+  input.type = "text";
+  input.inputMode = "numeric";
+  input.autocomplete = "off";
+  input.spellcheck = false;
+  input.placeholder = "mm/dd/yy";
+  input.className = "cell-date-input";
+  input.value = formatMdy(style.ihd);
   input.setAttribute("aria-label", `IHD for ${style.styleNo} ${style.color}`);
+
+  // The calendar: a native date box kept out of sight, opened by the button.
+  const picker = document.createElement("input");
+  picker.type = "date";
+  picker.className = "cell-date-picker";
+  picker.tabIndex = -1;
+  picker.setAttribute("aria-hidden", "true");
+
+  const pickBtn = document.createElement("button");
+  pickBtn.type = "button";
+  pickBtn.className = "cell-date-pick";
+  pickBtn.title = "Pick a date";
+  pickBtn.setAttribute("aria-label", `Pick IHD for ${style.styleNo} ${style.color}`);
+  pickBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>';
 
   const clear = document.createElement("button");
   clear.type = "button";
@@ -200,63 +260,86 @@ function createIhdInput(style, { onSaved } = {}) {
   clear.setAttribute("aria-label", `Clear IHD for ${style.styleNo} ${style.color}`);
   clear.hidden = !style.ihd;
 
+  const show = () => {
+    input.value = formatMdy(style.ihd);
+    input.classList.remove("is-invalid");
+  };
+
   const save = async value => {
     const before = style.ihd;
-    if (value === before) return;
-    if (value && !isPlausibleYmd(value)) {
-      input.value = before;
-      showIndicator(`"${value.slice(0, 4)}" isn't a year — enter the date again (e.g. 10/28/2026).`, "error");
+    if (value === before) {
+      show();
       return;
     }
     wrap.classList.add("is-saving");
     try {
       await setStyleIhd(style.styleNo, style.color, value);
-      input.classList.toggle("is-empty", !value);
+      show();
       clear.hidden = !value;
       wrap.classList.remove("is-saving");
       wrap.classList.add("is-saved");
       setTimeout(() => wrap.classList.remove("is-saved"), 1200);
       onSaved?.();
     } catch (err) {
-      input.value = before;
+      show();
       wrap.classList.remove("is-saving");
       showIndicator(err.message || "Couldn't save the IHD.", "error");
     }
   };
 
-  // Typing: Chrome reports a "complete" date on every digit of the year
-  // (0002, 0020, 0202, 2026), so a typed date saves only when you leave the
-  // cell or press Enter. Picking from the calendar saves straight away.
-  let typing = false;
   const commit = () => {
-    typing = false;
-    const value = fixTwoDigitYear(input.value);
-    if (value !== input.value) input.value = value;
+    const text = input.value.trim();
+    const value = parseDateText(text);
+    if (value === null) {
+      showIndicator(`"${text}" isn't a date — try 10/28/26.`, "error");
+      show();
+      return;
+    }
     save(value);
   };
-  input.addEventListener("focus", () => { typing = false; });
+
+  // Select the whole date on the first click. The mouseup that follows the
+  // focusing click would drop the selection, so that one is cancelled.
+  let justFocused = false;
+  input.addEventListener("focus", () => {
+    input.select();
+    justFocused = true;
+  });
+  input.addEventListener("mouseup", e => {
+    if (justFocused) e.preventDefault();
+    justFocused = false;
+  });
   input.addEventListener("keydown", e => {
+    justFocused = false;
     if (e.key === "Enter") {
       e.preventDefault();
-      commit();
-      return;
-    }
-    if (e.key === "Escape") {
-      input.value = style.ihd;
-      typing = false;
+      input.blur(); // blur commits
+    } else if (e.key === "Escape") {
+      e.stopPropagation();
+      show();
       input.blur();
-      return;
     }
-    if (e.key.length === 1 || e.key === "Backspace" || e.key === "Delete" || e.key.startsWith("Arrow")) typing = true;
   });
-  input.addEventListener("change", () => { if (!typing) commit(); });
+  input.addEventListener("input", () => {
+    input.classList.toggle("is-invalid", parseDateText(input.value) === null);
+  });
   input.addEventListener("blur", commit);
-  clear.addEventListener("click", () => {
-    input.value = "";
-    save("");
-  });
 
-  wrap.append(input, clear);
+  pickBtn.addEventListener("click", () => {
+    picker.value = style.ihd;
+    try {
+      picker.showPicker();
+    } catch {
+      picker.focus();
+      picker.click();
+    }
+  });
+  picker.addEventListener("change", () => {
+    if (picker.value && isPlausibleYmd(picker.value)) save(picker.value);
+  });
+  clear.addEventListener("click", () => save(""));
+
+  wrap.append(input, picker, pickBtn, clear);
   return wrap;
 }
 
@@ -340,17 +423,23 @@ function sortStylesBy(col) {
 
 function initStylesView() {
   document.querySelectorAll("#stylesTable thead th[data-col]").forEach(th => {
+    if (!STYLE_COLUMNS[th.dataset.col]) th.classList.add("th-no-sort");
     th.addEventListener("click", () => sortStylesBy(th.dataset.col));
+  });
+  initColumnFilter("stylesTable", "ihd", {
+    options: () => monthFilterOptions(getAllStyles().map(s => s.ihd)),
+    onChange: () => applyStyleFilters(),
   });
   document.getElementById("styleSearchInput")?.addEventListener("input", () => applyStyleFilters());
   document.getElementById("stylesTableBody")?.addEventListener("click", e => {
-    // The tick box (and its cell) selects; the IHD cell edits; anywhere else
+    // The tick box (and its cell) selects; the IHD cell edits; the Need to
+    // Shoot button adds; anywhere else
     // opens the photos.
     if (e.target.closest('td[data-col="select"]')) {
       if (e.target.tagName !== "INPUT") e.target.closest("td").querySelector("input")?.click();
       return;
     }
-    if (e.target.closest('td[data-col="ihd"]')) return;
+    if (e.target.closest('td[data-col="ihd"], .style-add-shoot-btn')) return;
     const tr = e.target.closest("tr[data-style-no]");
     if (tr) openStyleGallery(tr.dataset.styleNo, tr.dataset.color);
   });

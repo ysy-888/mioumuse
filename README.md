@@ -64,6 +64,8 @@ reference in index.html so the URLs change on every deploy.
 | `js/style-images.js` | Style photos from a linked network folder — matched by file name, thumbnails, gallery |
 | `js/photoshoots.js` | Photoshoots tab — the Need to Shoot list, the shoots list, the shoot side pane, shoot status badges |
 | `js/photoshoot-form.js` | Create / edit photoshoot modal |
+| `js/column-filter.js` | Header filters (the PO app's design): click a column's funnel to tick which values show — used for IHD by month |
+| `js/exports.js` | CSV downloads and printable (Save as PDF) reports — Need to Shoot, each photoshoot, and the header menu's Export CSV |
 | `js/calendar.js` | Home calendar of every campaign, show, and task, with the upcoming rail |
 | `js/main.js` | Boot |
 
@@ -185,9 +187,12 @@ and blank rows between styles) is skipped. A preview shows what's new,
 updated and unchanged before anything is saved; confirming saves only new
 and changed styles. Styles missing from a newer file are left as they are.
 
-**IHD** (in-house date) is edited right in the Styles table: click the cell,
-pick a date, and it saves; hover for ✕ to clear it. It isn't part of the
-ATS export, and re-importing never touches it.
+**IHD** (in-house date) is edited right in the Styles table. It shows as
+MM/DD/YY, and the first click selects the whole date, so it can be copied
+or pasted over. A typed or pasted date (10/28/26, 10/28/2026, 2026-10-28,
+10/28 for this year, or bare digits: 1028, 102826, 10282026) saves on Enter or when you leave the cell, and Esc
+undoes it. The calendar button picks a date, and ✕ (on hover) clears it.
+It isn't part of the ATS export, and re-importing never touches it.
 
 Banner Style # fields look styles up as you type: suggestions, the style's
 colours, and its description and status under the row and in the banner pane.
@@ -223,7 +228,9 @@ each visit. Only computers that can reach the server see the photos.
 
 **Need to Shoot** is a flag on a Style # + Color. Tick styles in the Styles
 tab (the header box ticks everything in the current view) and use **Add to
-Need to Shoot**. The Photoshoots tab lists them with where each stands:
+Need to Shoot**, or add one style at a time with the **+ Need to Shoot**
+button in its Shoot cell (**+ Shoot again** for one that's been shot). The
+Photoshoots tab lists them with where each stands:
 
 | Status | Meaning |
 |---|---|
@@ -242,6 +249,32 @@ same. Adding a shot style to the list again flags it to be shot again.
 IHD shows (and can be edited) on Need to Shoot and in the shoot pane, and
 the Shoots list shows each shoot's latest IHD. A style whose IHD is after its
 shoot date is flagged **IHD after shoot** — the goods won't be in yet.
+
+IHD (and Latest IHD on Shoots) also filters by month: click the funnel at
+the right of the header and tick the months to show. **No IHD** covers
+styles without one. A filtered header turns dark; tick everything (Select
+all) to remove the filter. The Need to Shoot PDF names the months it covers.
+
+Need to Shoot and Shoots sort by clicking a column header: ascending, then
+descending, then back to the default order. Blank values always sort last.
+
+### Exports
+
+- **Need to Shoot → Export**: **Export CSV**, or **PDF report**. Both cover
+  the list as it's showing, with the filters and search applied. The PDF
+  is sorted by IHD, earliest first, with styles that have no IHD at the end.
+- **A shoot's ⋯ menu**: **Export CSV** (every style in the shoot) or **PDF
+  report**. The report has the shoot details and notes, plus a ☐ Shot
+  column to tick on set.
+- PDF reports open the print window: choose **Save as PDF**. Style photos are
+  included when the image folder is linked, and late IHDs print in red.
+  Reports print on Letter paper (portrait) with dates as MM/DD/YY.
+- The header menu's **Export CSV** follows the page you're on:
+  - Need to Shoot: the list.
+  - Shoots: the open shoot, or every shoot with its styles.
+  - Styles: the filtered styles.
+  - Platforms: banners.
+  - Anywhere else: the campaign and trade show schedule.
 
 Data: `shoot_list` (the flag, plus which shoot it was shot in) and
 `photoshoots` (see `supabase-schema.sql`).

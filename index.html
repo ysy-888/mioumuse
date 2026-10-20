@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>MIOU MUSE</title>
 <link rel="icon" href="favicon.svg" type="image/svg+xml" />
-<link rel="stylesheet" href="crm.css?v=20261019-1639" />
+<link rel="stylesheet" href="crm.css?v=20261019-1700" />
 </head>
 <body>
 
@@ -192,6 +192,22 @@
       <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
       <input type="search" id="needSearchInput" placeholder="Search" />
       <input type="search" id="shootSearchInput" placeholder="Search" hidden />
+    </div>
+    <div class="header-menu-wrap" id="needExportWrap">
+      <button type="button" class="btn" id="needExportBtn" aria-haspopup="menu" aria-expanded="false">
+        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5"/><path d="M12 3v12"/></svg>
+        Export
+      </button>
+      <div id="needExportMenu" class="header-menu-dropdown" hidden role="menu">
+        <button type="button" class="header-menu-item" id="needExportCsv" role="menuitem">
+          <svg class="header-menu-item-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5"/><path d="M12 3v12"/></svg>
+          <span>Export CSV</span>
+        </button>
+        <button type="button" class="header-menu-item" id="needExportPdf" role="menuitem">
+          <svg class="header-menu-item-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9V2h12v7"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><path d="M6 14h12v8H6z"/></svg>
+          <span>PDF report</span>
+        </button>
+      </div>
     </div>
     <button type="button" class="btn btn-primary" id="newShootBtn" hidden>
       <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
@@ -525,6 +541,14 @@
             <button type="button" class="header-menu-item" id="shootMenuEdit" role="menuitem">
               <svg class="header-menu-item-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4z"/></svg>
               <span>Edit shoot</span>
+            </button>
+            <button type="button" class="header-menu-item" id="shootMenuExportCsv" role="menuitem">
+              <svg class="header-menu-item-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5"/><path d="M12 3v12"/></svg>
+              <span>Export CSV</span>
+            </button>
+            <button type="button" class="header-menu-item" id="shootMenuExportPdf" role="menuitem">
+              <svg class="header-menu-item-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9V2h12v7"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><path d="M6 14h12v8H6z"/></svg>
+              <span>PDF report</span>
             </button>
             <button type="button" class="header-menu-item header-menu-item-separator header-menu-item--danger" id="shootMenuDelete" role="menuitem">
               <svg class="header-menu-item-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>
@@ -993,27 +1017,43 @@
 
 <!-- Supabase JS client — auth.js and store.js both depend on the global it exports. -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
-<script src="js/config.js?v=20261019-1639"></script>
+<!-- Header filter (js/column-filter.js) — one popover for every table. -->
+<div id="columnFilterPopover" class="column-filter-popover" hidden>
+  <div class="column-filter-toolbar">
+    <button type="button" class="column-filter-link" id="columnFilterSelectAll">Select all</button>
+    <span class="column-filter-sep">|</span>
+    <button type="button" class="column-filter-link" id="columnFilterClearAll">Clear all</button>
+  </div>
+  <div class="column-filter-list" id="columnFilterList"></div>
+  <div class="column-filter-footer">
+    <button type="button" class="btn btn-primary column-filter-ok" id="columnFilterOk">OK</button>
+    <button type="button" class="btn column-filter-cancel" id="columnFilterCancel">Cancel</button>
+  </div>
+</div>
+
+<script src="js/config.js?v=20261019-1700"></script>
 <!-- Needs SUPABASE_URL/KEY from config.js and the CDN client above. -->
-<script src="js/auth.js?v=20261019-1639"></script>
-<script src="js/util.js?v=20261019-1639"></script>
-<script src="js/dates.js?v=20261019-1639"></script>
-<script src="js/store.js?v=20261019-1639"></script>
-<script src="js/tasks.js?v=20261019-1639"></script>
-<script src="js/app-shell.js?v=20261019-1639"></script>
-<script src="js/record-list.js?v=20261019-1639"></script>
-<script src="js/item-pane.js?v=20261019-1639"></script>
-<script src="js/campaign-form.js?v=20261019-1639"></script>
-<script src="js/trade-show-form.js?v=20261019-1639"></script>
-<script src="js/banners.js?v=20261019-1639"></script>
-<script src="js/banner-form.js?v=20261019-1639"></script>
-<script src="js/mailchimp.js?v=20261019-1639"></script>
-<script src="js/style-import.js?v=20261019-1639"></script>
-<script src="js/styles.js?v=20261019-1639"></script>
-<script src="js/style-images.js?v=20261019-1639"></script>
-<script src="js/photoshoots.js?v=20261019-1639"></script>
-<script src="js/photoshoot-form.js?v=20261019-1639"></script>
-<script src="js/calendar.js?v=20261019-1639"></script>
-<script src="js/main.js?v=20261019-1639"></script>
+<script src="js/auth.js?v=20261019-1700"></script>
+<script src="js/util.js?v=20261019-1700"></script>
+<script src="js/dates.js?v=20261019-1700"></script>
+<script src="js/store.js?v=20261019-1700"></script>
+<script src="js/tasks.js?v=20261019-1700"></script>
+<script src="js/app-shell.js?v=20261019-1700"></script>
+<script src="js/record-list.js?v=20261019-1700"></script>
+<script src="js/item-pane.js?v=20261019-1700"></script>
+<script src="js/campaign-form.js?v=20261019-1700"></script>
+<script src="js/trade-show-form.js?v=20261019-1700"></script>
+<script src="js/banners.js?v=20261019-1700"></script>
+<script src="js/banner-form.js?v=20261019-1700"></script>
+<script src="js/mailchimp.js?v=20261019-1700"></script>
+<script src="js/style-import.js?v=20261019-1700"></script>
+<script src="js/column-filter.js?v=20261019-1700"></script>
+<script src="js/styles.js?v=20261019-1700"></script>
+<script src="js/style-images.js?v=20261019-1700"></script>
+<script src="js/photoshoots.js?v=20261019-1700"></script>
+<script src="js/photoshoot-form.js?v=20261019-1700"></script>
+<script src="js/exports.js?v=20261019-1700"></script>
+<script src="js/calendar.js?v=20261019-1700"></script>
+<script src="js/main.js?v=20261019-1700"></script>
 </body>
 </html>

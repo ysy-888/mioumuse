@@ -99,6 +99,77 @@ function getShootLatestIhd(shoot) {
     .pop() ?? "";
 }
 
+
+// ── Column sorting ───────────────────────────────────────────────────────────
+//
+// Click a header: ascending → descending → back to the default order. Blank
+// values sort last either way. Dates are "YYYY-MM-DD", so they sort as text.
+
+const needSort = { col: null, dir: 1 };
+const shootSort = { col: null, dir: 1 };
+
+const NEED_SORT_COLUMNS = {
+  styleNo: r => r.styleNo,
+  color: r => r.color,
+  description: r => r.description,
+  category: r => r.category,
+  season: r => r.season,
+  n41: r => r.n41,
+  ihd: r => findStyle(r.styleNo, r.color)?.ihd ?? "",
+  // To shoot, then scheduled by date, then shot.
+  shoot: r => (r.status?.tone === "needed" ? "0" : r.status?.tone === "scheduled" ? `1${r.nextDate}` : "2"),
+  added: r => r.addedAt,
+};
+
+const SHOOT_SORT_COLUMNS = {
+  date: s => s.date,
+  name: s => getPhotoshootTitle(s),
+  type: s => getPhotoshootTypeLabel(s.type),
+  model: s => s.model,
+  latestIhd: s => getShootLatestIhd(s),
+  styles: s => String(s.styles.length).padStart(6, "0"),
+  status: s => s.status,
+};
+
+function compareSortValues(a, b, dir) {
+  const x = String(a ?? "").trim();
+  const y = String(b ?? "").trim();
+  if (!x || !y) return (x ? -1 : 0) + (y ? 1 : 0);
+  return dir * x.localeCompare(y, undefined, { numeric: true, sensitivity: "base" });
+}
+
+/** Re-sort `rows` in place by the clicked column; the existing order breaks ties. */
+function applyColumnSort(rows, sort, columns) {
+  if (!sort.col || !columns[sort.col]) return;
+  const value = columns[sort.col];
+  const order = new Map(rows.map((r, i) => [r, i]));
+  rows.sort((a, b) => compareSortValues(value(a), value(b), sort.dir) || order.get(a) - order.get(b));
+}
+
+function initColumnSort(tableId, sort, columns, render) {
+  const headers = [...document.querySelectorAll(`#${tableId} thead th[data-col]`)];
+  headers.forEach(th => {
+    if (!columns[th.dataset.col]) {
+      th.classList.add("th-no-sort");
+      return;
+    }
+    th.addEventListener("click", () => {
+      if (sort.col === th.dataset.col) {
+        if (sort.dir === 1) sort.dir = -1;
+        else { sort.col = null; sort.dir = 1; }
+      } else {
+        sort.col = th.dataset.col;
+        sort.dir = 1;
+      }
+      headers.forEach(h => {
+        h.classList.remove("sorted-asc", "sorted-desc");
+        if (h.dataset.col === sort.col) h.classList.add(sort.dir === 1 ? "sorted-asc" : "sorted-desc");
+      });
+      render();
+    });
+  });
+}
+
 // ── Sub-views ────────────────────────────────────────────────────────────────
 
 function setPhotoshootSubview(view) {
@@ -120,6 +191,7 @@ function renderPhotoshootsView() {
   document.getElementById("needSearchInput").hidden = !need;
   document.getElementById("shootSearchInput").hidden = need;
   document.getElementById("newShootBtn").hidden = need;
+  document.getElementById("needExportWrap").hidden = !need;
   if (need) closeShootPane();
 
   const waiting = getShootListEntries().filter(e => !e.shotShootId).length;
@@ -172,6 +244,7 @@ function renderNeedTable() {
   filteredNeedRows = buildNeedRows().filter(r => {
     if (needFilter === "unscheduled" && r.status?.tone !== "needed") return false;
     if (needFilter === "scheduled" && r.status?.tone !== "scheduled") return false;
+    if (!columnFilterPasses("needTable", "ihd", monthFilterKey(findStyle(r.styleNo, r.color)?.ihd))) return false;
     if (!q) return true;
     return `${r.styleNo} ${r.color} ${r.description} ${r.category} ${r.season}`.toLowerCase().includes(q);
   });
@@ -179,6 +252,7 @@ function renderNeedTable() {
   const rank = r => (r.status?.tone === "needed" ? 0 : r.status?.tone === "scheduled" ? 1 : 2);
   filteredNeedRows.sort((a, b) => rank(a) - rank(b) || a.nextDate.localeCompare(b.nextDate) ||
     a.styleNo.localeCompare(b.styleNo, undefined, { numeric: true }) || a.color.localeCompare(b.color));
+  applyColumnSort(filteredNeedRows, needSort, NEED_SORT_COLUMNS);
 
   document.querySelectorAll("#needFilters .filter-btn").forEach(btn => btn.classList.toggle("active", btn.dataset.filter === needFilter));
   const showShot = document.getElementById("needShowShot");
@@ -313,11 +387,13 @@ function renderShootsTable() {
   setActiveSearchQuery(q);
   const rows = getAllPhotoshoots().filter(s => {
     if (shootFilter !== "all" && s.status !== shootFilter) return false;
+    if (!columnFilterPasses("shootsTable", "latestIhd", monthFilterKey(getShootLatestIhd(s)))) return false;
     if (!q) return true;
     return `${getPhotoshootTitle(s)} ${s.model} ${getPhotoshootTypeLabel(s.type)} ${s.notes} ${s.styles.map(x => x.styleNo).join(" ")}`.toLowerCase().includes(q);
   });
   // Planned: soonest first. Complete: most recent first.
   rows.sort((a, b) => (shootFilter === "complete" ? -1 : 1) * a.date.localeCompare(b.date));
+  applyColumnSort(rows, shootSort, SHOOT_SORT_COLUMNS);
 
   document.querySelectorAll("#shootFilters .filter-btn").forEach(btn => btn.classList.toggle("active", btn.dataset.filter === shootFilter));
   const counter = document.getElementById("shootsRowCounter");
@@ -546,6 +622,16 @@ async function removeStyleFromShoot(id, style) {
 // ── Init ─────────────────────────────────────────────────────────────────────
 
 function initPhotoshoots() {
+  initColumnSort("needTable", needSort, NEED_SORT_COLUMNS, renderNeedTable);
+  initColumnSort("shootsTable", shootSort, SHOOT_SORT_COLUMNS, renderShootsTable);
+  initColumnFilter("needTable", "ihd", {
+    options: () => monthFilterOptions(buildNeedRows().map(r => findStyle(r.styleNo, r.color)?.ihd ?? "")),
+    onChange: renderNeedTable,
+  });
+  initColumnFilter("shootsTable", "latestIhd", {
+    options: () => monthFilterOptions(getAllPhotoshoots().map(getShootLatestIhd)),
+    onChange: renderShootsTable,
+  });
   document.querySelectorAll("#photoshootSubtabs .filter-btn").forEach(btn => {
     btn.addEventListener("click", () => setPhotoshootSubview(btn.dataset.view));
   });

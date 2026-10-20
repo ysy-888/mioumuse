@@ -41,10 +41,12 @@ async function bootApp() {
   initBannersView();
   initBannerForm();
   initMailchimp();
+  initColumnFilterPopover();
   initStylesView();
   initStyleImages();
   initPhotoshoots();
   initPhotoshootForm();
+  initExports();
   initCalendar();
 
   if (!isSupabaseConfigured()) {

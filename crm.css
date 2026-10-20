@@ -7323,7 +7323,7 @@ th.th-select { text-align: center; cursor: default; padding-left: 4px; padding-r
 .shoot-type[data-type="studio"]    { background: #ece6fb; color: #5a3aa8; }
 .shoot-type[data-type="editorial"] { background: #fbe3f3; color: #9b1f74; }
 
-.styles-table .col-shoot { width: 170px; min-width: 140px; }
+.styles-table .col-shoot { width: 230px; min-width: 200px; }
 .need-table .col-added { width: 110px; min-width: 100px; }
 
 .shoots-table { min-width: 860px; }
@@ -7462,8 +7462,36 @@ th.th-select { text-align: center; cursor: default; padding-left: 4px; padding-r
   cursor: pointer;
 }
 
-/* An empty date shows the browser's mm/dd/yyyy faintly. */
-.cell-date-input.is-empty { color: var(--empty-display); }
+.cell-date-input { cursor: text; font-variant-numeric: tabular-nums; }
+.cell-date-input::placeholder { color: var(--empty-display); }
+.cell-date-input.is-invalid,
+.cell-date-input.is-invalid:focus { border-color: var(--danger); background: var(--danger-tint); }
+
+/* The native calendar behind the button — out of sight, but anchored here. */
+.cell-date-picker {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  border: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.cell-date-pick {
+  flex: 0 0 auto;
+  display: inline-flex;
+  border: none;
+  background: none;
+  padding: 3px;
+  border-radius: 4px;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.cell-date-pick:hover { color: var(--text); background: var(--surface-hover, rgba(0, 0, 0, 0.05)); }
 
 .cell-date:hover .cell-date-input,
 .cell-date-input:focus {
@@ -7538,3 +7566,35 @@ th.th-select { text-align: center; cursor: default; padding-left: 4px; padding-r
 
 .shoot-style-row { flex-wrap: wrap; }
 .shoot-style-row.is-late { border-color: #f3c4c4; }
+
+/* Styles table: Shoot cell — status, plus a per-row Add to Need to Shoot. */
+.style-shoot-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.style-add-shoot-btn {
+  padding: 2px 8px;
+  font-size: 11.5px;
+  line-height: 1.5;
+  white-space: nowrap;
+}
+
+/* Columns that don't sort: no hover arrow, no pointer. */
+.record-table thead th.th-no-sort { cursor: default; }
+.record-table thead th.th-no-sort:hover::after { content: none !important; }
+
+/* Header filter: month counts on the right; nothing-to-filter note. */
+.column-filter-option-label { flex: 1; }
+.column-filter-count {
+  color: var(--text-muted);
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+}
+.column-filter-empty {
+  padding: 8px 10px;
+  color: var(--text-muted);
+  font-size: 12.5px;
+}
