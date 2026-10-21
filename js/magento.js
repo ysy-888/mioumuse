@@ -347,11 +347,22 @@ function syncMgFilterButtons() {
   };
   sync("#mgStatusFilters", "status", mgQuery.status);
   sync("#mgTypeFilters", "type", mgQuery.type);
-  document.querySelectorAll("#mgSubtabs .filter-btn").forEach(btn => {
-    const active = btn.dataset.view === mgSubview;
-    btn.classList.toggle("active", active);
-    btn.setAttribute("aria-selected", active ? "true" : "false");
-  });
+  // Products / Categories live in the header's Magento menu now.
+  syncAppNav();
+}
+
+/** The header's Magento menu → Products or Categories. */
+function showMagentoSubview(view) {
+  if (getCurrentAppView() !== "magento") {
+    mgSubview = view;
+    switchAppView("magento");
+    return;
+  }
+  if (mgSubview === view || !closeMagentoPane({ force: false })) return;
+  mgSubview = view;
+  renderMagentoSubview();
+  if (mgSubview === "categories") renderMgCategoriesTable();
+  else renderMgProducts();
 }
 
 function renderMagentoSubview() {
@@ -1243,6 +1254,24 @@ function createMgCategoryActiveSwitch(category) {
   return btn;
 }
 
+// ── Right-click: copy the style ──────────────────────────────────────────────
+
+/**
+ * What right-clicking a name copies. A Grouped style: its name. A Simple
+ * item (a colour of a style): just the style number — ET6157-BLACK copies
+ * ET6157 — taken from its group when the groups are imported, else from
+ * the SKU before the colour. A name that isn't the SKU pattern is copied
+ * as it is.
+ */
+function mgCopyText(product) {
+  const name = String(product.name ?? "").trim();
+  if (product.type === "grouped") return name;
+  const style = product.groupSku || prefixGroupFor(product.sku) || product.sku.split("-")[0];
+  const named = name.toUpperCase();
+  if (named === product.sku.toUpperCase() || named.startsWith(`${style.toUpperCase()}-`)) return style;
+  return name;
+}
+
 // ── CSV export ───────────────────────────────────────────────────────────────
 
 /**
@@ -1354,17 +1383,6 @@ function initMagento() {
   document.querySelectorAll("#mgTypeFilters .filter-btn").forEach(btn => {
     btn.addEventListener("click", () => setMgHeaderFilters({ type: btn.dataset.type ? [btn.dataset.type] : null }));
   });
-  document.querySelectorAll("#mgSubtabs .filter-btn").forEach(btn => {
-    btn.addEventListener("click", () => {
-      if (mgSubview === btn.dataset.view) return;
-      if (!closeMagentoPane({ force: false })) return;
-      mgSubview = btn.dataset.view;
-      renderMagentoSubview();
-      if (mgSubview === "categories") renderMgCategoriesTable();
-      else renderMgProducts();
-    });
-  });
-
   // Search: Magento is asked once typing pauses.
   let searchTimer = null;
   document.getElementById("mgSearchInput")?.addEventListener("input", e => {
@@ -1385,6 +1403,14 @@ function initMagento() {
   });
   // The default sort shows on its header from the start.
   syncMgSortHeaders();
+
+  // Right-click a name for "Copy" (mgCopyText says what; js/copy-menu.js).
+  document.getElementById("mgProductsBody")?.addEventListener("contextmenu", e => {
+    const cell = e.target.closest('td[data-col="name"]');
+    const sku = cell?.closest("tr[data-sku]")?.dataset.sku;
+    const product = sku && mgPage.items.find(p => p.sku === sku);
+    if (product) openCopyMenu(e, mgCopyText(product));
+  });
 
   document.getElementById("mgProductsBody")?.addEventListener("click", e => {
     // The tick box (and its cell) selects; the status switch flips; anywhere else opens the pane.

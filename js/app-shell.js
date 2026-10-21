@@ -75,21 +75,7 @@ function switchAppView(view) {
     if (el) el.hidden = !visible;
   });
 
-  const tabs = {
-    navLogoHome: view === "home",
-    navTabCampaigns: view === "campaigns",
-    navTabTradeShows: view === "tradeShows",
-    navTabPlatforms: view === "platforms",
-    navTabStyles: view === "styles",
-    navTabPhotoshoots: view === "photoshoots",
-    navTabMagento: view === "magento",
-  };
-  Object.entries(tabs).forEach(([id, active]) => {
-    const el = document.getElementById(id);
-    if (!el) return;
-    el.classList.toggle("is-active", active);
-    el.setAttribute("aria-selected", active ? "true" : "false");
-  });
+  syncAppNav();
 
   // The grid needs real layout to size its rows, so render on entry.
   if (view === "home") renderCalendar();
@@ -110,6 +96,50 @@ function switchAppView(view) {
     document.getElementById("mgPager").hidden = true; // in the app footer
   }
   updateAppBackButton();
+}
+
+// ── Header menus ─────────────────────────────────────────────────────────────
+//
+// Home, then three menus — Marketing (Campaigns, Trade Shows, Platforms),
+// Photoshoots (Photoshoots, Styles), Magento (Products, Categories). Each
+// opens on hover or focus; the page you're on is ticked, and its menu is
+// underlined.
+
+/** Tick the page you're on, and underline its menu. */
+function syncAppNav() {
+  const home = document.getElementById("navLogoHome");
+  if (home) {
+    home.classList.toggle("is-active", currentAppView === "home");
+    home.setAttribute("aria-selected", currentAppView === "home" ? "true" : "false");
+  }
+  document.querySelectorAll(".app-title-tab-dropdown-item[data-view]").forEach(item => {
+    const active = item.dataset.view === currentAppView
+      && (!item.dataset.subview || item.dataset.subview === mgSubview);
+    item.classList.toggle("active", active);
+    if (active) item.setAttribute("aria-current", "page");
+    else item.removeAttribute("aria-current");
+  });
+  document.querySelectorAll(".app-title-tab-dropdown-wrap").forEach(wrap => {
+    const active = Boolean(wrap.querySelector(".app-title-tab-dropdown-item.active"));
+    wrap.querySelector(".app-title-tab--dropdown-trigger")?.classList.toggle("is-active", active);
+  });
+}
+
+function initNavMenus() {
+  document.querySelectorAll(".app-title-tab-dropdown-wrap").forEach(wrap => {
+    // After a choice the menu stays shut until the pointer leaves it.
+    wrap.addEventListener("mouseleave", () => wrap.classList.remove("is-dropdown-closed"));
+    wrap.querySelectorAll(".app-title-tab-dropdown-item[data-view]").forEach(item => {
+      item.addEventListener("click", () => {
+        wrap.classList.add("is-dropdown-closed");
+        item.blur();
+        if (item.dataset.subview) showMagentoSubview(item.dataset.subview);
+        else switchAppView(item.dataset.view);
+      });
+    });
+    // Focusing the menu again (keyboard, a tap) reopens it.
+    wrap.querySelector(".app-title-tab--dropdown-trigger")?.addEventListener("focus", () => wrap.classList.remove("is-dropdown-closed"));
+  });
 }
 
 // ── Header menu ──────────────────────────────────────────────────────────────
@@ -211,12 +241,7 @@ function exportScheduleCsv() {
 // ── Nav ──────────────────────────────────────────────────────────────────────
 
 function initAppNav() {
-  document.getElementById("navTabCampaigns")?.addEventListener("click", () => switchAppView("campaigns"));
-  document.getElementById("navTabTradeShows")?.addEventListener("click", () => switchAppView("tradeShows"));
-  document.getElementById("navTabPlatforms")?.addEventListener("click", () => switchAppView("platforms"));
-  document.getElementById("navTabStyles")?.addEventListener("click", () => switchAppView("styles"));
-  document.getElementById("navTabPhotoshoots")?.addEventListener("click", () => switchAppView("photoshoots"));
-  document.getElementById("navTabMagento")?.addEventListener("click", () => switchAppView("magento"));
+  initNavMenus();
   document.getElementById("navLogoHome")?.addEventListener("click", () => switchAppView("home"));
   document.getElementById("appBackBtn")?.addEventListener("click", () => goBackAppView("home"));
 

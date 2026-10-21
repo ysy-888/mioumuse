@@ -50,6 +50,7 @@ async function bootApp() {
   initPhotoshoots();
   initPhotoshootForm();
   initExports();
+  initCopyMenu();
   initCalendar();
   // Last: rearranges the headers every table above has set up.
   initTableViews();

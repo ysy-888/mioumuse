@@ -4,8 +4,9 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>MIOU MUSE</title>
-<link rel="icon" href="favicon.svg" type="image/svg+xml" />
-<link rel="stylesheet" href="crm.css?v=20261020-2215" />
+<link rel="icon" href="favicon.png?v=2" type="image/png" />
+<link rel="apple-touch-icon" href="favicon.png?v=2" />
+<link rel="stylesheet" href="crm.css?v=20261021-1646" />
 </head>
 <body>
 
@@ -16,12 +17,38 @@
   </button>
   <nav class="app-title-nav" role="tablist" aria-label="Main views">
     <button type="button" class="app-logo-text is-active" id="navLogoHome" role="tab" aria-selected="true" title="Home">Home</button>
-    <button type="button" class="app-title-tab" id="navTabCampaigns" role="tab" aria-selected="false">Campaigns</button>
-    <button type="button" class="app-title-tab" id="navTabTradeShows" role="tab" aria-selected="false">Trade Shows</button>
-    <button type="button" class="app-title-tab" id="navTabPlatforms" role="tab" aria-selected="false">Platforms</button>
-    <button type="button" class="app-title-tab" id="navTabStyles" role="tab" aria-selected="false">Styles</button>
-    <button type="button" class="app-title-tab" id="navTabPhotoshoots" role="tab" aria-selected="false">Photoshoots</button>
-    <button type="button" class="app-title-tab" id="navTabMagento" role="tab" aria-selected="false">Magento</button>
+    <!-- Menus: hover (or focus) opens each; the one holding the page you're on is underlined (js/app-shell.js). -->
+    <div class="app-title-tab-dropdown-wrap" data-nav-group="marketing">
+      <button type="button" class="app-title-tab app-title-tab--dropdown-trigger" id="navGroupMarketing" aria-haspopup="menu">
+        Marketing
+        <svg class="app-title-tab-chevron" xmlns="http://www.w3.org/2000/svg" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+      </button>
+      <div class="app-title-tab-dropdown" role="menu">
+        <button type="button" class="app-title-tab-dropdown-item" id="navTabCampaigns" role="menuitem" data-view="campaigns"><span class="app-title-tab-dropdown-check" aria-hidden="true">✓</span>Campaigns</button>
+        <button type="button" class="app-title-tab-dropdown-item" id="navTabTradeShows" role="menuitem" data-view="tradeShows"><span class="app-title-tab-dropdown-check" aria-hidden="true">✓</span>Trade Shows</button>
+        <button type="button" class="app-title-tab-dropdown-item" id="navTabPlatforms" role="menuitem" data-view="platforms"><span class="app-title-tab-dropdown-check" aria-hidden="true">✓</span>Platforms</button>
+      </div>
+    </div>
+    <div class="app-title-tab-dropdown-wrap" data-nav-group="photoshoots">
+      <button type="button" class="app-title-tab app-title-tab--dropdown-trigger" id="navGroupPhotoshoots" aria-haspopup="menu">
+        Photoshoots
+        <svg class="app-title-tab-chevron" xmlns="http://www.w3.org/2000/svg" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+      </button>
+      <div class="app-title-tab-dropdown" role="menu">
+        <button type="button" class="app-title-tab-dropdown-item" id="navTabPhotoshoots" role="menuitem" data-view="photoshoots"><span class="app-title-tab-dropdown-check" aria-hidden="true">✓</span>Photoshoots</button>
+        <button type="button" class="app-title-tab-dropdown-item" id="navTabStyles" role="menuitem" data-view="styles"><span class="app-title-tab-dropdown-check" aria-hidden="true">✓</span>Styles</button>
+      </div>
+    </div>
+    <div class="app-title-tab-dropdown-wrap" data-nav-group="magento">
+      <button type="button" class="app-title-tab app-title-tab--dropdown-trigger" id="navGroupMagento" aria-haspopup="menu">
+        Magento
+        <svg class="app-title-tab-chevron" xmlns="http://www.w3.org/2000/svg" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+      </button>
+      <div class="app-title-tab-dropdown" role="menu">
+        <button type="button" class="app-title-tab-dropdown-item" id="navMgProducts" role="menuitem" data-view="magento" data-subview="products"><span class="app-title-tab-dropdown-check" aria-hidden="true">✓</span>Products</button>
+        <button type="button" class="app-title-tab-dropdown-item" id="navMgCategories" role="menuitem" data-view="magento" data-subview="categories"><span class="app-title-tab-dropdown-check" aria-hidden="true">✓</span>Categories</button>
+      </div>
+    </div>
   </nav>
   <div class="header-right">
     <button type="button" class="btn btn-primary btn-icon" id="refreshBtn" aria-label="Refresh">
@@ -219,14 +246,8 @@
 
 <!-- ── Magento toolbar ───────────────────────────────────────── -->
 <div id="magentoToolbar" class="toolbar" hidden>
+  <!-- Products / Categories are picked from the header's Magento menu. -->
   <div class="toolbar-filter-cluster">
-    <div class="toolbar-filter-section">
-      <div class="filter-btn-group shoot-subtabs" id="mgSubtabs" role="tablist" aria-label="Magento">
-        <button type="button" class="filter-btn" data-view="products">Products</button>
-        <button type="button" class="filter-btn" data-view="categories">Categories</button>
-      </div>
-    </div>
-    <span class="toolbar-filter-divider" aria-hidden="true"></span>
 
     <!-- Products: quick filters (Status, Type), and changes to the ticked products. -->
     <div class="toolbar-filter-section mg-controls" id="mgProductControls">
@@ -1324,33 +1345,34 @@
   </div>
 </div>
 
-<script src="js/config.js?v=20261020-2215"></script>
+<script src="js/config.js?v=20261021-1646"></script>
 <!-- Needs SUPABASE_URL/KEY from config.js and the CDN client above. -->
-<script src="js/auth.js?v=20261020-2215"></script>
-<script src="js/util.js?v=20261020-2215"></script>
-<script src="js/dates.js?v=20261020-2215"></script>
-<script src="js/store.js?v=20261020-2215"></script>
-<script src="js/tasks.js?v=20261020-2215"></script>
-<script src="js/app-shell.js?v=20261020-2215"></script>
-<script src="js/record-list.js?v=20261020-2215"></script>
-<script src="js/item-pane.js?v=20261020-2215"></script>
-<script src="js/campaign-form.js?v=20261020-2215"></script>
-<script src="js/trade-show-form.js?v=20261020-2215"></script>
-<script src="js/banners.js?v=20261020-2215"></script>
-<script src="js/banner-form.js?v=20261020-2215"></script>
-<script src="js/mailchimp.js?v=20261020-2215"></script>
-<script src="js/style-import.js?v=20261020-2215"></script>
-<script src="js/column-filter.js?v=20261020-2215"></script>
-<script src="js/styles.js?v=20261020-2215"></script>
-<script src="js/style-images.js?v=20261020-2215"></script>
-<script src="js/photoshoots.js?v=20261020-2215"></script>
-<script src="js/photoshoot-form.js?v=20261020-2215"></script>
-<script src="js/magento.js?v=20261020-2215"></script>
-<script src="js/magento-availability.js?v=20261020-2215"></script>
-<script src="js/magento-groups.js?v=20261020-2215"></script>
-<script src="js/table-view.js?v=20261020-2215"></script>
-<script src="js/exports.js?v=20261020-2215"></script>
-<script src="js/calendar.js?v=20261020-2215"></script>
-<script src="js/main.js?v=20261020-2215"></script>
+<script src="js/auth.js?v=20261021-1646"></script>
+<script src="js/util.js?v=20261021-1646"></script>
+<script src="js/dates.js?v=20261021-1646"></script>
+<script src="js/store.js?v=20261021-1646"></script>
+<script src="js/tasks.js?v=20261021-1646"></script>
+<script src="js/app-shell.js?v=20261021-1646"></script>
+<script src="js/record-list.js?v=20261021-1646"></script>
+<script src="js/item-pane.js?v=20261021-1646"></script>
+<script src="js/campaign-form.js?v=20261021-1646"></script>
+<script src="js/trade-show-form.js?v=20261021-1646"></script>
+<script src="js/banners.js?v=20261021-1646"></script>
+<script src="js/banner-form.js?v=20261021-1646"></script>
+<script src="js/mailchimp.js?v=20261021-1646"></script>
+<script src="js/style-import.js?v=20261021-1646"></script>
+<script src="js/column-filter.js?v=20261021-1646"></script>
+<script src="js/styles.js?v=20261021-1646"></script>
+<script src="js/style-images.js?v=20261021-1646"></script>
+<script src="js/photoshoots.js?v=20261021-1646"></script>
+<script src="js/photoshoot-form.js?v=20261021-1646"></script>
+<script src="js/magento.js?v=20261021-1646"></script>
+<script src="js/magento-availability.js?v=20261021-1646"></script>
+<script src="js/magento-groups.js?v=20261021-1646"></script>
+<script src="js/table-view.js?v=20261021-1646"></script>
+<script src="js/exports.js?v=20261021-1646"></script>
+<script src="js/copy-menu.js?v=20261021-1646"></script>
+<script src="js/calendar.js?v=20261021-1646"></script>
+<script src="js/main.js?v=20261021-1646"></script>
 </body>
 </html>

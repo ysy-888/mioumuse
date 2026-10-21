@@ -528,6 +528,8 @@ function renderShootPane(shoot) {
     const style = findStyle(s.styleNo, s.color);
     const row = document.createElement("div");
     row.className = "shoot-style-row";
+    // Right-clicking the style copies its number (js/copy-menu.js).
+    row.dataset.styleNo = s.styleNo;
     const thumb = createStyleThumb(s.styleNo, s.color);
     thumb.addEventListener("click", () => openStyleGallery(s.styleNo, s.color));
     const text = document.createElement("span");

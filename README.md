@@ -68,10 +68,23 @@ reference in index.html so the URLs change on every deploy.
 | `js/magento.js` | Magento tab — live products (filters, sort, paging, status switch, bulk changes, edit pane) and categories (rename, active, jump to products) |
 | `supabase/functions/magento/` | Edge Function the app calls for Magento; holds the store address and token (secrets `MAGENTO_BASE_URL`, `MAGENTO_ACCESS_TOKEN`) |
 | `js/column-filter.js` | Header filters (the PO app's design): click a column's funnel to tick which values show — used for IHD by month and the Magento products table |
+| `js/copy-menu.js` | Right-click → Copy: style numbers (Styles, Need to Shoot, the shoot pane) and Magento product names |
 | `js/table-view.js` | Header menu → Table view: show / hide and reorder any table's columns, saved as that table's default to your account (`table_views`) |
 | `js/exports.js` | CSV downloads and printable (Save as PDF) reports — Need to Shoot, each photoshoot, and the header menu's Export CSV |
 | `js/calendar.js` | Home calendar of every campaign, show, and task, with the upcoming rail |
 | `js/main.js` | Boot |
+
+## Header menus
+
+**Home**, then three menus that open on hover: **Marketing** (Campaigns, Trade
+Shows, Platforms), **Photoshoots** (Photoshoots, Styles) and **Magento**
+(Products, Categories). The page you're on is ticked and its menu
+underlined.
+
+**Right-click → Copy**: a style number in the Styles and Need to Shoot
+tables (the Style # cell) or in a shoot's pane copies that number; a
+Magento product name copies the style number (a Simple item's colour suffix
+dropped — `ET6157-BLACK` copies `ET6157`).
 
 ## Table view
 

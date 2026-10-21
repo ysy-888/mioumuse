@@ -7714,6 +7714,9 @@ th.th-select { text-align: center; cursor: default; padding-left: 4px; padding-r
   transform: translateY(-4px);
 }
 
+/* Right-click → Copy (js/copy-menu.js). */
+.copy-menu { position: fixed; right: auto; z-index: 250; min-width: 0; white-space: nowrap; }
+
 .mg-pane-group-list { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
 /* A Simple item whose SKU matches a group it isn't in on Magento. */
 .mg-unlinked-flag {
