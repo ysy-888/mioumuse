@@ -208,6 +208,8 @@ function renderPhotoshootsView() {
 function refreshPhotoshootViews() {
   if (getCurrentAppView() === "photoshoots") renderPhotoshootsView();
   if (getCurrentAppView() === "styles" && typeof renderStylesTable === "function") renderStylesTable();
+  // Shoots sit on the Home calendar too.
+  refreshCalendarIfActive();
   if (paneShootId) {
     const shoot = getPhotoshootById(paneShootId);
     if (shoot) renderShootPane(shoot); else closeShootPane();
@@ -574,6 +576,8 @@ function openShootPane(id) {
   const shoot = getPhotoshootById(id);
   const pane = document.getElementById("shootPane");
   if (!shoot || !pane) return;
+  // One pane at a time — on Home it can be opened over a campaign's.
+  closeItemPane();
   paneShootId = shoot.id;
   renderShootPane(shoot);
   closeShootPaneMenu();
@@ -589,6 +593,8 @@ function closeShootPane() {
   const pane = document.getElementById("shootPane");
   if (pane) pane.hidden = true;
   if (getCurrentAppView() === "photoshoots" && photoshootSubview === "shoots") renderShootsTable();
+  // On Home, the card and calendar day lit up for this shoot go with it.
+  if (typeof clearCalGroupSelection === "function") clearCalGroupSelection();
 }
 
 function closeShootPaneMenu() {

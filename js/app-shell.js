@@ -199,7 +199,10 @@ function csvCell(value) {
  * gets a row, so nothing scheduled goes missing from the export.
  */
 function exportScheduleCsv() {
-  const items = getAllScheduleItems().sort((a, b) => a.startDate.localeCompare(b.startDate));
+  // Shoots ride the calendar too, but have their own list and export.
+  const items = getAllScheduleItems()
+    .filter(item => item.type !== ITEM_TYPE_PHOTOSHOOT)
+    .sort((a, b) => a.startDate.localeCompare(b.startDate));
   if (!items.length) {
     showIndicator("Nothing to export", "error");
     return;

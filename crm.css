@@ -5561,7 +5561,8 @@ span.dash-event { cursor: pointer; /* clicking selects the day */ }
    ============================================================ */
 
 [data-show],
-[data-campaign-type] {
+[data-campaign-type],
+[data-shoot-type] {
   --item-bg: #eef0f3;
   --item-fg: #4b5563;
   --item-strong: #6b7280;
@@ -5581,6 +5582,10 @@ span.dash-event { cursor: pointer; /* clicking selects the day */ }
 [data-campaign-type="collection-launch"] { --item-bg: #e4e6fa; --item-fg: #3a3f9e; --item-strong: #4a50c0; }
 [data-campaign-type="holiday"]           { --item-bg: #dff1e8; --item-fg: #155c3b; --item-strong: #1c7a4f; }
 [data-campaign-type="promotion"]         { --item-bg: #fdf3c7; --item-fg: #7a5d00; --item-strong: #a07a00; }
+
+/* Photoshoot types */
+[data-shoot-type="studio"]    { --item-bg: #dcf0f7; --item-fg: #0b5a6e; --item-strong: #0e7f9c; }
+[data-shoot-type="editorial"] { --item-bg: #f1e7dd; --item-fg: #6b4423; --item-strong: #8b5a2b; }
 
 .item-dot {
   display: inline-block;
@@ -5621,6 +5626,7 @@ span.dash-event { cursor: pointer; /* clicking selects the day */ }
 
 .cal-filter-btn[data-kind="campaign"].is-active { background: #e0561c; border-color: #e0561c; }
 .cal-filter-btn[data-kind="show"].is-active     { background: #6d4ac7; border-color: #6d4ac7; }
+.cal-filter-btn[data-kind="shoot"].is-active    { background: #0e7f9c; border-color: #0e7f9c; }
 .cal-filter-btn[data-kind="email"].is-active,
 .cal-filter-btn[data-kind="banner"].is-active,
 .cal-filter-btn[data-kind="social"].is-active   { background: #1f2937; border-color: #1f2937; }

@@ -303,6 +303,7 @@ function openItemPane(type, id) {
 
   // One pane at a time.
   closeBannerPane();
+  closeShootPane();
   // Moving straight from one record to another shouldn't drop a pending note.
   if (paneItemRef && (paneItemRef.type !== type || paneItemRef.id !== id)) flushItemNotes();
   paneItemRef = { type, id };

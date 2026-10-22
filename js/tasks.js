@@ -8,6 +8,8 @@
  *   Trade show  tasks derived from Day 1 — TRADE_SHOW_EMAIL_TASKS, counted
  *               back exactly (a weekend date stays on the weekend)
  *   Campaign    tasks chosen one by one, each with its own due date
+ *   Photoshoot  a single day and no tasks — it's done when it's marked
+ *               complete, and opens in its own pane (js/photoshoots.js)
  *
  * Also home to the pieces every task list shares: the status buckets, the
  * task checkbox, and the per-item card.
@@ -15,15 +17,18 @@
 
 const EVENT_KIND_SHOW = "show";
 const EVENT_KIND_CAMPAIGN = "campaign";
+const EVENT_KIND_SHOOT = "shoot";
 const TASK_KIND_EMAIL = "email";
 const TASK_KIND_BANNER = "banner";
 const TASK_KIND_SOCIAL = "social";
 
 const TASK_ID_PREFIX_TRADE_SHOW = "ts";
 const TASK_ID_PREFIX_CAMPAIGN = "cp";
+const TASK_ID_PREFIX_PHOTOSHOOT = "ps";
 
 const ITEM_TYPE_TRADE_SHOW = "tradeShow";
 const ITEM_TYPE_CAMPAIGN = "campaign";
+const ITEM_TYPE_PHOTOSHOOT = "photoshoot";
 
 // ── Task ids ─────────────────────────────────────────────────────────────────
 //
@@ -104,10 +109,29 @@ function campaignToItem(campaign) {
   };
 }
 
+function photoshootToItem(shoot) {
+  return {
+    type: ITEM_TYPE_PHOTOSHOOT,
+    id: shoot.id,
+    record: shoot,
+    title: getPhotoshootTitle(shoot),
+    chipLabel: getPhotoshootTitle(shoot),
+    startDate: shoot.date,
+    endDate: shoot.date,
+    weekdays: [],
+    dayKind: EVENT_KIND_SHOOT,
+    color: { attr: "shootType", value: shoot.type },
+    tasks: [],
+    groupId: `${TASK_ID_PREFIX_PHOTOSHOOT}|${shoot.id}|days`,
+  };
+}
+
 function getAllScheduleItems() {
   return [
     ...getAllTradeShows().map(tradeShowToItem),
     ...getAllCampaigns().map(campaignToItem),
+    // A shoot without a date yet has nowhere to go on the calendar.
+    ...getAllPhotoshoots().filter(shoot => shoot.date).map(photoshootToItem),
   ];
 }
 
@@ -115,6 +139,10 @@ function getScheduleItem(type, id) {
   if (type === ITEM_TYPE_CAMPAIGN) {
     const campaign = getCampaignById(id);
     return campaign ? campaignToItem(campaign) : null;
+  }
+  if (type === ITEM_TYPE_PHOTOSHOOT) {
+    const shoot = getPhotoshootById(id);
+    return shoot?.date ? photoshootToItem(shoot) : null;
   }
   const tradeShow = getTradeShowById(id);
   return tradeShow ? tradeShowToItem(tradeShow) : null;
@@ -128,6 +156,7 @@ function applyItemColor(el, item) {
 /** What a day chip says beyond the name: "Day 2" for a show, "Starts" for a campaign. */
 function describeItemDay(item, dayNumber, dayCount) {
   if (item.type === ITEM_TYPE_TRADE_SHOW) return `Day ${dayNumber}`;
+  if (item.type === ITEM_TYPE_PHOTOSHOOT) return getPhotoshootTypeLabel(item.record.type);
   if (dayCount === 1) return "1 day";
   if (dayNumber === 1) return "Starts";
   if (dayNumber === dayCount) return "Ends";
@@ -167,8 +196,9 @@ function getItemGroupIds(item) {
   return [item.groupId, ...item.tasks.map(t => t.id)];
 }
 
-/** All tasks ticked off. The days themselves aren't checkable. */
+/** All tasks ticked off. The days themselves aren't checkable — a shoot is done once marked complete. */
 function isItemComplete(item) {
+  if (item.type === ITEM_TYPE_PHOTOSHOOT) return item.record.status === "complete";
   return item.tasks.length > 0 && item.tasks.every(t => isTaskComplete(t.id));
 }
 
@@ -340,6 +370,8 @@ const CAL_EVENT_ICON_PATHS = {
   [EVENT_KIND_SHOW]: ["M3 9h18l-2-5H5z", "M4 9v11h16V9", "M9 20v-6h6v6"],
   // Campaign — a price tag.
   [EVENT_KIND_CAMPAIGN]: ["M3 12V4a1 1 0 0 1 1-1h8l9 9-9 9z", "M7.5 7.5h.01"],
+  // Photoshoot — a camera.
+  [EVENT_KIND_SHOOT]: ["M3 8h4l2-3h6l2 3h4v11H3z", "M12 10a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7z"],
   // Email — an envelope.
   [TASK_KIND_EMAIL]: ["M3 5h18v14H3z", "m3 6 9 7 9-7"],
   // Banner — a wide picture frame.
@@ -366,6 +398,16 @@ function createCalEventIcon(kind) {
     svg.appendChild(p);
   });
   return svg;
+}
+
+/** "Studio · 12 styles · Model: Ana" — a shoot has no tasks, so its card says this instead. */
+function describeShootCardLine(shoot) {
+  const n = shoot.styles.length;
+  return [
+    getPhotoshootTypeLabel(shoot.type),
+    n === 1 ? "1 style" : `${n} styles`,
+    shoot.model ? `Model: ${shoot.model}` : "",
+  ].filter(Boolean).join(" · ");
 }
 
 // ── Item card ────────────────────────────────────────────────────────────────
@@ -418,7 +460,7 @@ function createScheduleCard(item, { showName = true, onChange, tasks } = {}) {
   if (rows.length === 0) {
     const empty = document.createElement("span");
     empty.className = "schedule-card-empty";
-    empty.textContent = "No tasks yet.";
+    empty.textContent = item.type === ITEM_TYPE_PHOTOSHOOT ? describeShootCardLine(item.record) : "No tasks yet.";
     tasksWrap.appendChild(empty);
   }
   card.appendChild(tasksWrap);

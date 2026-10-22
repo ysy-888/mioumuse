@@ -1,5 +1,5 @@
 /**
- * Calendar — every campaign and trade show, and every task, on the day it lands.
+ * Calendar — every campaign, trade show and photoshoot, and every task, on the day it lands.
  *
  * A continuously scrolling month grid (or a single week) with a day pane that
  * opens beside it. A campaign or show appears on each day it runs; its tasks
@@ -33,7 +33,7 @@ let calMonthAnchors = {};
 let calScrollRaf = 0;
 
 /** Every kind the filter knows about — used to tell "all on" from "narrowed". */
-const CAL_KINDS = [EVENT_KIND_SHOW, EVENT_KIND_CAMPAIGN, TASK_KIND_EMAIL, TASK_KIND_BANNER, TASK_KIND_SOCIAL];
+const CAL_KINDS = [EVENT_KIND_SHOW, EVENT_KIND_CAMPAIGN, EVENT_KIND_SHOOT, TASK_KIND_EMAIL, TASK_KIND_BANNER, TASK_KIND_SOCIAL];
 
 /** Which kinds are shown. All on by default. */
 let calFilterSelection = new Set(CAL_KINDS);
@@ -82,15 +82,31 @@ function clearCalGroupSelection() {
  * in the side pane. Clicking the open, highlighted card again closes both.
  */
 function selectCalGroup(taskIds, item) {
-  const ref = paneItemRef;
-  const isOpen = ref && ref.type === item.type && ref.id === item.id;
-  if (isOpen && (taskIds.length === 0 || isCalGroupSelectedExactly(taskIds))) {
-    closeItemPane(); // clears the highlight too
+  if (isCalItemPaneOpen(item) && (taskIds.length === 0 || isCalGroupSelectedExactly(taskIds))) {
+    closeCalItemPane(item); // clears the highlight too
     return;
   }
+  // Open first: opening one pane closes the other, which clears the highlight.
+  openCalItemPane(item);
   calSelectedTaskIds = new Set(taskIds);
   applyCalGroupSelection();
-  openItemPane(item.type, item.id);
+}
+
+// A shoot has its own pane (js/photoshoots.js); campaigns and shows share one.
+
+function isCalItemPaneOpen(item) {
+  if (item.type === ITEM_TYPE_PHOTOSHOOT) return paneShootId === item.id;
+  return paneItemRef?.type === item.type && paneItemRef?.id === item.id;
+}
+
+function openCalItemPane(item) {
+  if (item.type === ITEM_TYPE_PHOTOSHOOT) openShootPane(item.id);
+  else openItemPane(item.type, item.id);
+}
+
+function closeCalItemPane(item) {
+  if (item.type === ITEM_TYPE_PHOTOSHOOT) closeShootPane();
+  else closeItemPane();
 }
 
 /** Paint the selection across both the grid chips and the cards. */
@@ -156,14 +172,16 @@ function getCalRange() {
 function buildItemCalendarEntries(item) {
   const entries = [];
   if (calFilterSelection.has(item.dayKind)) {
-    buildItemDayEvents(item).forEach(event => entries.push({ ...event, done: false, item }));
+    // A shoot's day is the work itself, so it greys out once it's complete.
+    const done = item.type === ITEM_TYPE_PHOTOSHOOT && isItemComplete(item);
+    buildItemDayEvents(item).forEach(event => entries.push({ ...event, done, item }));
   }
   getVisibleItemTasks(item).forEach(task => entries.push({ ...task, done: isTaskComplete(task.id), item }));
   return entries;
 }
 
 function isDayEntry(entry) {
-  return entry.kind === EVENT_KIND_SHOW || entry.kind === EVENT_KIND_CAMPAIGN;
+  return entry.kind === EVENT_KIND_SHOW || entry.kind === EVENT_KIND_CAMPAIGN || entry.kind === EVENT_KIND_SHOOT;
 }
 
 /** ymd → entry[] for the visible range, after filters. */
@@ -325,6 +343,10 @@ const CAL_TASK_SHORT_LABELS = {
 };
 
 function describeCalEntry(entry) {
+  if (entry.kind === EVENT_KIND_SHOOT) {
+    const shoot = entry.item.record;
+    return `${describeShootCardLine(shoot)}${shoot.status === "complete" ? " · Complete" : ""}`;
+  }
   if (isDayEntry(entry)) {
     return `Day ${entry.dayNumber} of ${entry.dayCount} · ${formatDateRange(entry.item.startDate, entry.item.endDate)}`;
   }
@@ -358,7 +380,7 @@ function createCalEventChip(entry) {
   chip.addEventListener("click", e => {
     e.stopPropagation();
     if (calSelectedYmd !== entry.dueDate) selectCalDay(entry.dueDate);
-    selectCalGroup(getItemGroupIds(entry.item));
+    selectCalGroup(getItemGroupIds(entry.item), entry.item);
     renderCalDayPane();
   });
   return chip;
@@ -573,8 +595,11 @@ function buildDayPaneEntries(dayYmd) {
     entries.push({
       item,
       taskIds: getItemGroupIds(item),
-      // A day with no task due has nothing to finish, so it stays open.
-      done: dayTasks.length > 0 && dayTasks.every(t => isTaskComplete(t.id)),
+      // A day with no task due has nothing to finish, so it stays open —
+      // except a shoot, which is finished when it's marked complete.
+      done: item.type === ITEM_TYPE_PHOTOSHOOT
+        ? isItemComplete(item)
+        : dayTasks.length > 0 && dayTasks.every(t => isTaskComplete(t.id)),
       openCount: dayTasks.filter(t => !isTaskComplete(t.id)).length,
     });
   });
@@ -671,6 +696,7 @@ function renderCalDayPane() {
 const CAL_FILTER_OPTIONS = [
   { key: EVENT_KIND_CAMPAIGN, label: "Campaigns" },
   { key: EVENT_KIND_SHOW, label: "Trade Shows" },
+  { key: EVENT_KIND_SHOOT, label: "Photoshoots" },
   { key: TASK_KIND_EMAIL, label: "Emails" },
   { key: TASK_KIND_BANNER, label: "Banners" },
   { key: TASK_KIND_SOCIAL, label: "Social Media" },
@@ -820,9 +846,21 @@ function buildUpcomingCardEntries() {
     .map(item => ({
       item,
       taskIds: getItemGroupIds(item),
-      buckets: getTaskStatusBuckets(item.tasks.filter(t => calFilterSelection.has(t.kind))),
+      buckets: item.type === ITEM_TYPE_PHOTOSHOOT
+        ? getShootStatusBuckets(item)
+        : getTaskStatusBuckets(item.tasks.filter(t => calFilterSelection.has(t.kind))),
     }))
     .sort((a, b) => a.item.startDate.localeCompare(b.item.startDate));
+}
+
+/**
+ * A shoot has no tasks to bucket on, so its status decides instead: planned
+ * and still ahead is Upcoming, planned but already past is Overdue (it never
+ * got marked complete), and complete is Completed. No rows either way.
+ */
+function getShootStatusBuckets(item) {
+  if (isItemComplete(item)) return { completed: [] };
+  return item.startDate < todayYmd() ? { overdue: [] } : { upcoming: [] };
 }
 
 /** Which status tab the Home rail is showing. */
@@ -850,7 +888,7 @@ function renderUpcomingTasks() {
     const empty = document.createElement("div");
     empty.className = "dash-empty";
     empty.textContent = getAllScheduleItems().length === 0
-      ? "Nothing scheduled yet — add a campaign or a trade show to get started."
+      ? "Nothing scheduled yet — add a campaign, a trade show or a photoshoot to get started."
       : `Nothing ${homeTaskStatus}.`;
     list.replaceChildren(empty);
     return;
