@@ -167,7 +167,7 @@ function renderStylesTable() {
 
   if (filteredStyles.length === 0) {
     const msg = getAllStyles().length === 0
-      ? "No styles yet — use Import Excel to load the ATS export."
+      ? "No styles yet — use Import Excel in the menu (⋮) to load the ATS export."
       : "No styles match the current filters.";
     tbody.innerHTML = `<tr class="state-row"><td colspan="${cols.length}">${escapeHtml(msg)}</td></tr>`;
     return;

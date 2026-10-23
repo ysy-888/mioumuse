@@ -70,7 +70,7 @@ let mgSelected = new Set();
 let mgPane = null;
 
 /** The helper version this app expects (HELPER_VERSION in supabase/functions/magento). */
-const MG_HELPER_VERSION = "2026-10-20.7";
+const MG_HELPER_VERSION = "2026-10-23.4";
 
 /** Per action, the last call's timing: { roundTripMs, totalMs, authMs, magentoCalls, magentoMs, slowest… }. */
 const mgTimings = {};
@@ -269,6 +269,8 @@ async function loadMagentoProducts() {
 /** First visit loads everything; later visits keep what's on screen. */
 async function enterMagentoView() {
   renderMagentoSubview();
+  // Orders / Customers load on their own (js/magento-sales.js).
+  if (isMgSalesView()) enterMgSales(mgSubview);
   if (mgLoadedOnce) return;
   mgLoadedOnce = true;
   await reloadMagento();
@@ -291,6 +293,8 @@ async function reloadMagento() {
     return;
   }
   renderMgCategoriesTable();
+  // Orders and customers already shown come again too.
+  reloadMgSales();
   await loadMagentoProducts();
   await index;
 }
@@ -362,22 +366,46 @@ function showMagentoSubview(view) {
   mgSubview = view;
   renderMagentoSubview();
   if (mgSubview === "categories") renderMgCategoriesTable();
+  else if (isMgSalesView()) enterMgSales(mgSubview); // js/magento-sales.js
   else renderMgProducts();
 }
 
 function renderMagentoSubview() {
-  const products = mgSubview === "products";
-  const show = { mgProductControls: products, mgCategoryControls: !products, mgProductsWrap: products, mgCategoriesWrap: !products, mgPager: products };
+  const view = mgSubview;
+  const products = view === "products";
+  const show = {
+    mgProductControls: products,
+    mgCategoryControls: view === "categories",
+    mgOrderControls: view === "orders",
+    mgCustomerControls: view === "customers",
+    mgProductsWrap: products,
+    mgCategoriesWrap: view === "categories",
+    mgOrdersWrap: view === "orders",
+    mgCustomersWrap: view === "customers",
+    mgPager: view !== "categories",
+    // Groups are about products only.
+    mgGroupsStatus: products,
+    mgImportGroupsBtn: products,
+  };
   Object.entries(show).forEach(([id, visible]) => {
     const el = document.getElementById(id);
     if (el) el.hidden = !visible;
   });
   const search = document.getElementById("mgSearchInput");
   if (search) {
-    search.placeholder = products ? "Search SKU or name" : "Search categories";
-    search.value = products ? mgQuery.search : mgCategorySearch;
+    search.placeholder = {
+      products: "Search SKU or name",
+      categories: "Search categories",
+      orders: "Search order #, name or email",
+      customers: "Search name or email",
+    }[view];
+    search.value = products ? mgQuery.search : view === "categories" ? mgCategorySearch : MG_SALES[view].query.search;
   }
   if (!products) closeMagentoPane();
+  // An order or customer pane belongs to its own list.
+  if (mgSalesPane && mgSalesPane.kind !== view && !(isMgSalesView() && mgSalesPane.back)) closeMgSalesPane();
+  if (products) renderMgPager();
+  else if (isMgSalesView()) renderMgSalesPager(view);
   syncMgFilterButtons();
   updateMgCounter();
 }
@@ -385,6 +413,12 @@ function renderMagentoSubview() {
 function updateMgCounter() {
   const counter = document.getElementById("mgRowCounter");
   if (!counter) return;
+  if (isMgSalesView()) {
+    const { text, title } = describeMgSalesCount(mgSubview);
+    counter.textContent = text;
+    counter.title = title;
+    return;
+  }
   if (mgSubview === "categories") {
     const n = visibleMgCategories().length;
     counter.textContent = n === 1 ? "1 category" : `${n.toLocaleString()} categories`;
@@ -868,6 +902,7 @@ async function openMagentoPane(sku) {
   const pane = document.getElementById("mgProductPane");
   if (!pane) return;
   if (mgPane && isMgPaneDirty() && mgPane.saved.sku !== sku && !confirm("Discard your unsaved changes to this product?")) return;
+  closeMgSalesPane(); // one pane at a time
 
   const row = mgPage.items.find(p => p.sku === sku);
   // Show what the list already knows while the full product loads.
@@ -1285,6 +1320,7 @@ async function exportMagentoCsv() {
     return;
   }
   if (mgSubview === "categories") return exportMgCategoriesCsv();
+  if (isMgSalesView()) return exportMgSalesCsv(mgSubview);
 
   if (!mgPage.total) {
     showIndicator("Nothing to export", "error");
@@ -1361,9 +1397,9 @@ function exportMgCategoriesCsv() {
 // ── Init ─────────────────────────────────────────────────────────────────────
 
 function initMagento() {
-  document.getElementById("mgExportCsvBtn")?.addEventListener("click", exportMagentoCsv);
   initMagentoGroups(); // js/magento-groups.js
   initMagentoAvailability(); // js/magento-availability.js
+  initMagentoSales(); // js/magento-sales.js
 
   document.getElementById("mgPaneVisibility")?.replaceChildren(...Object.entries(MG_VISIBILITY).map(([k, v]) => new Option(v, k)));
 
@@ -1392,8 +1428,12 @@ function initMagento() {
       renderMgCategoriesTable();
       return;
     }
+    const view = mgSubview;
     clearTimeout(searchTimer);
-    searchTimer = setTimeout(() => setMgQuery({ search: value.trim() }), 350);
+    searchTimer = setTimeout(() => {
+      if (isMgSalesView(view)) setMgSalesQuery(view, { search: value.trim() });
+      else setMgQuery({ search: value.trim() });
+    }, 350);
   });
   document.getElementById("mgShowInactive")?.addEventListener("change", renderMgCategoriesTable);
 

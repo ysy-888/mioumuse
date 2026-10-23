@@ -647,6 +647,57 @@ async function saveStyles(styles, onProgress) {
   indexStyles();
 }
 
+// ── Style import history ─────────────────────────────────────────────────────
+//
+// One record per Excel import that saved anything — see style_imports in
+// supabase-schema.sql. Loaded only when the history is opened: the list
+// first, then one import's full set of changes when it's picked.
+
+/** Record a finished import. `added` / `changed` as built by js/style-import.js. */
+async function saveStyleImportRecord({ fileName, total, unchanged, added, changed }) {
+  throwIfError(await requireClient().from("style_imports").insert({
+    file_name: fileName,
+    total_count: total,
+    added_count: added.length,
+    changed_count: changed.length,
+    unchanged_count: unchanged,
+    added,
+    changed: changed.map(({ style, diffs }) => ({
+      ...style,
+      diffs: diffs.map(({ key, from, to }) => ({ key, from, to })),
+    })),
+  }));
+}
+
+/** Newest first, counts only. */
+async function loadStyleImportHistory() {
+  const res = await requireClient().from("style_imports")
+    .select("id, imported_at, file_name, total_count, added_count, changed_count, unchanged_count")
+    .order("imported_at", { ascending: false })
+    .limit(500);
+  throwIfError(res);
+  return res.data.map(row => ({
+    id: row.id,
+    importedAt: row.imported_at,
+    fileName: row.file_name,
+    total: row.total_count,
+    addedCount: row.added_count,
+    changedCount: row.changed_count,
+    unchanged: row.unchanged_count,
+  }));
+}
+
+/** One import's changes, in the same shape the import preview uses. */
+async function loadStyleImportChanges(id) {
+  const res = await requireClient().from("style_imports")
+    .select("added, changed").eq("id", id).single();
+  throwIfError(res);
+  return {
+    added: res.data.added ?? [],
+    changed: (res.data.changed ?? []).map(({ diffs, ...style }) => ({ style, diffs: diffs ?? [] })),
+  };
+}
+
 // ── Need to Shoot list ───────────────────────────────────────────────────────
 //
 // A flag on a Style # + Color. It stays on the list — scheduled or not —

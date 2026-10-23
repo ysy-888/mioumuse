@@ -191,7 +191,6 @@ function renderPhotoshootsView() {
   document.getElementById("needSearchInput").hidden = !need;
   document.getElementById("shootSearchInput").hidden = need;
   document.getElementById("newShootBtn").hidden = need;
-  document.getElementById("needExportWrap").hidden = !need;
   if (need) closeShootPane();
 
   const waiting = getShootListEntries().filter(e => !e.shotShootId).length;

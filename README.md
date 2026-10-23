@@ -60,19 +60,34 @@ reference in index.html so the URLs change on every deploy.
 | `js/mailchimp.js` | Mailchimp links on Email tasks — create / edit / schedule / delete, link picker, sync and auto-complete |
 | `supabase/functions/mailchimp/` | Edge Function the app calls for Mailchimp; holds the API key (secret `MAILCHIMP_API_KEY`) |
 | `js/styles.js` | Styles tab — the style database table, status / season / category filters, search |
-| `js/style-import.js` | Import Excel — reads the N41 ATS export in the browser, previews new / updated / unchanged, saves |
+| `js/style-import.js` | Import Excel — reads the N41 ATS export in the browser, lists every change under Update / New Styles / New Colors tabs, saves, and records it for Update history |
 | `js/style-images.js` | Style photos from a linked network folder — matched by file name, thumbnails, gallery |
 | `js/photoshoots.js` | Photoshoots tab — the Need to Shoot list, the shoots list, the shoot side pane, shoot status badges |
 | `js/photoshoot-form.js` | Create / edit photoshoot modal |
+| `js/magento-sales.js` | Magento → Orders and Customers (read-only): lists with Status / Group filters, date quick filters, search, sort, paging; the order / customer pane |
 | `js/magento-groups.js` | Magento tab → Import groups: reads a Magento product export's `associated_skus` and saves the exact group links; the "Not in group" flag |
 | `js/magento.js` | Magento tab — live products (filters, sort, paging, status switch, bulk changes, edit pane) and categories (rename, active, jump to products) |
 | `supabase/functions/magento/` | Edge Function the app calls for Magento; holds the store address and token (secrets `MAGENTO_BASE_URL`, `MAGENTO_ACCESS_TOKEN`) |
 | `js/column-filter.js` | Header filters (the PO app's design): click a column's funnel to tick which values show — used for IHD by month and the Magento products table |
+| `js/shortcuts.js` | Keyboard shortcuts on table pages: ← / → turn pages, Space jumps to search |
 | `js/copy-menu.js` | Right-click → Copy: style numbers (Styles, Need to Shoot, the shoot pane) and Magento product names |
 | `js/table-view.js` | Header menu → Table view: show / hide and reorder any table's columns, saved as that table's default to your account (`table_views`) |
 | `js/exports.js` | CSV downloads and printable (Save as PDF) reports — Need to Shoot, each photoshoot, and the header menu's Export CSV |
 | `js/calendar.js` | Home calendar of every campaign, show, and task, with the upcoming rail |
 | `js/main.js` | Boot |
+
+## Keyboard shortcuts
+
+On the table pages (`js/shortcuts.js`):
+
+| Key | Does |
+|---|---|
+| ← / → | Previous / next page — Magento Products, Orders, Customers. On Styles, → shows the next batch. Tables that fit on one page ignore them. |
+| Space | Jumps to the page's search box; text already there is selected, to type over or edit. |
+
+They stand aside while you're typing (a text box, dropdown or checkbox),
+while a window, filter or menu is open, and when Ctrl / Alt / Shift / Cmd is
+held. Space on a button reached with Tab still presses it.
 
 ## Header menus
 
@@ -256,7 +271,7 @@ filtering and sorting, so it stays quick on a big catalog.
   a Simple item's pane shows its group.
 - **Groups come from a Magento export.** Magento's API lists only a group's
   *enabled* items and can't say which group a product is in, so the exact
-  links come from a product export instead. **Import groups** (toolbar)
+  links come from a product export instead. **Import groups** (header menu ⋮)
   reads the file in the browser — it's never uploaded — and saves only the
   group links (`magento_groups`); nothing else in the app or in Magento
   changes. A preview shows the counts and what changed since the last
@@ -271,7 +286,7 @@ filtering and sorting, so it stays quick on a big catalog.
 - **Shared SKUs**: Magento doesn't strictly stop two products sharing a
   SKU. The import lists any it finds (fix them in Magento), and combines a
   shared Grouped SKU's items.
-- **Export CSV** (toolbar, or the header menu) downloads the products as
+- **Export CSV** (header menu ⋮) downloads the products as
   the app reads them from Magento's API — every product matching the
   filters — with the imported groups. It isn't Magento's own export format:
   Magento's API can't produce that, so the file for Import groups has to
@@ -290,6 +305,56 @@ filtering and sorting, so it stays quick on a big catalog.
 **Categories** shows the tree with each category's product count. Click a
 name to rename it (Enter or click away saves, Esc undoes), switch it active
 or inactive, or **View products** to see the products in it.
+
+**Orders** (read-only) lists the store's orders, newest first: order #,
+placed (your local time), customer (Guest when they didn't sign in), email,
+status, items, total, ship-to, payment and shipping. Filter by **Status**
+(the header funnel — only statuses in use, with counts) and when placed
+(All / Today / 7 / 30 days); search order #, name or email; sort by a
+column; page through. Click an order for its items (shipped, canceled,
+refunded), totals, billing and shipping addresses, shipments with tracking
+numbers, and its comment history.
+
+**Customers** lists accounts: name, email, group, company, Is Activated,
+orders, location, phone, joined. Orders counts what each placed with their
+account (guest checkouts aren't tied to one), worked out for the page shown
+— 10 customers per call to Magento, side by side. Filter by **Group** (only groups with customers),
+by **Is Activated** (the column's funnel, or the toolbar's All / Activated /
+Not activated — for a choice field, Activated is the approved / active /
+yes options and Not activated the rest) and by when they joined; search
+name or email.
+
+Company and Is Activated aren't Magento's own customer fields, so the app
+finds them in the store's customer fields by their labels: Company prefers
+the account's Company field and falls back to the address's company; Is
+Activated shows as a switch (a yes / no field) or a dropdown (a choice like
+Pending / Approved), headed with whatever the store calls it. **Changing it
+saves straight to Magento** — from the table or the customer's pane;
+deactivating asks first. This is the only customer edit the app makes, and
+it needs the **Customers → All Customers → Actions → Edit** permission. If
+no such field is found, the app lists the store's customer fields so the
+right one can be picked. Click one for their details,
+saved addresses, and orders (newest 100) with what they've spent; click an
+order there to open it — and from an order, its customer's name opens
+them. Back returns.
+
+**Business License**: a file field in the customer's Account Information
+(found by its label), required at sign-up — the pane gives the file's name.
+Magento's API can't hand over the file itself (customer uploads are served
+only to the signed-in admin), so it's viewed in the Magento admin: the
+open-in-new-window icon beside each customer's name (and beside the
+license's name in the pane), and **Open in Magento** on customer and order
+panes, go straight to that customer's or order's admin page.
+For those links, add the **`MAGENTO_ADMIN_URL`** secret in Supabase — the
+admin panel's address, e.g. `https://www.mioumuse.com/admin_x7k2` — and in
+Magento set Stores → Configuration → Advanced → Admin → Security → **Add
+Secret Key to URLs** to **No** (otherwise links land on the Dashboard).
+
+Right-click an order # or email to copy it. Export CSV and Table view work
+on both. These need the integration's **Sales → Operations → Orders**
+(and **Shipments**, for tracking) and **Customers → All Customers**
+permissions (plus **Customers → Customer Groups** for group names); a
+missing one is named in the table.
 
 Saves are made at the "All Store Views" scope — the default values, as in
 the Magento admin with no store view chosen. A store view that overrides a
@@ -350,7 +415,7 @@ Links live in the `task_links` table (see `supabase-schema.sql`).
 ## Styles database
 
 The **Styles** tab holds every Style # + Color from the N41 ATS export.
-**Import Excel** reads the .xlsx in the browser (SheetJS, loaded only when
+**Import Excel** (header menu ⋮) reads the .xlsx in the browser (SheetJS, loaded only when
 importing) — the file itself is never uploaded:
 
 | Column | Field |
@@ -363,9 +428,22 @@ importing) — the file itself is never uploaded:
 | L (merged with M–N) | Description |
 
 Rows are read from row 8 down; any row without a Style # (the size-breakdown
-and blank rows between styles) is skipped. A preview shows what's new,
-updated and unchanged before anything is saved; confirming saves only new
-and changed styles. Styles missing from a newer file are left as they are.
+and blank rows between styles) is skipped. Before anything is saved, every
+change is listed under three tabs — the count boxes across the top (the file and a search box sit in the window's header):
+
+- **Update** — a Style # + Color already there whose fields changed, each
+  change side by side (Status ACTIVE → SOLDOUT).
+- **New Styles** — a Style # seen for the first time (every color of it).
+- **New Colors** — a new color of a Style # that's already there in another
+  color; the row lists the colors it already has.
+
+Confirming saves only new and changed styles. Styles missing from a newer file are left as they are.
+
+Each import that saves anything is recorded in full. **Update history**
+(header menu ⋮, on the Styles tab) lists them newest first — when, which
+file, and how many updated / new / unchanged — and opening one shows its
+Update, New Styles and New Colors tabs again — click a row for the style's detail window. Each row has the Styles table's **+ Need to Shoot**, and the two New tabs have **Add all to Need to Shoot** (everything on the tab, as searched; ones already waiting are skipped). Records live in the `style_imports` table (see
+`supabase-schema.sql`); imports made before it was added aren't recorded.
 
 **IHD** (in-house date) is edited right in the Styles table. It shows as
 MM/DD/YY, and the first click selects the whole date, so it can be copied
@@ -383,7 +461,7 @@ user + Style # + Color, and are loaded 1,000 rows at a time.
 ### Style photos
 
 Photos come straight from a folder on the network — nothing is uploaded.
-In the Styles tab, **Link image folder** picks the folder (Chrome or Edge;
+In the Styles tab, the header menu's **Link image folder** picks the folder (Chrome or Edge;
 browsers only let a website read a folder the user chooses). Subfolders are
 searched too. File names say what each photo is:
 
@@ -400,7 +478,7 @@ Photos show as thumbnails in the Styles table (click a row for all of
 them), beside each Style # in the banner form, and in the banner pane. The
 folder and its list of file names are remembered in the browser; after a
 restart the browser may ask for permission again (**Reconnect image
-folder**, one click — or choose "Allow on every visit"). **Rescan** picks up
+folder** in the header menu, one click — or choose "Allow on every visit"). **Rescan image folder** picks up
 new or renamed files straight away; a rescan also runs in the background on
 each visit. Only computers that can reach the server see the photos.
 
@@ -440,7 +518,7 @@ descending, then back to the default order. Blank values always sort last.
 
 ### Exports
 
-- **Need to Shoot → Export**: **Export CSV**, or **PDF report**. Both cover
+- **Need to Shoot**: the header menu's **Export CSV** or **Export PDF**. Both cover
   the list as it's showing, with the filters and search applied. The PDF
   is sorted by IHD, earliest first, with styles that have no IHD at the end.
 - **A shoot's ⋯ menu**: **Export CSV** (every style in the shoot) or **PDF

@@ -177,6 +177,34 @@ drop policy if exists "styles: own rows only" on styles;
 create policy "styles: own rows only" on styles
   for all using (user_id = auth.uid()) with check (user_id = auth.uid());
 
+-- style_imports: one row per Excel import that saved anything (Styles →
+-- menu → Update history). `added` and `changed` keep every record the import
+-- touched, so a past import can be looked through in full:
+--   added    [{ styleNo, color, status, season, category, description }]
+--   changed  [{ styleNo, color, status, season, category, description,
+--               diffs: [{ key, from, to }] }]    -- values after the import
+
+create table if not exists style_imports (
+  id bigint generated always as identity primary key,
+  user_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
+  imported_at timestamptz not null default now(),
+  file_name text not null default '',
+  total_count integer not null default 0,
+  added_count integer not null default 0,
+  changed_count integer not null default 0,
+  unchanged_count integer not null default 0,
+  added jsonb not null default '[]',
+  changed jsonb not null default '[]'
+);
+
+create index if not exists style_imports_user_time on style_imports (user_id, imported_at desc);
+
+alter table style_imports enable row level security;
+
+drop policy if exists "style_imports: own rows only" on style_imports;
+create policy "style_imports: own rows only" on style_imports
+  for all using (user_id = auth.uid()) with check (user_id = auth.uid());
+
 -- ── Photoshoots ─────────────────────────────────────────────────────────────
 --
 -- shoot_list: the Need to Shoot flag on a Style # + Color. shot_shoot_id is

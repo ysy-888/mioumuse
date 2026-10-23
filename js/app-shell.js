@@ -54,6 +54,7 @@ function switchAppView(view) {
     closeItemPane();
     closeBannerPane();
     closeShootPane();
+    closeMgSalesPane();
   }
   currentAppView = view;
 
@@ -93,6 +94,8 @@ function switchAppView(view) {
   if (view !== "magento") {
     document.getElementById("mgProductsWrap").hidden = true;
     document.getElementById("mgCategoriesWrap").hidden = true;
+    document.getElementById("mgOrdersWrap").hidden = true;
+    document.getElementById("mgCustomersWrap").hidden = true;
     document.getElementById("mgPager").hidden = true; // in the app footer
   }
   updateAppBackButton();
@@ -151,6 +154,31 @@ function closeHeaderMenu() {
   if (btn) btn.setAttribute("aria-expanded", "false");
 }
 
+/**
+ * Fit the menu to the page it's opened on. An item with data-views shows only
+ * on those views; a few also depend on what's open there right now.
+ */
+function syncHeaderMenu() {
+  const view = getCurrentAppView();
+  document.querySelectorAll("#headerMenuDropdown .header-menu-item[data-views]").forEach(item => {
+    item.hidden = !item.dataset.views.split(" ").includes(view);
+  });
+
+  // A PDF exists for the Need to Shoot list and for one open shoot.
+  const pdf = document.getElementById("headerMenuExportPdf");
+  if (pdf && !pdf.hidden) pdf.hidden = !canExportCurrentViewPdf(); // js/exports.js
+
+  // The image folder's one action depends on its state (js/style-images.js).
+  const folder = document.getElementById("headerMenuStyleFolder");
+  const unlink = document.getElementById("headerMenuStyleFolderUnlink");
+  if (view === "styles" && folder && unlink) {
+    const { label, canUnlink } = getStyleImageMenuState();
+    folder.hidden = !label;
+    if (label) folder.querySelector("span").textContent = label;
+    unlink.hidden = !canUnlink;
+  }
+}
+
 function initHeaderMenu() {
   const btn = document.getElementById("headerMenuBtn");
   const dropdown = document.getElementById("headerMenuDropdown");
@@ -159,6 +187,7 @@ function initHeaderMenu() {
   btn.addEventListener("click", e => {
     e.stopPropagation();
     const open = dropdown.hidden;
+    if (open) syncHeaderMenu();
     dropdown.hidden = !open;
     btn.setAttribute("aria-expanded", open ? "true" : "false");
   });

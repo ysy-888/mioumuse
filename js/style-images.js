@@ -384,22 +384,17 @@ function closeStyleGallery() {
 }
 
 // ── Status in the Styles toolbar ─────────────────────────────────────────────
+//
+// Just the state, as text — linking, reconnecting, rescanning and unlinking
+// are in the header menu (see getStyleImageMenuState).
 
 function renderStyleImageStatus() {
   const wrap = document.getElementById("styleImageStatus");
   if (!wrap) return;
 
-  const btn = (label, onClick, primary = false) => {
-    const b = document.createElement("button");
-    b.type = "button";
-    b.className = "btn" + (primary ? " btn-primary" : "");
-    b.textContent = label;
-    b.addEventListener("click", onClick);
-    return b;
-  };
-  const text = (t, title = "") => {
+  const text = (t, title = "", warn = false) => {
     const s = document.createElement("span");
-    s.className = "style-image-text";
+    s.className = "style-image-text" + (warn ? " is-warning" : "");
     s.textContent = t;
     if (title) s.title = title;
     return s;
@@ -410,10 +405,10 @@ function renderStyleImageStatus() {
       wrap.replaceChildren(text("Photos need Chrome or Edge", "This browser can't read folders."));
       break;
     case "none":
-      wrap.replaceChildren(btn("Link image folder", linkStyleImageFolder));
+      wrap.replaceChildren();
       break;
     case "needs-permission":
-      wrap.replaceChildren(btn("Reconnect image folder", reconnectStyleImageFolder, true));
+      wrap.replaceChildren(text("Image folder disconnected", "Reconnect it from the menu (⋮) to show photos.", true));
       break;
     case "scanning":
       wrap.replaceChildren(text(styleImageScanProgress
@@ -424,11 +419,28 @@ function renderStyleImageStatus() {
       const when = styleImageMeta.scannedAt ? new Date(styleImageMeta.scannedAt).toLocaleString() : "";
       wrap.replaceChildren(
         text(`📁 ${styleImageMeta.folderName} · ${styleImageMeta.fileCount.toLocaleString()} photos`, when ? `Checked ${when}` : ""),
-        btn("Rescan", rescanStyleImages),
-        btn("Unlink", unlinkStyleImageFolder),
       );
     }
   }
+}
+
+/**
+ * The header menu's image-folder item: its label for the folder's state
+ * ("" hides it), and whether Unlink applies.
+ */
+function getStyleImageMenuState() {
+  switch (styleImageState) {
+    case "none": return { label: "Link image folder", canUnlink: false };
+    case "needs-permission": return { label: "Reconnect image folder", canUnlink: true };
+    case "ready": return { label: "Rescan image folder", canUnlink: true };
+    default: return { label: "", canUnlink: false }; // unsupported, or mid-scan
+  }
+}
+
+function runStyleImageMenuAction() {
+  if (styleImageState === "none") linkStyleImageFolder();
+  else if (styleImageState === "needs-permission") reconnectStyleImageFolder();
+  else if (styleImageState === "ready") rescanStyleImages();
 }
 
 /** Redraw what shows photos — the Styles table, and banner style rows. */
@@ -448,6 +460,15 @@ function initStyleImages() {
   });
   document.addEventListener("keydown", e => {
     if (e.key === "Escape" && overlay?.classList.contains("open")) closeStyleGallery();
+  });
+  // The menu click is the gesture the browser needs before it re-grants access.
+  document.getElementById("headerMenuStyleFolder")?.addEventListener("click", () => {
+    closeHeaderMenu();
+    runStyleImageMenuAction();
+  });
+  document.getElementById("headerMenuStyleFolderUnlink")?.addEventListener("click", () => {
+    closeHeaderMenu();
+    unlinkStyleImageFolder();
   });
   renderStyleImageStatus();
   // The folder itself is restored after sign-in (main.js) — matching names

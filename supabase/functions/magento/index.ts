@@ -4,7 +4,8 @@
  * The admin token can't live in the app's public code, and Magento won't
  * answer cross-site requests from a web page anyway, so the app calls this
  * function instead. The store's address and token stay here, read from the
- * MAGENTO_BASE_URL and MAGENTO_ACCESS_TOKEN secrets.
+ * MAGENTO_BASE_URL and MAGENTO_ACCESS_TOKEN secrets. MAGENTO_ADMIN_URL
+ * (optional) is the admin panel's address, for "Open in Magento" links.
  *
  * The token is an Integration's access token (Magento admin → System →
  * Extensions → Integrations → Add New Integration, give it Catalog →
@@ -26,6 +27,20 @@
  *                                   one page of products; status, type,
  *                                   visibility and categoryId each take
  *                                   one value or a list (any matches)
+ *   orders     { page, pageSize, sort, dir, search, status, from }
+ *                                   one page of orders (read-only)
+ *   orderFacets                     order counts per status in use
+ *   order      { id }               one order: items, totals, addresses,
+ *                                   shipments + tracking, comments
+ *   customers  { page, pageSize, sort, dir, search, groupId, from,
+ *                activation?: { code, values } }
+ *   customerGroups                  groups, with customer counts
+ *   customerFields                  the store's Company / Is Activated
+ *                                   fields (found by label), with counts
+ *   setCustomerActivation { id, value }
+ *                                   change a customer's activation (the
+ *                                   only customer edit the app makes)
+ *   customer   { id }               one customer, with their orders
  *   skuList    { …products filters } every matching SKU, in sort order
  *   catalogIndex                    every product's [sku, type, status,
  *                                   visibility, qty, inStock], for
@@ -61,7 +76,7 @@ import { AsyncLocalStorage } from "node:async_hooks";
  * copy running in Supabase is older than the app expects. Bump it (and
  * MG_HELPER_VERSION in js/magento.js) whenever this file changes.
  */
-const HELPER_VERSION = "2026-10-20.7";
+const HELPER_VERSION = "2026-10-23.4";
 
 /**
  * Where a request's time went: each Magento call is counted and timed, per
@@ -72,6 +87,10 @@ const timingStore = new AsyncLocalStorage<Timing>();
 
 const BASE = (Deno.env.get("MAGENTO_BASE_URL") ?? "").trim().replace(/\/rest(\/.*)?$/i, "").replace(/\/+$/, "");
 const TOKEN = Deno.env.get("MAGENTO_ACCESS_TOKEN") ?? "";
+// The Magento admin panel's address (its path is usually custom, e.g.
+// https://shop.com/admin_x7k2) — optional; with it the app links customers
+// and orders straight to their admin pages.
+const ADMIN_URL = (Deno.env.get("MAGENTO_ADMIN_URL") ?? "").trim().replace(/\/+$/, "");
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -101,6 +120,17 @@ function magentoMessage(body: any) {
   else if (params && typeof params === "object") Object.entries(params).forEach(([k, v]) => (message = message.replaceAll(`%${k}`, String(v))));
   return message;
 }
+
+/** Magento's permission names, as the integration's API tab shows them. */
+const PERMISSION_NAMES: Record<string, string> = {
+  "Magento_Sales::shipment": "Sales → Operations → Shipments",
+  "Magento_Sales::actions_view": "Sales → Operations → Orders → Actions → View",
+  "Magento_Sales::sales": "Sales → Operations → Orders",
+  "Magento_Customer::group": "Customers → Customer Groups",
+  "Magento_Customer::manage": "Customers → All Customers",
+  "Magento_Customer::customer": "Customers → All Customers",
+  "Magento_Catalog::attributes_attributes": "Stores → Attributes → Product",
+};
 
 /**
  * One Magento REST call. `scope` is the store code in the URL: none for
@@ -146,7 +176,12 @@ async function mgCall(path: string, init: RequestInit, scope: string) {
   }
   if (!res.ok) {
     const message = magentoMessage(body) || `Magento error ${res.status}`;
-    if (res.status === 401) throw new UserError(`Magento refused the token: ${message}`, 502);
+    if (res.status === 401) {
+      // A missing permission: name the box to tick in the integration.
+      const needs = Object.entries(PERMISSION_NAMES).find(([resource]) => message.includes(resource))?.[1];
+      if (needs) throw new UserError(`The Magento integration needs the "${needs}" permission (System → Extensions → Integrations → edit → API), then Refresh.`, 403);
+      throw new UserError(`Magento refused the token: ${message}`, 502);
+    }
     throw new UserError(message, res.status === 404 ? 404 : 502);
   }
   return body;
@@ -569,6 +604,238 @@ async function catalogStock(): Promise<{ stockFrom: string; byId?: Map<string, S
   }
 }
 
+// ── Orders and customers ─────────────────────────────────────────────────────
+//
+// Read-only: lists (filtered, searched, sorted, paged by Magento) and one
+// record in full. Needs the integration's Sales → Operations → Orders (and
+// Shipments, for tracking) and Customers → All Customers permissions.
+
+type Filter = [string, string, string];
+
+/** searchCriteria from filter groups (each group OR'd inside, AND'd between). */
+function criteria(groups: Filter[][], sort: { field: string; dir: string } | null, page: number, pageSize: number) {
+  const q = new URLSearchParams();
+  groups.filter(g => g.length).forEach((filters, g) => {
+    filters.forEach(([field, value, cond], i) => {
+      q.set(`searchCriteria[filter_groups][${g}][filters][${i}][field]`, field);
+      q.set(`searchCriteria[filter_groups][${g}][filters][${i}][value]`, value);
+      q.set(`searchCriteria[filter_groups][${g}][filters][${i}][condition_type]`, cond);
+    });
+  });
+  if (sort) {
+    q.set("searchCriteria[sortOrders][0][field]", sort.field);
+    q.set("searchCriteria[sortOrders][0][direction]", sort.dir);
+  }
+  q.set("searchCriteria[pageSize]", String(pageSize));
+  q.set("searchCriteria[currentPage]", String(page));
+  return q;
+}
+
+function listParam(v: unknown) {
+  return (Array.isArray(v) ? v : v ? [v] : []).map(String).filter(Boolean);
+}
+
+function pageParams(p: Record<string, unknown>) {
+  return {
+    page: Math.max(Number(p.page) || 1, 1),
+    pageSize: Math.min(Math.max(Number(p.pageSize) || 50, 1), 200),
+  };
+}
+
+// deno-lint-ignore no-explicit-any
+function summarizeAddress(a: any) {
+  if (!a) return null;
+  return {
+    name: [a.firstname, a.lastname].filter(Boolean).join(" "),
+    company: a.company ?? "",
+    street: (Array.isArray(a.street) ? a.street : [a.street]).filter(Boolean).join(", "),
+    city: a.city ?? "",
+    region: typeof a.region === "object" ? a.region?.region ?? "" : a.region ?? "",
+    postcode: a.postcode ?? "",
+    country: a.country_id ?? "",
+    phone: a.telephone ?? "",
+  };
+}
+
+const ORDER_LIST_FIELDS = [
+  "entity_id", "increment_id", "created_at", "status", "state", "customer_id", "customer_is_guest",
+  "customer_firstname", "customer_lastname", "customer_email", "grand_total", "order_currency_code",
+  "total_qty_ordered", "total_item_count", "shipping_description",
+  "billing_address[firstname,lastname,city,region,country_id,telephone]",
+  "payment[method,additional_information]",
+  "extension_attributes[shipping_assignments[shipping[address[firstname,lastname,city,region,country_id]]]]",
+].join(",");
+
+// deno-lint-ignore no-explicit-any
+function summarizeOrder(o: any) {
+  const billing = summarizeAddress(o.billing_address);
+  const shipping = summarizeAddress(o.extension_attributes?.shipping_assignments?.[0]?.shipping?.address) ?? billing;
+  return {
+    id: o.entity_id,
+    number: String(o.increment_id ?? ""),
+    createdAt: o.created_at ?? "",
+    status: o.status ?? "",
+    state: o.state ?? "",
+    customerId: o.customer_id ?? null,
+    guest: Boolean(o.customer_is_guest),
+    customerName: [o.customer_firstname, o.customer_lastname].filter(Boolean).join(" ") || billing?.name || "",
+    email: o.customer_email ?? "",
+    total: o.grand_total ?? null,
+    currency: o.order_currency_code ?? "",
+    qty: Number(o.total_qty_ordered ?? 0),
+    itemCount: Number(o.total_item_count ?? 0),
+    shipTo: shipping ? [shipping.city, shipping.region, shipping.country].filter(Boolean).join(", ") : "",
+    // The payment method's title comes first in additional_information.
+    payment: o.payment?.additional_information?.[0] || o.payment?.method || "",
+    shipping: o.shipping_description ?? "",
+  };
+}
+
+const ORDER_SORT: Record<string, string> = {
+  number: "increment_id", date: "created_at", total: "grand_total", status: "status",
+  customer: "customer_lastname", email: "customer_email", qty: "total_qty_ordered",
+};
+
+function orderCriteria(p: Record<string, unknown>, page: number, pageSize: number, fields: string) {
+  const groups: Filter[][] = [];
+  const search = String(p.search ?? "").trim();
+  if (search) {
+    groups.push(["increment_id", "customer_email", "customer_lastname", "customer_firstname"]
+      .map(field => [field, `%${search}%`, "like"] as Filter));
+  }
+  groups.push(listParam(p.status).map(s => ["status", s, "eq"] as Filter));
+  if (p.from) groups.push([["created_at", `${p.from} 00:00:00`, "gteq"]]);
+  if (p.customerId) groups.push([["customer_id", String(p.customerId), "eq"]]);
+  const sortField = ORDER_SORT[String(p.sort ?? "")];
+  const q = criteria(groups, { field: sortField ?? "created_at", dir: sortField ? (p.dir === "DESC" ? "DESC" : "ASC") : "DESC" }, page, pageSize);
+  q.set("fields", `items[${fields}],total_count`);
+  return q;
+}
+
+const CUSTOMER_LIST_FIELDS = [
+  "id", "email", "firstname", "lastname", "group_id", "created_at", "default_billing", "custom_attributes",
+  "addresses[id,firstname,lastname,company,street,city,region[region],postcode,country_id,telephone]",
+].join(",");
+
+// deno-lint-ignore no-explicit-any
+function summarizeCustomer(c: any) {
+  // deno-lint-ignore no-explicit-any
+  const addresses = (c.addresses ?? []).map((a: any) => ({ id: String(a.id), ...summarizeAddress(a) }));
+  const main = addresses.find((a: { id: string }) => a.id === String(c.default_billing)) ?? addresses[0] ?? null;
+  return {
+    id: c.id,
+    name: [c.firstname, c.lastname].filter(Boolean).join(" "),
+    email: c.email ?? "",
+    groupId: c.group_id ?? null,
+    createdAt: c.created_at ?? "",
+    location: main ? [main.city, main.region, main.country].filter(Boolean).join(", ") : "",
+    phone: main?.phone ?? "",
+    // The address's company; a Company field on the account (custom, below)
+    // is preferred by the app when the store has one.
+    company: main?.company ?? "",
+    // The store's own customer fields (Company, Is Activated…): code → value.
+    // deno-lint-ignore no-explicit-any
+    custom: Object.fromEntries((c.custom_attributes ?? []).map((a: any) => [a.attribute_code, a.value])),
+    addresses,
+  };
+}
+
+// ── The store's own customer fields ──
+//
+// "Company" and "Is Activated" aren't Magento's own customer fields — they
+// come from this store's setup (an extension or custom attributes), so
+// they're found by their labels in the customer attribute list. The
+// activation field can be a yes / no, or a choice (Pending / Approved…).
+
+type CustomerField = { code: string; label: string; input: string; options: { value: string; label: string }[] };
+
+// deno-lint-ignore no-explicit-any
+function toCustomerField(a: any): CustomerField {
+  return {
+    code: String(a.attribute_code),
+    label: String(a.frontend_label ?? a.store_label ?? a.attribute_code),
+    input: String(a.frontend_input ?? ""),
+    // deno-lint-ignore no-explicit-any
+    options: (a.options ?? []).map((o: any) => ({ value: String(o.value ?? ""), label: String(o.label ?? "").trim() }))
+      .filter((o: { value: string; label: string }) => o.value !== "" && o.label !== ""),
+  };
+}
+
+async function findCustomerFields() {
+  // deno-lint-ignore no-explicit-any
+  const all: any[] = (await mg("/attributeMetadata/customer")) ?? [];
+  const fields = all.map(toCustomerField);
+  const byLabel = (re: RegExp, codeRe: RegExp) =>
+    fields.find(f => re.test(f.label)) ?? fields.find(f => codeRe.test(f.code)) ?? null;
+  return {
+    company: byLabel(/^company( name)?$/i, /^company(_name)?$/i),
+    activation: byLabel(/activat|approv/i, /activat|approv/i),
+    // A file field: the business license (or, failing a match, the first file field).
+    license: byLabel(/licen[cs]e/i, /licen[cs]e/i) ?? fields.find(f => f.input === "file" || f.input === "image") ?? null,
+    // Every custom field, so the app can show what's there when nothing matched.
+    all: fields.filter(f => !["firstname", "lastname", "email", "group_id", "created_at", "updated_at", "website_id", "store_id", "created_in", "default_billing", "default_shipping", "confirmation", "password_hash", "rp_token", "rp_token_created_at", "disable_auto_group_change", "dob", "gender", "middlename", "prefix", "suffix", "taxvat", "lock_expires", "failures_num", "first_failure"].includes(f.code)),
+  };
+}
+
+/** A yes / no field stores 1 / 0; a choice stores its option's value. */
+function activationOptions(f: CustomerField) {
+  if (f.options.length) return f.options;
+  return [{ value: "1", label: "Yes" }, { value: "0", label: "No" }];
+}
+
+const CUSTOMER_SORT: Record<string, string> = {
+  name: "lastname", email: "email", createdAt: "created_at", group: "group_id",
+};
+
+function customerCriteria(p: Record<string, unknown>, page: number, pageSize: number) {
+  const groups: Filter[][] = [];
+  const search = String(p.search ?? "").trim();
+  if (search) groups.push(["email", "firstname", "lastname"].map(field => [field, `%${search}%`, "like"] as Filter));
+  groups.push(listParam(p.groupId).map(g => ["group_id", g, "eq"] as Filter));
+  // The store's activation field: { code, values } — any of these values.
+  // deno-lint-ignore no-explicit-any
+  const activation = p.activation as any;
+  if (activation?.code && /^[a-z0-9_]+$/.test(activation.code)) {
+    groups.push(listParam(activation.values).map(v => [activation.code, v, "eq"] as Filter));
+  }
+  if (p.from) groups.push([["created_at", `${p.from} 00:00:00`, "gteq"]]);
+  const sortField = CUSTOMER_SORT[String(p.sort ?? "")];
+  const q = criteria(groups, { field: sortField ?? "created_at", dir: sortField ? (p.dir === "DESC" ? "DESC" : "ASC") : "DESC" }, page, pageSize);
+  q.set("fields", `items[${CUSTOMER_LIST_FIELDS}],total_count`);
+  return q;
+}
+
+/**
+ * How many orders each customer on the page has placed with their account
+ * (guest checkouts aren't tied to an account). The customer search can't
+ * say, so the page's customers' orders are asked for — just their customer
+ * id — 10 customers per call (a long id list makes too long a web address),
+ * the calls side by side. If orders can't be read, counts stay unknown.
+ */
+async function addOrderCounts<T extends { id: unknown; orderCount?: number | null }>(customers: T[]): Promise<T[]> {
+  if (!customers.length) return customers;
+  const counts = new Map<string, number>();
+  try {
+    const ids = customers.map(c => String(c.id));
+    const bodies = await Promise.all(skuBatches(ids).map(batch => {
+      const q = criteria([batch.map(id => ["customer_id", id, "eq"] as Filter)], null, 1, 10000);
+      return mg(`/orders?${q}&fields=items[customer_id],total_count`);
+    }));
+    // deno-lint-ignore no-explicit-any
+    bodies.flatMap(b => b?.items ?? []).forEach((o: any) => {
+      const id = String(o.customer_id);
+      counts.set(id, (counts.get(id) ?? 0) + 1);
+    });
+    customers.forEach(c => (c.orderCount = counts.get(String(c.id)) ?? 0));
+  } catch {
+    customers.forEach(c => (c.orderCount = null));
+  }
+  return customers;
+}
+
+/** Magento's built-in order statuses; any custom ones are found from recent orders. */
+const KNOWN_ORDER_STATUSES = ["pending", "pending_payment", "processing", "holded", "complete", "closed", "canceled", "payment_review", "fraud"];
+
 // ── Categories ───────────────────────────────────────────────────────────────
 
 type CategoryRow = {
@@ -624,7 +891,8 @@ const actions: Record<string, (p: any) => Promise<unknown>> = {
       baseUrl: store.base_url ?? `${BASE}/`,
       mediaUrl: `${String(store.base_media_url ?? `${BASE}/media/`).replace(/\/+$/, "")}/catalog/product`,
       currency: store.base_currency_code ?? "USD",
-      adminUrl: BASE,
+      // "" when the MAGENTO_ADMIN_URL secret isn't set (no admin links then).
+      adminUrl: ADMIN_URL,
     };
   },
 
@@ -731,6 +999,174 @@ const actions: Record<string, (p: any) => Promise<unknown>> = {
           (p.extension_attributes?.category_links ?? []).map((l: any) => String(l.category_id)).join(","),
         ];
       }),
+    };
+  },
+
+  // ── Orders ──
+
+  async orders(params) {
+    const { page, pageSize } = pageParams(params);
+    const body = await mg(`/orders?${orderCriteria(params, page, pageSize, ORDER_LIST_FIELDS)}`);
+    return { items: (body?.items ?? []).map(summarizeOrder), total: Number(body?.total_count ?? 0), page, pageSize };
+  },
+
+  /** How many orders have each status — only statuses in use (for the filter). */
+  async orderFacets() {
+    // Custom statuses aren't listed anywhere the API reaches, so recent
+    // orders are looked at too.
+    const recent = await mg(`/orders?${criteria([], { field: "created_at", dir: "DESC" }, 1, 300)}&fields=items[status]`);
+    // deno-lint-ignore no-explicit-any
+    const statuses = [...new Set([...KNOWN_ORDER_STATUSES, ...(recent?.items ?? []).map((o: any) => String(o.status ?? ""))])].filter(Boolean);
+    const counts = await eachLimited(statuses, 4, async status => {
+      const q = criteria([[["status", status, "eq"]]], null, 1, 1);
+      return Number((await mg(`/orders?${q}&fields=total_count`))?.total_count ?? 0);
+    });
+    return Object.fromEntries(statuses.map((s, i) => [s, counts[i]]).filter(([, n]) => Number(n) > 0));
+  },
+
+  /** One order in full: items, totals, addresses, shipments, comments. */
+  async order({ id }) {
+    if (!id) throw new UserError("Which order?");
+    const o = await mg(`/orders/${encodeURIComponent(id)}`);
+    let shipments: unknown[] = [];
+    let shipmentsProblem = "";
+    try {
+      const q = criteria([[["order_id", String(id), "eq"]]], null, 1, 50);
+      // deno-lint-ignore no-explicit-any
+      shipments = ((await mg(`/shipments?${q}`))?.items ?? []).map((s: any) => ({
+        number: String(s.increment_id ?? ""),
+        createdAt: s.created_at ?? "",
+        qty: Number(s.total_qty ?? 0),
+        // deno-lint-ignore no-explicit-any
+        tracks: (s.tracks ?? []).map((t: any) => ({ title: t.title ?? t.carrier_code ?? "", number: t.track_number ?? "" })),
+      }));
+    } catch (err) {
+      shipmentsProblem = err instanceof Error ? err.message : String(err);
+    }
+    return {
+      ...summarizeOrder(o),
+      // Child rows of configurable / bundle items repeat their parent.
+      // deno-lint-ignore no-explicit-any
+      items: (o.items ?? []).filter((i: any) => !i.parent_item_id).map((i: any) => ({
+        name: i.name ?? "",
+        sku: i.sku ?? "",
+        qtyOrdered: Number(i.qty_ordered ?? 0),
+        qtyShipped: Number(i.qty_shipped ?? 0),
+        qtyRefunded: Number(i.qty_refunded ?? 0),
+        qtyCanceled: Number(i.qty_canceled ?? 0),
+        price: i.price ?? null,
+        rowTotal: i.row_total ?? null,
+        discount: i.discount_amount ?? 0,
+      })),
+      totals: {
+        subtotal: o.subtotal ?? null,
+        shipping: o.shipping_amount ?? null,
+        discount: o.discount_amount ?? 0,
+        tax: o.tax_amount ?? 0,
+        grandTotal: o.grand_total ?? null,
+        paid: o.total_paid ?? null,
+        refunded: o.total_refunded ?? null,
+        due: o.total_due ?? null,
+      },
+      billingAddress: summarizeAddress(o.billing_address),
+      shippingAddress: summarizeAddress(o.extension_attributes?.shipping_assignments?.[0]?.shipping?.address),
+      couponCode: o.coupon_code ?? "",
+      // deno-lint-ignore no-explicit-any
+      history: (o.status_histories ?? []).map((h: any) => ({
+        createdAt: h.created_at ?? "",
+        status: h.status ?? "",
+        comment: h.comment ?? "",
+        notified: Boolean(h.is_customer_notified),
+      })),
+      shipments,
+      shipmentsProblem,
+    };
+  },
+
+  // ── Customers ──
+
+  async customers(params) {
+    const { page, pageSize } = pageParams(params);
+    const body = await mg(`/customers/search?${customerCriteria(params, page, pageSize)}`);
+    const items = (body?.items ?? []).map(summarizeCustomer);
+    return { items: await addOrderCounts(items), total: Number(body?.total_count ?? 0), page, pageSize };
+  },
+
+  /** Customer groups, with how many customers each has (only groups in use count). */
+  /**
+   * The store's Company and Is Activated customer fields (found by label),
+   * with how many customers have each activation value; and every custom
+   * field, for when nothing matched.
+   */
+  async customerFields() {
+    const found = await findCustomerFields();
+    let activationCounts: Record<string, number> = {};
+    if (found.activation) {
+      const options = activationOptions(found.activation);
+      const counts = await eachLimited(options, 4, async o => {
+        const q = criteria([[[found.activation!.code, o.value, "eq"]]], null, 1, 1);
+        return Number((await mg(`/customers/search?${q}&fields=total_count`))?.total_count ?? 0);
+      });
+      activationCounts = Object.fromEntries(options.map((o, i) => [o.value, counts[i]]));
+    }
+    return {
+      company: found.company,
+      license: found.license,
+      activation: found.activation ? { ...found.activation, options: activationOptions(found.activation) } : null,
+      activationCounts,
+      all: found.all.map(f => ({ code: f.code, label: f.label, input: f.input })),
+    };
+  },
+
+  /**
+   * Change a customer's activation. Only the store's activation field can be
+   * set here. The whole customer is read, that one field changed, and the
+   * whole customer saved back — a partial save could drop addresses.
+   */
+  async setCustomerActivation({ id, value }) {
+    if (!id) throw new UserError("Which customer?");
+    const { activation } = await findCustomerFields();
+    if (!activation) throw new UserError("This store has no Is Activated customer field the app could find.");
+    const allowed = activationOptions(activation).map(o => o.value);
+    if (!allowed.includes(String(value))) throw new UserError(`"${value}" isn't one of ${activation.label}'s choices.`);
+
+    const customer = await mg(`/customers/${encodeURIComponent(id)}`);
+    // deno-lint-ignore no-explicit-any
+    const custom = (customer.custom_attributes ?? []).filter((a: any) => a.attribute_code !== activation.code);
+    custom.push({ attribute_code: activation.code, value: String(value) });
+    customer.custom_attributes = custom;
+    const saved = await mg(`/customers/${encodeURIComponent(id)}`, { method: "PUT", body: JSON.stringify({ customer }) });
+    return summarizeCustomer(saved);
+  },
+
+  async customerGroups() {
+    const body = await mg(`/customerGroups/search?${criteria([], null, 1, 200)}`);
+    // deno-lint-ignore no-explicit-any
+    const groups = (body?.items ?? []).map((g: any) => ({ id: String(g.id), code: String(g.code ?? "") }));
+    const counts = await eachLimited(groups, 4, async (g: { id: string }) => {
+      const q = criteria([[["group_id", g.id, "eq"]]], null, 1, 1);
+      return Number((await mg(`/customers/search?${q}&fields=total_count`))?.total_count ?? 0);
+    });
+    return groups.map((g: { id: string; code: string }, i: number) => ({ ...g, count: counts[i] }));
+  },
+
+  /** One customer: details, addresses, and their orders (newest first) with totals. */
+  async customer({ id }) {
+    if (!id) throw new UserError("Which customer?");
+    const [c, ordersBody] = await Promise.all([
+      mg(`/customers/${encodeURIComponent(id)}`),
+      mg(`/orders?${orderCriteria({ customerId: id }, 1, 100, ORDER_LIST_FIELDS)}`),
+    ]);
+    const orders = (ordersBody?.items ?? []).map(summarizeOrder);
+    return {
+      ...summarizeCustomer(c),
+      dob: c.dob ?? "",
+      orders,
+      orderCount: Number(ordersBody?.total_count ?? orders.length),
+      // Lifetime spend over the orders listed (the newest 100), not counting canceled ones.
+      lifetime: orders
+        .filter((o: { status: string }) => o.status !== "canceled")
+        .reduce((sum: number, o: { total: number | null }) => sum + Number(o.total ?? 0), 0),
     };
   },
 

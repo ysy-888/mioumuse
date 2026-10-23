@@ -23,6 +23,8 @@ const TABLE_VIEW_TABLES = [
   { id: "needTable", label: "Photoshoots · Need to Shoot", view: "photoshoots" },
   { id: "shootsTable", label: "Photoshoots · Shoots", view: "photoshoots" },
   { id: "mgProductsTable", label: "Magento · Products", view: "magento" },
+  { id: "mgOrdersTable", label: "Magento · Orders", view: "magento" },
+  { id: "mgCustomersTable", label: "Magento · Customers", view: "magento" },
 ];
 
 /** Always shown, always first — the tick-box column. */
@@ -123,7 +125,11 @@ function applyTableView(tableId) {
 /** Redraw whatever is on screen, now that its columns have moved. */
 function redrawAfterTableView() {
   switchAppView(getCurrentAppView());
-  if (getCurrentAppView() === "magento") renderMgProducts();
+  if (getCurrentAppView() === "magento") {
+    renderMgProducts();
+    renderMgSales("orders");
+    renderMgSales("customers");
+  }
 }
 
 // ── The modal ────────────────────────────────────────────────────────────────
@@ -132,6 +138,7 @@ function redrawAfterTableView() {
 function currentTableViewTarget() {
   const view = getCurrentAppView();
   if (view === "photoshoots") return photoshootSubview === "need" ? "needTable" : "shootsTable";
+  if (view === "magento") return { orders: "mgOrdersTable", customers: "mgCustomersTable" }[mgSubview] ?? "mgProductsTable";
   return TABLE_VIEW_TABLES.find(t => t.view === view)?.id ?? TABLE_VIEW_TABLES[0].id;
 }
 

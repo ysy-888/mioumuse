@@ -288,7 +288,10 @@ async function saveMgGroupsImport() {
 }
 
 function initMagentoGroups() {
-  document.getElementById("mgImportGroupsBtn")?.addEventListener("click", openMgGroupsImport);
+  document.getElementById("headerMenuImportGroups")?.addEventListener("click", () => {
+    closeHeaderMenu();
+    openMgGroupsImport();
+  });
   document.getElementById("mgImportGroupsFile")?.addEventListener("change", e => readMgGroupsFile(e.target.files?.[0]));
   document.getElementById("mgGroupsImportSaveBtn")?.addEventListener("click", saveMgGroupsImport);
   document.getElementById("mgGroupsImportCancelBtn")?.addEventListener("click", closeMgGroupsImport);

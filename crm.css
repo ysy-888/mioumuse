@@ -6963,7 +6963,13 @@ span.dash-event { cursor: pointer; /* clicking selects the day */ }
 .style-status[data-status="INACTIVE"] { background: #eef0f3; color: #8b929c; }
 
 /* ── Import dialog ── */
-.style-import-card { width: 760px; }
+/* Wide and tall: the changes list is the point of the window. */
+.style-import-card {
+  width: min(1240px, calc(100vw - 32px));
+  height: min(860px, calc(100vh - 32px));
+}
+
+.style-import-card .modal-body { flex: 1 1 auto; min-height: 0; }
 
 .style-import-body {
   display: flex;
@@ -6985,6 +6991,7 @@ span.dash-event { cursor: pointer; /* clicking selects the day */ }
   text-align: center;
 }
 
+.style-import-pick[hidden] { display: none; }
 .style-import-pick.is-dragover { border-color: var(--accent); background: var(--accent-light); }
 .style-import-choose { cursor: pointer; }
 
@@ -7017,10 +7024,69 @@ span.dash-event { cursor: pointer; /* clicking selects the day */ }
 .style-import-stat[data-tone="new"] strong { color: var(--success); }
 .style-import-stat[data-tone="changed"] strong { color: #1f56a5; }
 
-.style-import-preview {
-  max-height: 42vh;
-  overflow-y: auto;
+/* The boxes are the tabs: updated, new styles, new colors. (Unchanged is a
+   plain count.) The open one fills with its colour and gets a thicker edge. */
+.style-import-stat.is-tab {
+  background: var(--surface);
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 120ms ease, border-color 120ms ease, box-shadow 120ms ease;
 }
+
+.style-import-stat.is-tab:hover:not(.is-active) {
+  background: #f6f9fd;
+  border-color: #c9d9ea;
+}
+
+.style-import-stat.is-tab:focus-visible { outline: 2px solid #1c72c4; outline-offset: 2px; }
+
+.style-import-stat.is-tab.is-active {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.style-import-stat.is-tab.is-active[data-tone="changed"] {
+  background: #eaf2fb;
+  border-color: #1f56a5;
+  box-shadow: inset 0 0 0 1px #1f56a5;
+}
+
+.style-import-stat.is-tab.is-active[data-tone="new"] {
+  background: #e7f6ee;
+  border-color: var(--success);
+  box-shadow: inset 0 0 0 1px var(--success);
+}
+
+.style-import-stat:not(.is-tab) { background: var(--header-bg); }
+
+/* Header: title with the file under it, then the search, then ✕. */
+.style-import-header { gap: 12px; }
+
+.style-import-head {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.style-import-head-file {
+  font-family: var(--font);
+  font-size: 12.5px;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.style-import-head-file:empty { display: none; }
+
+.style-import-head-search { flex: 0 0 auto; }
+.style-import-head-search:empty { display: none; }
+.style-import-head-search .style-changes-search { width: 300px; margin: 0; }
+
+/* The changes view scrolls its own table (.style-changes-body). */
+.style-import-preview:empty { display: none; }
 
 .style-import-table {
   width: 100%;
@@ -7057,6 +7123,130 @@ span.dash-event { cursor: pointer; /* clicking selects the day */ }
   font-size: 12px;
   color: var(--text-muted);
 }
+
+.btn.btn-sm { padding: 3px 10px; font-size: 12px; }
+
+/* ── Changes view: Update / New tabs (import dialog and Update history) ── */
+.style-changes {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+/* The preview box hands its height down to the list inside it. */
+.style-import-preview:not(:empty) {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+/* Under the boxes: just "Add all to Need to Shoot", on the right. */
+.style-changes-bar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.style-changes-bar[hidden] { display: none; }
+
+
+.style-changes-search {
+  margin-left: auto;
+  width: min(260px, 50%);
+}
+
+/* Fills whatever the window has left, and scrolls inside it. */
+.style-changes-body {
+  flex: 1 1 auto;
+  min-height: 200px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+/* Headings stay put while a long list scrolls under them. */
+.style-changes-body .style-import-table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+/* Style # and Color take only what they need; the rest goes to the changes.
+   (Auto layout — the app's tables are fixed, which would split them evenly.) */
+.style-import-table { table-layout: auto; }
+
+/* …and app cells clip at max-width 0, which would cut these to "T…". */
+.style-import-table th,
+.style-import-table td { max-width: none; overflow: visible; text-overflow: clip; }
+.style-import-table th { white-space: nowrap; }
+
+/* Update history: the Styles table's Shoot cell, and "Add all" on the New tabs. */
+.style-import-table td.style-import-shoot { width: 1%; white-space: nowrap; }
+.style-changes-add-all { flex: 0 0 auto; white-space: nowrap; }
+
+/* Each row opens the style's detail window. */
+.style-change-row { cursor: pointer; }
+.style-change-row:hover td { background: #f6f9fd; }
+.style-change-row:focus-visible { outline: 2px solid #1c72c4; outline-offset: -2px; }
+.style-import-table td.style-change-link { color: #1f56a5; }
+.style-change-row:hover td.style-change-link { text-decoration: underline; }
+.style-import-table td.is-key { width: 1%; padding-right: 18px; font-weight: 600; white-space: nowrap; }
+.style-import-table td.style-import-desc { width: 24%; min-width: 180px; color: var(--text-muted); }
+.style-import-table td.style-import-muted { color: var(--text-muted); }
+
+/* What changed, side by side: "Status  ACTIVE → SOLDOUT", one chip each. */
+.style-change-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.style-change {
+  display: inline-flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 6px;
+  max-width: 100%;
+  padding: 3px 9px;
+  border: 1px solid #c9dcf3;
+  border-radius: 6px;
+  background: #f3f8fe;
+}
+
+.style-change-label {
+  font-size: 10.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--text-muted);
+}
+
+.style-change-from { color: var(--text-muted); }
+.style-change-arrow { color: #1f56a5; font-weight: 700; }
+.style-change-to { color: #1f56a5; font-weight: 600; }
+
+/* ── Update history ── */
+.style-history-back { flex: 0 0 auto; }
+
+.style-history-row { cursor: pointer; }
+.style-history-row:hover td { background: #f6f9fd; }
+.style-history-row:focus-visible { outline: 2px solid #1c72c4; outline-offset: -2px; }
+
+.style-history-table td.is-num,
+.style-history-table th:nth-child(n + 3) { text-align: right; }
+
+.style-history-file {
+  max-width: 280px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#styleHistoryBody .dash-empty.is-error { color: var(--danger); }
 
 /* ── Banner form: the match line under each style row ── */
 .banner-style-row { flex-wrap: wrap; }
@@ -7178,8 +7368,13 @@ span.dash-event { cursor: pointer; /* clicking selects the day */ }
   color: var(--text-muted);
 }
 
+.style-image-text.is-warning { color: #8a5a00; font-weight: 600; cursor: help; }
+
 /* Gallery. */
 .style-gallery-card { width: min(1000px, 100%); }
+
+/* Opens over the import and Update history windows, from their rows. */
+#styleGalleryOverlay { z-index: 1010; }
 
 .style-gallery-head {
   display: flex;
@@ -7923,6 +8118,140 @@ th.th-select { text-align: center; cursor: default; padding-left: 4px; padding-r
 
 /* Categories */
 /* Only four columns — sized to them rather than the page. */
+/* ── Magento orders & customers (js/magento-sales.js) ── */
+.mg-orders-table { min-width: 1400px; }
+.mg-orders-table .col-number   { width: 120px; min-width: 110px; }
+.mg-orders-table .col-date     { width: 150px; min-width: 140px; }
+.mg-orders-table .col-customer { width: auto;  min-width: 180px; }
+.mg-orders-table .col-email    { width: 230px; min-width: 180px; }
+.mg-orders-table .col-status   { width: 140px; min-width: 130px; }
+.mg-orders-table .col-qty      { width: 70px;  min-width: 60px; }
+.mg-orders-table .col-total    { width: 110px; min-width: 100px; }
+.mg-orders-table .col-ship-to  { width: 200px; min-width: 150px; }
+.mg-orders-table .col-payment  { width: 160px; min-width: 130px; }
+.mg-orders-table .col-shipping { width: 200px; min-width: 150px; }
+/* Every column a set width — no column takes the slack — so the table is
+   as wide as its columns (1,410px) and sits in the middle of the page. */
+.mg-customers-table { width: 1410px; min-width: 1410px; margin: 0 auto; }
+.mg-customers-table .col-orders   { width: 80px; }
+.mg-muted { color: var(--text-muted); }
+/* Text, then the open-in-Magento icon beside it. */
+.mg-with-icon { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; min-width: 0; }
+.mg-ellipsis { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mg-admin-icon {
+  display: inline-flex;
+  flex-shrink: 0;
+  padding: 2px;
+  border-radius: 4px;
+  color: var(--text-muted);
+}
+.mg-admin-icon:hover { color: #1f56a5; background: var(--accent-light); }
+.mg-admin-link { display: inline-flex; align-items: center; gap: 5px; padding: 4px 10px; font-size: 12px; text-decoration: none; white-space: nowrap; }
+.mg-admin-link[hidden] { display: none; }
+.mg-customers-table .col-name     { width: 170px; }
+.mg-customers-table .col-email    { width: 240px; }
+.mg-customers-table .col-group    { width: 130px; }
+.mg-customers-table .col-company  { width: 220px; }
+.mg-customers-table .col-activation { width: 150px; }
+.mg-customers-table .col-location { width: 190px; }
+.mg-customers-table .col-phone    { width: 130px; }
+.mg-customers-table .col-date     { width: 100px; }
+/* Switches line up at the left, whatever their label's length. */
+.mg-customers-table td[data-col="activation"] { text-align: left; padding-left: 14px; }
+.mg-activation-select { width: auto; max-width: 100%; padding-top: 3px; padding-bottom: 3px; font-size: 12px; }
+.mg-activation-unknown { color: var(--text-muted); cursor: help; }
+.mg-orders-table tbody tr.is-open td,
+.mg-customers-table tbody tr.is-open td { background: var(--row-selected-bg); }
+.mg-orders-table.is-loading tbody,
+.mg-customers-table.is-loading tbody { opacity: 0.55; transition: opacity 120ms; }
+.mg-orders-table td[data-col="customer"],
+.mg-orders-table td[data-col="email"],
+.mg-customers-table td[data-col="name"],
+.mg-customers-table td[data-col="email"],
+.mg-customers-table td[data-col="company"] { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* The business is what wholesale customers are known by — it stands out. */
+.mg-customers-table td[data-col="company"] { font-weight: 700; }
+.mg-customers-table td[data-col="name"] { font-weight: 400; }
+
+.mg-guest-tag {
+  padding: 1px 6px;
+  border-radius: 999px;
+  border: 1px solid var(--border-strong);
+  color: var(--text-muted);
+  font-size: 10.5px;
+  font-weight: 600;
+}
+
+/* Order status labels. */
+.mg-order-status {
+  display: inline-block;
+  padding: 2px 9px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  background: var(--accent-light);
+  color: var(--text);
+}
+.mg-order-status[data-status="pending"],
+.mg-order-status[data-status="pending_payment"],
+.mg-order-status[data-status="payment_review"] { background: #fdf0d5; color: #8a5a00; }
+.mg-order-status[data-status="processing"] { background: #e1ecfb; color: #1f56a5; }
+.mg-order-status[data-status="complete"]   { background: #e1f5ee; color: #0f6e56; }
+.mg-order-status[data-status="holded"]     { background: #efe6fb; color: #6b3fb0; }
+.mg-order-status[data-status="fraud"]      { background: #fde7ea; color: #a3233a; }
+.mg-order-status[data-status="canceled"],
+.mg-order-status[data-status="closed"]     { background: #eef0f3; color: #6b7280; }
+
+/* The order / customer pane. */
+.mg-sales-pane { width: 620px; }
+.mg-pane-message { display: block; padding: 18px 16px; }
+.mg-link {
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  color: #1f56a5;
+  text-decoration: underline;
+  cursor: pointer;
+}
+.mg-mini-table { width: 100%; border-collapse: collapse; table-layout: auto; font-size: 12.5px; }
+.mg-mini-table th {
+  padding: 5px 6px;
+  text-align: left;
+  font-size: 10.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  background: none;
+  border: none;
+  border-bottom: 1px solid var(--border);
+  cursor: default;
+}
+.mg-mini-table td {
+  padding: 6px;
+  text-align: left;
+  border: none;
+  border-bottom: 1px solid var(--border);
+  background: none;
+  white-space: normal;
+}
+.mg-mini-table tr.clickable-row { cursor: pointer; }
+.mg-mini-table tr.clickable-row:hover td { background: var(--row-hover); }
+.mg-totals { background: none; border: none; padding: 0; }
+.mg-address-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.mg-address-list { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.mg-address { font-size: 12.5px; line-height: 1.5; color: var(--text); }
+.mg-address-list .mg-address { padding: 8px 10px; border: 1px solid var(--border); border-radius: 6px; }
+.mg-history-row { padding: 6px 0; border-bottom: 1px solid var(--border); }
+.mg-history-row:last-child { border-bottom: none; }
+.mg-history-meta { font-size: 11px; color: var(--text-muted); }
+.mg-history-text { font-size: 12.5px; white-space: pre-wrap; }
+@media (max-width: 640px) {
+  .mg-address-pair, .mg-address-list { grid-template-columns: 1fr; }
+}
+
 .mg-categories-table { width: 760px; min-width: 0; max-width: 100%; margin: 0 auto; }
 .mg-categories-table .col-name    { width: 380px; min-width: 240px; }
 .mg-categories-table .col-count   { width: 100px; min-width: 90px; }

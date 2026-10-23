@@ -412,41 +412,25 @@ function exportCurrentViewCsv() {
   }
 }
 
-// ── Menus ────────────────────────────────────────────────────────────────────
+/**
+ * Header menu → Export PDF: the Need to Shoot report, or the open shoot's.
+ * The Shoots list itself has no PDF, so the item is hidden there.
+ */
+function canExportCurrentViewPdf() {
+  if (getCurrentAppView() !== "photoshoots") return false;
+  return photoshootSubview === "need" || Boolean(paneShootId);
+}
 
-/** A small dropdown: a button that opens a list of actions. */
-function initExportMenu(buttonId, menuId, actions) {
-  const btn = document.getElementById(buttonId);
-  const menu = document.getElementById(menuId);
-  if (!btn || !menu) return;
-  const close = () => {
-    menu.hidden = true;
-    btn.setAttribute("aria-expanded", "false");
-  };
-  btn.addEventListener("click", e => {
-    e.stopPropagation();
-    const open = menu.hidden;
-    menu.hidden = !open;
-    btn.setAttribute("aria-expanded", open ? "true" : "false");
-  });
-  Object.entries(actions).forEach(([id, run]) => {
-    document.getElementById(id)?.addEventListener("click", () => {
-      close();
-      run();
-    });
-  });
-  document.addEventListener("click", e => {
-    if (!menu.hidden && !menu.contains(e.target) && !btn.contains(e.target)) close();
-  });
-  document.addEventListener("keydown", e => {
-    if (e.key === "Escape") close();
-  });
+function exportCurrentViewPdf() {
+  if (!canExportCurrentViewPdf()) return;
+  if (photoshootSubview === "need") return exportNeedPdf();
+  return exportShootPdf(paneShootId);
 }
 
 function initExports() {
-  initExportMenu("needExportBtn", "needExportMenu", {
-    needExportCsv: exportNeedCsv,
-    needExportPdf: exportNeedPdf,
+  document.getElementById("headerMenuExportPdf")?.addEventListener("click", () => {
+    closeHeaderMenu();
+    exportCurrentViewPdf();
   });
   document.getElementById("shootMenuExportCsv")?.addEventListener("click", () => {
     closeShootPaneMenu();
