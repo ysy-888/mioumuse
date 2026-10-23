@@ -76,7 +76,7 @@ import { AsyncLocalStorage } from "node:async_hooks";
  * copy running in Supabase is older than the app expects. Bump it (and
  * MG_HELPER_VERSION in js/magento.js) whenever this file changes.
  */
-const HELPER_VERSION = "2026-10-23.4";
+const HELPER_VERSION = "2026-10-23.6";
 
 /**
  * Where a request's time went: each Magento call is counted and timed, per
@@ -661,15 +661,67 @@ const ORDER_LIST_FIELDS = [
   "entity_id", "increment_id", "created_at", "status", "state", "customer_id", "customer_is_guest",
   "customer_firstname", "customer_lastname", "customer_email", "grand_total", "order_currency_code",
   "total_qty_ordered", "total_item_count", "shipping_description",
-  "billing_address[firstname,lastname,city,region,country_id,telephone]",
-  "payment[method,additional_information]",
-  "extension_attributes[shipping_assignments[shipping[address[firstname,lastname,city,region,country_id]]]]",
+  "billing_address[firstname,lastname,company,city,region,country_id,telephone]",
+  "customer_note",
+  "payment[method,additional_information,cc_last4,cc_type,cc_owner,cc_exp_month,cc_exp_year]",
+  // All of it: the store's own order fields (Order Comment, First Order) are
+  // extension attributes whose names aren't known ahead.
+  "extension_attributes",
 ].join(",");
+
+/**
+ * The store's own order fields, found by name wherever they turn up — the
+ * order, its extension attributes, or the payment's: { key → value }.
+ */
+// deno-lint-ignore no-explicit-any
+function orderCustomFields(o: any): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  // deno-lint-ignore no-explicit-any
+  const take = (obj: any) => {
+    if (!obj || typeof obj !== "object" || Array.isArray(obj)) return;
+    Object.entries(obj).forEach(([k, v]) => {
+      if (v !== null && typeof v !== "object" && !(k in out)) out[k] = v;
+    });
+  };
+  take(o.extension_attributes);
+  take(o.payment?.extension_attributes);
+  take(o);
+  return out;
+}
+
+const isFirstOrderKey = (k: string) => /first_?order/i.test(k);
+const isCommentKey = (k: string) => /comment|customer_note|order_note/i.test(k) && !/histor|notify/i.test(k);
+
+/**
+ * The card on the order: the number as the payment keeps it (the last four,
+ * or a number written into the payment's details by the store's card
+ * method), its type, holder and expiry.
+ */
+// deno-lint-ignore no-explicit-any
+function summarizeCard(payment: any) {
+  if (!payment) return null;
+  const info = payment.additional_information;
+  const values: string[] = Array.isArray(info) ? info.map(String) : info && typeof info === "object" ? Object.values(info).map(String) : [];
+  // A card-number-looking value: 12–19 digits, possibly spaced or masked.
+  const written = values.find(v => /^[\d*xX•\s-]{12,23}$/.test(v.trim()) && (v.match(/\d/g) ?? []).length >= 4)?.trim() ?? "";
+  const last4 = String(payment.cc_last4 ?? "").trim();
+  const number = written || (last4 ? `•••• ${last4}` : "");
+  if (!number && !payment.cc_type) return null;
+  return {
+    number,
+    type: String(payment.cc_type ?? ""),
+    owner: String(payment.cc_owner ?? ""),
+    expires: payment.cc_exp_month && payment.cc_exp_year && Number(payment.cc_exp_year) > 0
+      ? `${String(payment.cc_exp_month).padStart(2, "0")}/${payment.cc_exp_year}` : "",
+  };
+}
 
 // deno-lint-ignore no-explicit-any
 function summarizeOrder(o: any) {
   const billing = summarizeAddress(o.billing_address);
   const shipping = summarizeAddress(o.extension_attributes?.shipping_assignments?.[0]?.shipping?.address) ?? billing;
+  const custom = orderCustomFields(o);
+  const firstOrderKey = Object.keys(custom).find(isFirstOrderKey);
   return {
     id: o.entity_id,
     number: String(o.increment_id ?? ""),
@@ -680,6 +732,9 @@ function summarizeOrder(o: any) {
     guest: Boolean(o.customer_is_guest),
     customerName: [o.customer_firstname, o.customer_lastname].filter(Boolean).join(" ") || billing?.name || "",
     email: o.customer_email ?? "",
+    // The billing address's company; the customer's Company field replaces it
+    // when they have one (addOrderCompanies).
+    company: billing?.company ?? "",
     total: o.grand_total ?? null,
     currency: o.order_currency_code ?? "",
     qty: Number(o.total_qty_ordered ?? 0),
@@ -688,6 +743,10 @@ function summarizeOrder(o: any) {
     // The payment method's title comes first in additional_information.
     payment: o.payment?.additional_information?.[0] || o.payment?.method || "",
     shipping: o.shipping_description ?? "",
+    card: summarizeCard(o.payment),
+    comment: String(Object.entries(custom).find(([k, v]) => isCommentKey(k) && String(v).trim())?.[1] ?? "").trim(),
+    // The store's First Order field (1 / 0); null when the store has none.
+    firstOrder: firstOrderKey ? ["1", "true", "yes"].includes(String(custom[firstOrderKey]).toLowerCase()) : null,
   };
 }
 
@@ -831,6 +890,45 @@ async function addOrderCounts<T extends { id: unknown; orderCount?: number | nul
     customers.forEach(c => (c.orderCount = null));
   }
   return customers;
+}
+
+/**
+ * Each order's company from its customer's account — the store's Company
+ * field, else their main address's company — over the billing address's.
+ * The page's customers are looked up 10 per call; guests, and any lookup
+ * that fails, keep the billing company.
+ */
+async function addOrderCompanies<T extends { customerId: unknown; company: string }>(orders: T[]): Promise<T[]> {
+  const ids = [...new Set(orders.map(o => o.customerId).filter(id => id !== null && id !== undefined).map(String))];
+  if (!ids.length) return orders;
+  try {
+    const [fields, bodies] = await Promise.all([
+      findCustomerFields(),
+      Promise.all(skuBatches(ids).map(batch => {
+        const q = criteria([batch.map(id => ["entity_id", id, "eq"] as Filter)], null, 1, batch.length);
+        return mg(`/customers/search?${q}&fields=items[id,default_billing,custom_attributes,addresses[id,company]]`);
+      })),
+    ]);
+    const code = fields.company?.code;
+    const companies = new Map<string, string>();
+    // deno-lint-ignore no-explicit-any
+    bodies.flatMap(b => b?.items ?? []).forEach((c: any) => {
+      // deno-lint-ignore no-explicit-any
+      const custom = code ? (c.custom_attributes ?? []).find((a: any) => a.attribute_code === code)?.value : "";
+      // deno-lint-ignore no-explicit-any
+      const addresses: any[] = c.addresses ?? [];
+      const main = addresses.find(a => String(a.id) === String(c.default_billing)) ?? addresses[0];
+      const company = String(custom || main?.company || "").trim();
+      if (company) companies.set(String(c.id), company);
+    });
+    orders.forEach(o => {
+      const company = companies.get(String(o.customerId));
+      if (company) o.company = company;
+    });
+  } catch {
+    // The billing company stands.
+  }
+  return orders;
 }
 
 /** Magento's built-in order statuses; any custom ones are found from recent orders. */
@@ -1007,7 +1105,7 @@ const actions: Record<string, (p: any) => Promise<unknown>> = {
   async orders(params) {
     const { page, pageSize } = pageParams(params);
     const body = await mg(`/orders?${orderCriteria(params, page, pageSize, ORDER_LIST_FIELDS)}`);
-    return { items: (body?.items ?? []).map(summarizeOrder), total: Number(body?.total_count ?? 0), page, pageSize };
+    return { items: await addOrderCompanies((body?.items ?? []).map(summarizeOrder)), total: Number(body?.total_count ?? 0), page, pageSize };
   },
 
   /** How many orders have each status — only statuses in use (for the filter). */
@@ -1069,6 +1167,10 @@ const actions: Record<string, (p: any) => Promise<unknown>> = {
         due: o.total_due ?? null,
       },
       billingAddress: summarizeAddress(o.billing_address),
+      // The payment's details as Magento lists them under Payment Information.
+      // deno-lint-ignore no-explicit-any
+      paymentInfo: (Array.isArray(o.payment?.additional_information) ? o.payment.additional_information : Object.values(o.payment?.additional_information ?? {}))
+        .map((v: unknown) => String(v ?? "").trim()).filter(Boolean),
       shippingAddress: summarizeAddress(o.extension_attributes?.shipping_assignments?.[0]?.shipping?.address),
       couponCode: o.coupon_code ?? "",
       // deno-lint-ignore no-explicit-any

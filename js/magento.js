@@ -70,7 +70,7 @@ let mgSelected = new Set();
 let mgPane = null;
 
 /** The helper version this app expects (HELPER_VERSION in supabase/functions/magento). */
-const MG_HELPER_VERSION = "2026-10-23.4";
+const MG_HELPER_VERSION = "2026-10-23.6";
 
 /** Per action, the last call's timing: { roundTripMs, totalMs, authMs, magentoCalls, magentoMs, slowest… }. */
 const mgTimings = {};

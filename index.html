@@ -6,7 +6,7 @@
 <title>MIOU MUSE</title>
 <link rel="icon" href="favicon.png?v=2" type="image/png" />
 <link rel="apple-touch-icon" href="favicon.png?v=2" />
-<link rel="stylesheet" href="crm.css?v=20261023-1852" />
+<link rel="stylesheet" href="crm.css?v=20261023-2035" />
 </head>
 <body>
 
@@ -306,6 +306,9 @@
         <button type="button" class="filter-btn" data-days="7">7 days</button>
         <button type="button" class="filter-btn" data-days="30">30 days</button>
       </div>
+      <!-- Status shortcuts for the header filter: only statuses in use (js/magento-sales.js). -->
+      <span class="toolbar-filter-divider" id="mgOrderStatusDivider" aria-hidden="true" hidden></span>
+      <div class="filter-btn-group" id="mgOrderStatusFilters" role="group" aria-label="Status" hidden></div>
     </div>
 
     <!-- Customers: when they joined. -->
@@ -750,12 +753,14 @@
         <col class="col-date" />
         <col class="col-customer" />
         <col class="col-email" />
+        <col class="col-company" />
         <col class="col-status" />
         <col class="col-qty" />
         <col class="col-total" />
         <col class="col-ship-to" />
         <col class="col-payment" />
         <col class="col-shipping" />
+        <col class="col-comment" />
       </colgroup>
       <thead>
         <tr>
@@ -763,16 +768,18 @@
           <th data-col="date">Placed</th>
           <th data-col="customer">Customer</th>
           <th data-col="email">Email</th>
+          <th data-col="company">Company</th>
           <th data-col="status">Status</th>
           <th data-col="qty">Items</th>
           <th data-col="total">Total</th>
           <th data-col="shipTo">Ship to</th>
           <th data-col="payment">Payment</th>
           <th data-col="shipping">Shipping</th>
+          <th data-col="comment">Order Comment</th>
         </tr>
       </thead>
       <tbody id="mgOrdersBody">
-        <tr class="state-row"><td colspan="10">Loading orders…</td></tr>
+        <tr class="state-row"><td colspan="12">Loading orders…</td></tr>
       </tbody>
     </table>
     </div>
@@ -1490,36 +1497,36 @@
   </div>
 </div>
 
-<script src="js/config.js?v=20261023-1852"></script>
+<script src="js/config.js?v=20261023-2035"></script>
 <!-- Needs SUPABASE_URL/KEY from config.js and the CDN client above. -->
-<script src="js/auth.js?v=20261023-1852"></script>
-<script src="js/util.js?v=20261023-1852"></script>
-<script src="js/dates.js?v=20261023-1852"></script>
-<script src="js/store.js?v=20261023-1852"></script>
-<script src="js/tasks.js?v=20261023-1852"></script>
-<script src="js/app-shell.js?v=20261023-1852"></script>
-<script src="js/record-list.js?v=20261023-1852"></script>
-<script src="js/item-pane.js?v=20261023-1852"></script>
-<script src="js/campaign-form.js?v=20261023-1852"></script>
-<script src="js/trade-show-form.js?v=20261023-1852"></script>
-<script src="js/banners.js?v=20261023-1852"></script>
-<script src="js/banner-form.js?v=20261023-1852"></script>
-<script src="js/mailchimp.js?v=20261023-1852"></script>
-<script src="js/style-import.js?v=20261023-1852"></script>
-<script src="js/column-filter.js?v=20261023-1852"></script>
-<script src="js/styles.js?v=20261023-1852"></script>
-<script src="js/style-images.js?v=20261023-1852"></script>
-<script src="js/photoshoots.js?v=20261023-1852"></script>
-<script src="js/photoshoot-form.js?v=20261023-1852"></script>
-<script src="js/magento.js?v=20261023-1852"></script>
-<script src="js/magento-availability.js?v=20261023-1852"></script>
-<script src="js/magento-sales.js?v=20261023-1852"></script>
-<script src="js/magento-groups.js?v=20261023-1852"></script>
-<script src="js/table-view.js?v=20261023-1852"></script>
-<script src="js/exports.js?v=20261023-1852"></script>
-<script src="js/copy-menu.js?v=20261023-1852"></script>
-<script src="js/shortcuts.js?v=20261023-1852"></script>
-<script src="js/calendar.js?v=20261023-1852"></script>
-<script src="js/main.js?v=20261023-1852"></script>
+<script src="js/auth.js?v=20261023-2035"></script>
+<script src="js/util.js?v=20261023-2035"></script>
+<script src="js/dates.js?v=20261023-2035"></script>
+<script src="js/store.js?v=20261023-2035"></script>
+<script src="js/tasks.js?v=20261023-2035"></script>
+<script src="js/app-shell.js?v=20261023-2035"></script>
+<script src="js/record-list.js?v=20261023-2035"></script>
+<script src="js/item-pane.js?v=20261023-2035"></script>
+<script src="js/campaign-form.js?v=20261023-2035"></script>
+<script src="js/trade-show-form.js?v=20261023-2035"></script>
+<script src="js/banners.js?v=20261023-2035"></script>
+<script src="js/banner-form.js?v=20261023-2035"></script>
+<script src="js/mailchimp.js?v=20261023-2035"></script>
+<script src="js/style-import.js?v=20261023-2035"></script>
+<script src="js/column-filter.js?v=20261023-2035"></script>
+<script src="js/styles.js?v=20261023-2035"></script>
+<script src="js/style-images.js?v=20261023-2035"></script>
+<script src="js/photoshoots.js?v=20261023-2035"></script>
+<script src="js/photoshoot-form.js?v=20261023-2035"></script>
+<script src="js/magento.js?v=20261023-2035"></script>
+<script src="js/magento-availability.js?v=20261023-2035"></script>
+<script src="js/magento-sales.js?v=20261023-2035"></script>
+<script src="js/magento-groups.js?v=20261023-2035"></script>
+<script src="js/table-view.js?v=20261023-2035"></script>
+<script src="js/exports.js?v=20261023-2035"></script>
+<script src="js/copy-menu.js?v=20261023-2035"></script>
+<script src="js/shortcuts.js?v=20261023-2035"></script>
+<script src="js/calendar.js?v=20261023-2035"></script>
+<script src="js/main.js?v=20261023-2035"></script>
 </body>
 </html>

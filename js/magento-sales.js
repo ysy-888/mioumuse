@@ -144,6 +144,7 @@ function mgSalesParams(kind, extra = {}) {
 async function loadMgSalesFacets(kind) {
   if (kind === "orders") {
     mgOrderStatusCounts = await callMagento("orderFacets").catch(() => mgOrderStatusCounts);
+    renderMgOrderStatusButtons();
   } else {
     const [groups, fields] = await Promise.all([
       callMagento("customerGroups").catch(() => mgCustomerGroups),
@@ -197,6 +198,36 @@ function setMgActivationButton(which) {
   const values = which ? mgActivationGroup(which) : null;
   setColumnFilterSelection("mgCustomersTable", "activation", values);
   setMgSalesQuery("customers", { activation: values });
+}
+
+/** The order statuses, in the order an order moves through them; any others after. */
+const MG_ORDER_STATUS_ORDER = ["pending", "pending_payment", "payment_review", "processing", "holded", "complete", "closed", "canceled", "fraud"];
+
+/**
+ * The toolbar's status buttons — All, then one per status in use. Each sets
+ * the Status header filter to just that status.
+ */
+function renderMgOrderStatusButtons() {
+  const group = document.getElementById("mgOrderStatusFilters");
+  if (!group) return;
+  const rank = s => (MG_ORDER_STATUS_ORDER.indexOf(s) + 1) || MG_ORDER_STATUS_ORDER.length + 1;
+  const statuses = Object.keys(mgOrderStatusCounts ?? {}).sort((a, b) => rank(a) - rank(b));
+  const button = (status, label) => {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "filter-btn";
+    btn.dataset.status = status;
+    btn.textContent = label;
+    btn.addEventListener("click", () => {
+      const values = status ? [status] : null;
+      setColumnFilterSelection("mgOrdersTable", "status", values);
+      setMgSalesQuery("orders", { status: values });
+    });
+    return btn;
+  };
+  group.replaceChildren(button("", "All"), ...statuses.map(s => button(s, mgOrderStatusLabel(s))));
+  [group, document.getElementById("mgOrderStatusDivider")].forEach(el => { if (el) el.hidden = !statuses.length; });
+  syncMgSalesButtons();
 }
 
 // ── Admin links and the license ──────────────────────────────────────────────
@@ -390,6 +421,15 @@ function createMgOrderStatusPill(status) {
   return pill;
 }
 
+/** The yellow "First order" tag — the store's First Order field is set. */
+function createMgFirstOrderTag() {
+  const tag = document.createElement("span");
+  tag.className = "mg-first-order";
+  tag.textContent = "First order";
+  tag.title = "This customer's first order";
+  return tag;
+}
+
 function renderMgSales(kind) {
   if (mgSubview === kind) {
     updateMgCounter();
@@ -431,7 +471,11 @@ function renderMgSales(kind) {
 function fillMgSalesCell(kind, col, row, td) {
   const text = value => mountSearchHighlightedText(td, value || EMPTY_DISPLAY);
   if (kind === "orders") {
-    if (col === "number") { td.className = "mg-sku"; text(row.number); }
+    if (col === "number") {
+      text(row.number);
+      td.dataset.copy = row.number;
+      if (row.firstOrder) td.appendChild(createMgFirstOrderTag());
+    }
     else if (col === "date") td.textContent = formatMgDateTime(row.createdAt, { time: true });
     else if (col === "customer") {
       text(row.customerName);
@@ -442,13 +486,15 @@ function fillMgSalesCell(kind, col, row, td) {
         td.append(" ", tag);
       }
     } else if (col === "email") text(row.email);
+    else if (col === "company") text(row.company);
     else if (col === "status") td.appendChild(createMgOrderStatusPill(row.status));
     else if (col === "qty") { td.className = "mg-num"; td.textContent = row.qty ? String(row.qty) : EMPTY_DISPLAY; }
     else if (col === "total") { td.className = "mg-num"; td.textContent = formatMgMoney(row.total, row.currency); }
     else if (col === "shipTo") td.textContent = row.shipTo || EMPTY_DISPLAY;
     else if (col === "payment") td.textContent = row.payment || EMPTY_DISPLAY;
     else if (col === "shipping") td.textContent = row.shipping || EMPTY_DISPLAY;
-    if (["customer", "email", "shipTo", "payment", "shipping"].includes(col)) td.title = td.textContent;
+    else if (col === "comment") text(row.comment);
+    if (["customer", "email", "company", "shipTo", "payment", "shipping", "comment"].includes(col)) td.title = td.textContent;
   } else {
     if (col === "name") {
       // The name, then the icon to this customer's page in the Magento admin.
@@ -556,6 +602,12 @@ function syncMgSalesButtons() {
     document.querySelectorAll(`#${id} .filter-btn`).forEach(btn => {
       btn.classList.toggle("active", mgDaysAgo(btn.dataset.days) === MG_SALES[kind].query.from);
     });
+  });
+  // Status: lit when the filter is just that status (All when off).
+  const status = MG_SALES.orders.query.status;
+  document.querySelectorAll("#mgOrderStatusFilters .filter-btn").forEach(btn => {
+    const s = btn.dataset.status;
+    btn.classList.toggle("active", s ? status?.length === 1 && status[0] === s : !status?.length);
   });
   // Activation: lit when the filter holds exactly a button's values (All when off);
   // a mix ticked in the header filter lights none.
@@ -700,6 +752,7 @@ function renderMgSalesPane() {
 
 function renderMgOrderPane(o, title, subtitle, body) {
   title.textContent = `Order #${o.number}`;
+  if (o.firstOrder) title.appendChild(createMgFirstOrderTag());
   subtitle.textContent = [formatMgDateTime(o.createdAt, { time: true }), mgOrderStatusLabel(o.status)].join(" · ");
   const money = v => formatMgMoney(v, o.currency);
 
@@ -720,7 +773,6 @@ function renderMgOrderPane(o, title, subtitle, body) {
     ["Customer", customer],
     ["Email", o.email],
     ["Placed", formatMgDateTime(o.createdAt, { time: true })],
-    ["Payment", o.payment],
     ["Shipping", o.shipping],
     ["Coupon", o.couponCode],
     ["Total", money(o.totals.grandTotal)],
@@ -734,6 +786,28 @@ function renderMgOrderPane(o, title, subtitle, body) {
     money(i.price),
     money(i.rowTotal),
   ]));
+
+  // Payment Information: the method, the card, and the details Magento lists.
+  const card = o.card;
+  const payment = document.createElement("div");
+  payment.appendChild(mgPaneSummary([
+    ["Method", o.payment],
+    ["Credit Card Number", card?.number],
+    ["Card type", card?.type],
+    ["Name on card", card?.owner],
+    ["Expires", card?.expires],
+  ]));
+  const extra = (o.paymentInfo ?? []).filter(v => v !== o.payment && v !== card?.number);
+  if (extra.length) {
+    const list = document.createElement("div");
+    list.className = "mg-payment-info";
+    extra.forEach(v => list.appendChild(Object.assign(document.createElement("div"), { textContent: v })));
+    payment.appendChild(list);
+  }
+
+  const comment = o.comment
+    ? Object.assign(document.createElement("div"), { className: "mg-order-comment", textContent: o.comment })
+    : Object.assign(document.createElement("div"), { className: "item-tasks-empty", textContent: "No order comment." });
 
   const t = o.totals;
   const totals = mgPaneSummary([
@@ -787,6 +861,8 @@ function renderMgOrderPane(o, title, subtitle, body) {
 
   body.replaceChildren(
     summary,
+    mgPaneSection("Order Comment", comment),
+    mgPaneSection("Payment Information", payment),
     mgPaneSection("Items", items, String(o.items.length)),
     mgPaneSection("Totals", totals),
     mgPaneSection("Addresses", addresses),
@@ -863,8 +939,8 @@ async function exportMgSalesCsv(kind) {
   }
   if (kind === "orders") {
     downloadCsv(`Magento orders ${todayYmd()}`,
-      ["Order #", "Placed", "Status", "Customer", "Guest", "Email", "Items", "Total", "Currency", "Ship To", "Payment", "Shipping"],
-      rows.map(o => [o.number, o.createdAt, mgOrderStatusLabel(o.status), o.customerName, o.guest ? "Yes" : "No", o.email, o.qty, o.total ?? "", o.currency, o.shipTo, o.payment, o.shipping]));
+      ["Order #", "Placed", "Status", "Customer", "Guest", "Email", "Company", "First Order", "Items", "Total", "Currency", "Ship To", "Payment", "Shipping", "Order Comment"],
+      rows.map(o => [o.number, o.createdAt, mgOrderStatusLabel(o.status), o.customerName, o.guest ? "Yes" : "No", o.email, o.company, o.firstOrder ? "Yes" : o.firstOrder === false ? "No" : "", o.qty, o.total ?? "", o.currency, o.shipTo, o.payment, o.shipping, o.comment]));
   } else {
     const activation = mgCustomerFields?.activation;
     downloadCsv(`Magento customers ${todayYmd()}`,
@@ -889,7 +965,7 @@ function initMagentoSales() {
     // Right-click: an order # or an email copies it (js/copy-menu.js).
     document.getElementById(s.body)?.addEventListener("contextmenu", e => {
       const td = e.target.closest('td[data-col="number"], td[data-col="email"]');
-      const value = td?.textContent.trim();
+      const value = (td?.dataset.copy ?? td?.textContent ?? "").trim();
       if (value && value !== EMPTY_DISPLAY) openCopyMenu(e, value);
     });
   });
