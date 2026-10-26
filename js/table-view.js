@@ -25,6 +25,7 @@ const TABLE_VIEW_TABLES = [
   { id: "mgProductsTable", label: "Magento · Products", view: "magento" },
   { id: "mgOrdersTable", label: "Magento · Orders", view: "magento" },
   { id: "mgCustomersTable", label: "Magento · Customers", view: "magento" },
+  { id: "mgEventsTable", label: "Magento · Events", view: "magento" },
 ];
 
 /** Always shown, always first — the tick-box column. */
@@ -128,6 +129,7 @@ function redrawAfterTableView() {
   if (getCurrentAppView() === "magento") {
     renderMgProducts();
     renderMgSales("orders");
+    renderMgEvents();
     renderMgSales("customers");
   }
 }
@@ -138,7 +140,7 @@ function redrawAfterTableView() {
 function currentTableViewTarget() {
   const view = getCurrentAppView();
   if (view === "photoshoots") return photoshootSubview === "need" ? "needTable" : "shootsTable";
-  if (view === "magento") return { orders: "mgOrdersTable", customers: "mgCustomersTable" }[mgSubview] ?? "mgProductsTable";
+  if (view === "magento") return { orders: "mgOrdersTable", customers: "mgCustomersTable", events: "mgEventsTable" }[mgSubview] ?? "mgProductsTable";
   return TABLE_VIEW_TABLES.find(t => t.view === view)?.id ?? TABLE_VIEW_TABLES[0].id;
 }
 

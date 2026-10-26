@@ -131,6 +131,14 @@ function createStyleShootCell(style) {
   const wrap = document.createElement("span");
   wrap.className = "style-shoot-cell";
   const fill = () => {
+    if (isNoShootStyle(style.styleNo, style.color)) {
+      const none = document.createElement("span");
+      none.className = "style-no-shoot";
+      none.textContent = "No shoot needed";
+      none.title = `${style.status} styles aren't photographed`;
+      wrap.replaceChildren(none);
+      return;
+    }
     const onList = needsShoot(style.styleNo, style.color);
     const shot = describeShootStatus(style.styleNo, style.color)?.tone === "shot";
     wrap.replaceChildren();
@@ -391,12 +399,18 @@ async function addSelectedToShootList() {
   if (!styles.length) return;
   try {
     const added = await addToShootList(styles);
-    const already = styles.length - added;
+    const skipped = styles.filter(s => isNoShootStyle(s.styleNo, s.color)).length;
+    const already = styles.length - added - skipped;
     clearStyleSelection();
     refreshPhotoshootViews();
+    const notes = [
+      already ? `${already.toLocaleString()} already on it` : "",
+      skipped ? `${skipped.toLocaleString()} COMPANY skipped — no shoot needed` : "",
+    ].filter(Boolean).join(", ");
     showIndicator(added
-      ? `${added.toLocaleString()} added to Need to Shoot${already ? ` (${already.toLocaleString()} already on it)` : ""}`
-      : "Already on Need to Shoot", "success");
+      ? `${added.toLocaleString()} added to Need to Shoot${notes ? ` (${notes})` : ""}`
+      : skipped === styles.length ? "COMPANY styles don't need a photoshoot" : `Nothing added${notes ? ` (${notes})` : ""}`,
+    added ? "success" : "");
   } catch (err) {
     showIndicator(err.message || "Couldn't add to Need to Shoot.", "error");
   }

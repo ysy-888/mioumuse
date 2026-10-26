@@ -261,13 +261,13 @@ function createStyleChangesView({ added, changed }, { unchanged = 0, shootAction
     // With the search up in the header, the row is only there for this button.
     bar.hidden = addAll.hidden && Boolean(searchSlot);
     if (addAll.hidden) return;
-    const waiting = rows.filter(s => !needsShoot(s.styleNo, s.color)).length;
+    const waiting = rows.filter(s => !needsShoot(s.styleNo, s.color) && !isNoShootStyle(s.styleNo, s.color)).length;
     addAll.disabled = waiting === 0;
     addAll.textContent = waiting === 0
       ? "All on Need to Shoot"
       : `Add all ${waiting.toLocaleString()} to Need to Shoot`;
     addAll.onclick = async () => {
-      const toAdd = rows.filter(s => !needsShoot(s.styleNo, s.color));
+      const toAdd = rows.filter(s => !needsShoot(s.styleNo, s.color) && !isNoShootStyle(s.styleNo, s.color));
       if (!toAdd.length) return;
       if (!confirm(`Add ${toAdd.length.toLocaleString()} ${current.noun}${query ? " (matching the search)" : ""} to Need to Shoot?`)) return;
       addAll.disabled = true;

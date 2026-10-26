@@ -722,11 +722,19 @@ function setShootList(rows) {
   }));
 }
 
+/** COMPANY styles (NO_SHOOT_STATUSES) are never photographed. */
+function isNoShootStyle(styleNo, color) {
+  const status = String(findStyle(styleNo, color)?.status ?? "").trim().toUpperCase();
+  return NO_SHOOT_STATUSES.includes(status);
+}
+
+/** The list, minus any no-shoot style that was added before it was ruled out. */
 function getShootListEntries() {
-  return [...shootList.values()];
+  return [...shootList.values()].filter(e => !isNoShootStyle(e.styleNo, e.color));
 }
 
 function getShootListEntry(styleNo, color) {
+  if (isNoShootStyle(styleNo, color)) return null;
   return shootList.get(styleKey(styleNo, color)) ?? null;
 }
 
@@ -769,6 +777,7 @@ async function addToShootList(styles) {
     const key = styleKey(styleNo, color);
     if (seen.has(key)) return;
     seen.add(key);
+    if (isNoShootStyle(styleNo, color)) return;
     const current = shootList.get(key);
     if (current && !current.shotShootId) return;
     changed.push({ styleNo, color, addedAt: now, shotShootId: "", shotAt: "" });
@@ -882,7 +891,8 @@ async function ensureOnShootList(styles) {
 }
 
 async function createPhotoshoot(fields) {
-  const shoot = normalizePhotoshoot({ ...fields, id: newRecordId("ps"), status: "planned" });
+  const styles = (fields.styles ?? []).filter(s => !isNoShootStyle(s.styleNo, s.color));
+  const shoot = normalizePhotoshoot({ ...fields, styles, id: newRecordId("ps"), status: "planned" });
   validatePhotoshoot(shoot);
   await persistPhotoshoot(shoot);
   allPhotoshoots.push(shoot);
@@ -906,7 +916,8 @@ async function addStylesToPhotoshoot(id, styles) {
   const shoot = getPhotoshootById(id);
   if (!shoot) throw new Error(`Photoshoot ${id} not found.`);
   const before = shoot.styles.length;
-  await updatePhotoshoot(id, { styles: [...shoot.styles, ...styles] });
+  const shootable = styles.filter(s => !isNoShootStyle(s.styleNo, s.color));
+  await updatePhotoshoot(id, { styles: [...shoot.styles, ...shootable] });
   return shoot.styles.length - before;
 }
 

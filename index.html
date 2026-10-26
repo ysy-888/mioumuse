@@ -6,7 +6,7 @@
 <title>MIOU MUSE</title>
 <link rel="icon" href="favicon.png?v=2" type="image/png" />
 <link rel="apple-touch-icon" href="favicon.png?v=2" />
-<link rel="stylesheet" href="crm.css?v=20261023-2035" />
+<link rel="stylesheet" href="crm.css?v=20261026-2024" />
 </head>
 <body>
 
@@ -49,6 +49,7 @@
         <button type="button" class="app-title-tab-dropdown-item" id="navMgCategories" role="menuitem" data-view="magento" data-subview="categories"><span class="app-title-tab-dropdown-check" aria-hidden="true">✓</span>Categories</button>
         <button type="button" class="app-title-tab-dropdown-item" id="navMgOrders" role="menuitem" data-view="magento" data-subview="orders"><span class="app-title-tab-dropdown-check" aria-hidden="true">✓</span>Orders</button>
         <button type="button" class="app-title-tab-dropdown-item" id="navMgCustomers" role="menuitem" data-view="magento" data-subview="customers"><span class="app-title-tab-dropdown-check" aria-hidden="true">✓</span>Customers</button>
+        <button type="button" class="app-title-tab-dropdown-item" id="navMgEvents" role="menuitem" hidden data-view="magento" data-subview="events"><span class="app-title-tab-dropdown-check" aria-hidden="true">✓</span>Events</button>
       </div>
     </div>
   </nav>
@@ -139,6 +140,9 @@
       <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
       <input type="search" id="tradeShowSearchInput" placeholder="Search" />
     </div>
+    <!-- Import from a Magento events export (js/trade-show-import.js). -->
+    <button type="button" class="btn" id="importTradeShowsBtn" title="Add trade shows from a Magento events export (CSV)">Import CSV</button>
+    <input type="file" id="importTradeShowsFile" accept=".csv,text/csv" hidden />
     <button type="button" class="btn btn-primary" id="addTradeShowBtn">
       <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
       Add trade show
@@ -309,6 +313,17 @@
       <!-- Status shortcuts for the header filter: only statuses in use (js/magento-sales.js). -->
       <span class="toolbar-filter-divider" id="mgOrderStatusDivider" aria-hidden="true" hidden></span>
       <div class="filter-btn-group" id="mgOrderStatusFilters" role="group" aria-label="Status" hidden></div>
+    </div>
+
+    <!-- Events (js/magento-events.js): status, add, and the date fix. -->
+    <div class="toolbar-filter-section mg-controls" id="mgEventControls" hidden>
+      <div class="filter-btn-group" id="mgEventStatusFilters" role="group" aria-label="Status">
+        <button type="button" class="filter-btn" data-status="">All</button>
+        <button type="button" class="filter-btn" data-status="on">Enabled</button>
+        <button type="button" class="filter-btn" data-status="off">Disabled</button>
+      </div>
+      <button type="button" class="btn btn-primary" id="mgAddEventBtn">+ Add event</button>
+      <button type="button" class="btn" id="mgFixEventDatesBtn" hidden>Fix dates</button>
     </div>
 
     <!-- Customers: when they joined. -->
@@ -744,6 +759,35 @@
     </div>
   </div>
 
+  <!-- ── Magento: events (js/magento-events.js) ─────────────── -->
+  <div id="mgEventsWrap" class="table-scroll-y" hidden>
+    <div class="table-scroll-x">
+    <table id="mgEventsTable" class="record-table mg-events-table">
+      <colgroup>
+        <col class="col-title" />
+        <col class="col-show" />
+        <col class="col-date" />
+        <col class="col-date" />
+        <col class="col-status" />
+        <col class="col-trade-show" />
+      </colgroup>
+      <thead>
+        <tr>
+          <th data-col="title" class="th-no-sort">Title</th>
+          <th data-col="show" class="th-no-sort">Trade show</th>
+          <th data-col="start" class="th-no-sort">Start</th>
+          <th data-col="end" class="th-no-sort">End</th>
+          <th data-col="status" class="th-no-sort">Status</th>
+          <th data-col="tradeShow" class="th-no-sort">In the app</th>
+        </tr>
+      </thead>
+      <tbody id="mgEventsBody">
+        <tr class="state-row"><td colspan="6">Loading events…</td></tr>
+      </tbody>
+    </table>
+    </div>
+  </div>
+
   <!-- ── Magento: orders (js/magento-sales.js) ───────────────── -->
   <div id="mgOrdersWrap" class="table-scroll-y" hidden>
     <div class="table-scroll-x">
@@ -1069,6 +1113,30 @@
   </div>
 </div>
 
+<!-- ── Trade show import (js/trade-show-import.js) ───────────── -->
+<div id="tsImportOverlay" class="modal-backdrop">
+  <div class="modal-card company-form-card ts-import-card" role="dialog" aria-modal="true" aria-labelledby="tsImportTitle">
+    <div class="modal-header">
+      <h3 id="tsImportTitle">Import trade shows</h3>
+      <button type="button" class="btn-close" id="tsImportCloseBtn" aria-label="Close">✕</button>
+    </div>
+    <div class="modal-body ts-import-body">
+      <p class="ts-import-intro" id="tsImportIntro"></p>
+      <label class="form-check">
+        <input type="checkbox" id="tsImportDisabled" />
+        <span class="form-check-box" aria-hidden="true"></span>
+        <span>Include disabled events</span>
+      </label>
+      <div class="ts-import-list" id="tsImportList"></div>
+    </div>
+    <div class="modal-footer">
+      <span class="modal-footer-message" id="tsImportMessage"></span>
+      <button type="button" class="btn" id="tsImportCancelBtn">Cancel</button>
+      <button type="button" class="btn btn-primary" id="tsImportSaveBtn" disabled>Import</button>
+    </div>
+  </div>
+</div>
+
 <!-- ── Campaign form (add / edit) ────────────────────────────── -->
 <div id="campaignFormOverlay" class="modal-backdrop">
   <div class="modal-card company-form-card campaign-form-card" role="dialog" aria-modal="true" aria-labelledby="campaignFormTitle">
@@ -1171,6 +1239,58 @@
       <span class="modal-footer-message" id="tradeShowFormMessage"></span>
       <button type="button" class="btn" id="tradeShowFormCancelBtn">Cancel</button>
       <button type="button" class="btn btn-primary" id="tradeShowFormSaveBtn">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Magento event form (js/magento-events.js) ─────────────── -->
+<div id="mgEventFormOverlay" class="modal-backdrop">
+  <div class="modal-card company-form-card mg-event-form-card" role="dialog" aria-modal="true" aria-labelledby="mgEventFormHeading">
+    <div class="modal-header">
+      <h3 id="mgEventFormHeading">Add event</h3>
+      <button type="button" class="btn-close" id="mgEventFormCloseBtn" aria-label="Close">✕</button>
+    </div>
+
+    <form id="mgEventForm" class="modal-body company-form-body" novalidate>
+      <div class="form-field form-field--full">
+        <span class="form-label">Trade show <span class="form-required">*</span></span>
+        <div class="form-toggle-row item-picker" id="mgEventFormShow" role="group" aria-label="Trade show"></div>
+        <span class="form-hint" id="mgEventFormShowHint"></span>
+      </div>
+
+      <label class="form-field form-field--full">
+        <span class="form-label">Title <span class="form-required">*</span></span>
+        <input type="text" class="form-input" id="mgEventFormTitleInput" maxlength="255" />
+      </label>
+
+      <label class="form-field">
+        <span class="form-label">Start <span class="form-required">*</span></span>
+        <input type="date" class="form-input" id="mgEventFormStart" />
+      </label>
+
+      <label class="form-field">
+        <span class="form-label">End <span class="form-required">*</span></span>
+        <input type="date" class="form-input" id="mgEventFormEnd" />
+      </label>
+      <span class="form-hint form-field--full" id="mgEventFormTimezone"></span>
+
+      <label class="form-check form-field--full">
+        <input type="checkbox" id="mgEventFormStatus" />
+        <span class="form-check-box" aria-hidden="true"></span>
+        <span>Enabled — shown on the store</span>
+      </label>
+
+      <label class="form-field form-field--full">
+        <span class="form-label">Content</span>
+        <textarea class="form-input mg-event-content" id="mgEventFormContent" rows="9" placeholder="What shoppers see on the event's page (HTML is fine)"></textarea>
+      </label>
+    </form>
+
+    <div class="modal-footer">
+      <button type="button" class="btn btn-danger mg-event-delete" id="mgEventFormDeleteBtn" hidden>Delete</button>
+      <span class="modal-footer-message" id="mgEventFormMessage"></span>
+      <button type="button" class="btn" id="mgEventFormCancelBtn">Cancel</button>
+      <button type="button" class="btn btn-primary" id="mgEventFormSaveBtn">Save</button>
     </div>
   </div>
 </div>
@@ -1497,36 +1617,38 @@
   </div>
 </div>
 
-<script src="js/config.js?v=20261023-2035"></script>
+<script src="js/config.js?v=20261026-2024"></script>
 <!-- Needs SUPABASE_URL/KEY from config.js and the CDN client above. -->
-<script src="js/auth.js?v=20261023-2035"></script>
-<script src="js/util.js?v=20261023-2035"></script>
-<script src="js/dates.js?v=20261023-2035"></script>
-<script src="js/store.js?v=20261023-2035"></script>
-<script src="js/tasks.js?v=20261023-2035"></script>
-<script src="js/app-shell.js?v=20261023-2035"></script>
-<script src="js/record-list.js?v=20261023-2035"></script>
-<script src="js/item-pane.js?v=20261023-2035"></script>
-<script src="js/campaign-form.js?v=20261023-2035"></script>
-<script src="js/trade-show-form.js?v=20261023-2035"></script>
-<script src="js/banners.js?v=20261023-2035"></script>
-<script src="js/banner-form.js?v=20261023-2035"></script>
-<script src="js/mailchimp.js?v=20261023-2035"></script>
-<script src="js/style-import.js?v=20261023-2035"></script>
-<script src="js/column-filter.js?v=20261023-2035"></script>
-<script src="js/styles.js?v=20261023-2035"></script>
-<script src="js/style-images.js?v=20261023-2035"></script>
-<script src="js/photoshoots.js?v=20261023-2035"></script>
-<script src="js/photoshoot-form.js?v=20261023-2035"></script>
-<script src="js/magento.js?v=20261023-2035"></script>
-<script src="js/magento-availability.js?v=20261023-2035"></script>
-<script src="js/magento-sales.js?v=20261023-2035"></script>
-<script src="js/magento-groups.js?v=20261023-2035"></script>
-<script src="js/table-view.js?v=20261023-2035"></script>
-<script src="js/exports.js?v=20261023-2035"></script>
-<script src="js/copy-menu.js?v=20261023-2035"></script>
-<script src="js/shortcuts.js?v=20261023-2035"></script>
-<script src="js/calendar.js?v=20261023-2035"></script>
-<script src="js/main.js?v=20261023-2035"></script>
+<script src="js/auth.js?v=20261026-2024"></script>
+<script src="js/util.js?v=20261026-2024"></script>
+<script src="js/dates.js?v=20261026-2024"></script>
+<script src="js/store.js?v=20261026-2024"></script>
+<script src="js/tasks.js?v=20261026-2024"></script>
+<script src="js/app-shell.js?v=20261026-2024"></script>
+<script src="js/record-list.js?v=20261026-2024"></script>
+<script src="js/item-pane.js?v=20261026-2024"></script>
+<script src="js/campaign-form.js?v=20261026-2024"></script>
+<script src="js/trade-show-form.js?v=20261026-2024"></script>
+<script src="js/banners.js?v=20261026-2024"></script>
+<script src="js/banner-form.js?v=20261026-2024"></script>
+<script src="js/mailchimp.js?v=20261026-2024"></script>
+<script src="js/style-import.js?v=20261026-2024"></script>
+<script src="js/column-filter.js?v=20261026-2024"></script>
+<script src="js/styles.js?v=20261026-2024"></script>
+<script src="js/style-images.js?v=20261026-2024"></script>
+<script src="js/photoshoots.js?v=20261026-2024"></script>
+<script src="js/photoshoot-form.js?v=20261026-2024"></script>
+<script src="js/magento.js?v=20261026-2024"></script>
+<script src="js/magento-availability.js?v=20261026-2024"></script>
+<script src="js/magento-sales.js?v=20261026-2024"></script>
+<script src="js/magento-events.js?v=20261026-2024"></script>
+<script src="js/trade-show-import.js?v=20261026-2024"></script>
+<script src="js/magento-groups.js?v=20261026-2024"></script>
+<script src="js/table-view.js?v=20261026-2024"></script>
+<script src="js/exports.js?v=20261026-2024"></script>
+<script src="js/copy-menu.js?v=20261026-2024"></script>
+<script src="js/shortcuts.js?v=20261026-2024"></script>
+<script src="js/calendar.js?v=20261026-2024"></script>
+<script src="js/main.js?v=20261026-2024"></script>
 </body>
 </html>

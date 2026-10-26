@@ -70,7 +70,7 @@ let mgSelected = new Set();
 let mgPane = null;
 
 /** The helper version this app expects (HELPER_VERSION in supabase/functions/magento). */
-const MG_HELPER_VERSION = "2026-10-23.6";
+const MG_HELPER_VERSION = "2026-10-26.2";
 
 /** Per action, the last call's timing: { roundTripMs, totalMs, authMs, magentoCalls, magentoMs, slowest… }. */
 const mgTimings = {};
@@ -271,6 +271,7 @@ async function enterMagentoView() {
   renderMagentoSubview();
   // Orders / Customers load on their own (js/magento-sales.js).
   if (isMgSalesView()) enterMgSales(mgSubview);
+  else if (mgSubview === "events") enterMgEvents(); // js/magento-events.js
   if (mgLoadedOnce) return;
   mgLoadedOnce = true;
   await reloadMagento();
@@ -295,6 +296,7 @@ async function reloadMagento() {
   renderMgCategoriesTable();
   // Orders and customers already shown come again too.
   reloadMgSales();
+  if (mgEvents.loaded) loadMgEvents();
   await loadMagentoProducts();
   await index;
 }
@@ -367,6 +369,7 @@ function showMagentoSubview(view) {
   renderMagentoSubview();
   if (mgSubview === "categories") renderMgCategoriesTable();
   else if (isMgSalesView()) enterMgSales(mgSubview); // js/magento-sales.js
+  else if (mgSubview === "events") enterMgEvents(); // js/magento-events.js
   else renderMgProducts();
 }
 
@@ -378,11 +381,13 @@ function renderMagentoSubview() {
     mgCategoryControls: view === "categories",
     mgOrderControls: view === "orders",
     mgCustomerControls: view === "customers",
+    mgEventControls: view === "events",
     mgProductsWrap: products,
     mgCategoriesWrap: view === "categories",
     mgOrdersWrap: view === "orders",
     mgCustomersWrap: view === "customers",
-    mgPager: view !== "categories",
+    mgEventsWrap: view === "events",
+    mgPager: view !== "categories" && view !== "events",
     // Groups are about products only.
     mgGroupsStatus: products,
     mgImportGroupsBtn: products,
@@ -398,8 +403,9 @@ function renderMagentoSubview() {
       categories: "Search categories",
       orders: "Search order #, name or email",
       customers: "Search name or email",
+      events: "Search events",
     }[view];
-    search.value = products ? mgQuery.search : view === "categories" ? mgCategorySearch : MG_SALES[view].query.search;
+    search.value = products ? mgQuery.search : view === "categories" ? mgCategorySearch : view === "events" ? mgEventsQuery.search : MG_SALES[view].query.search;
   }
   if (!products) closeMagentoPane();
   // An order or customer pane belongs to its own list.
@@ -417,6 +423,11 @@ function updateMgCounter() {
     const { text, title } = describeMgSalesCount(mgSubview);
     counter.textContent = text;
     counter.title = title;
+    return;
+  }
+  if (mgSubview === "events") {
+    counter.textContent = describeMgEventsCount();
+    counter.title = "";
     return;
   }
   if (mgSubview === "categories") {
@@ -1321,6 +1332,7 @@ async function exportMagentoCsv() {
   }
   if (mgSubview === "categories") return exportMgCategoriesCsv();
   if (isMgSalesView()) return exportMgSalesCsv(mgSubview);
+  if (mgSubview === "events") return exportMgEventsCsv();
 
   if (!mgPage.total) {
     showIndicator("Nothing to export", "error");
@@ -1426,6 +1438,11 @@ function initMagento() {
     if (mgSubview === "categories") {
       mgCategorySearch = value;
       renderMgCategoriesTable();
+      return;
+    }
+    if (mgSubview === "events") {
+      mgEventsQuery.search = value;
+      renderMgEvents();
       return;
     }
     const view = mgSubview;

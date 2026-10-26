@@ -5552,8 +5552,9 @@ span.dash-event { cursor: pointer; /* clicking selects the day */ }
 .dashboard-day-pane .task-tabs { flex: 1; }
 
 /* ============================================================
-   Schedule items — one colour family per trade show and per
-   campaign type
+   Schedule items — one colour per trade show, campaign type and
+   photoshoot type, grouped by kind: trade shows cool (blues and
+   purples), campaigns red, photoshoots yellow
 
    Every place an item appears (table dot, calendar chip, card pill, form
    button) keys on data-show or data-campaign-type, so it reads as the same
@@ -5568,24 +5569,24 @@ span.dash-event { cursor: pointer; /* clicking selects the day */ }
   --item-strong: #6b7280;
 }
 
-/* Trade shows */
-[data-show="atlanta-apparel"] { --item-bg: #fde7ea; --item-fg: #a3233a; --item-strong: #c22f4a; }
-[data-show="dallas-market"]   { --item-bg: #fdf0d5; --item-fg: #8a5a00; --item-strong: #b07400; }
-[data-show="magic-new-york"]  { --item-bg: #ece6fb; --item-fg: #5a3aa8; --item-strong: #6d4ac7; }
-[data-show="magic-las-vegas"] { --item-bg: #fbe3f3; --item-fg: #9b1f74; --item-strong: #b8288b; }
-[data-show="magic-nashville"] { --item-bg: #dcf3ef; --item-fg: #0f6e62; --item-strong: #138577; }
-[data-show="flair"]           { --item-bg: #e1ecfb; --item-fg: #1f56a5; --item-strong: #2a67c2; }
+/* Trade shows — cool: blues and purples */
+[data-show="atlanta-apparel"] { --item-bg: #e0ebfd; --item-fg: #1e4f9c; --item-strong: #2563c9; }
+[data-show="dallas-market"]   { --item-bg: #e5e7fc; --item-fg: #3730a3; --item-strong: #4f46e5; }
+[data-show="magic-new-york"]  { --item-bg: #efe7fd; --item-fg: #5b2ca0; --item-strong: #7c3aed; }
+[data-show="magic-las-vegas"] { --item-bg: #f5e6fb; --item-fg: #7a2391; --item-strong: #9b30b8; }
+[data-show="magic-nashville"] { --item-bg: #dff3f9; --item-fg: #0e5f78; --item-strong: #0e86a8; }
+[data-show="flair"]           { --item-bg: #e6ecf5; --item-fg: #34507a; --item-strong: #4a6fa5; }
 
-/* Campaign types */
-[data-campaign-type="sale"]              { --item-bg: #ffe8de; --item-fg: #b23c0e; --item-strong: #e0561c; }
-[data-campaign-type="new-arrivals"]      { --item-bg: #e3f4dc; --item-fg: #2f6b12; --item-strong: #3f8a1a; }
-[data-campaign-type="collection-launch"] { --item-bg: #e4e6fa; --item-fg: #3a3f9e; --item-strong: #4a50c0; }
-[data-campaign-type="holiday"]           { --item-bg: #dff1e8; --item-fg: #155c3b; --item-strong: #1c7a4f; }
-[data-campaign-type="promotion"]         { --item-bg: #fdf3c7; --item-fg: #7a5d00; --item-strong: #a07a00; }
+/* Campaign types — reds */
+[data-campaign-type="sale"]              { --item-bg: #fde4e4; --item-fg: #a01818; --item-strong: #d42a2a; }
+[data-campaign-type="new-arrivals"]      { --item-bg: #fde6ee; --item-fg: #a3214f; --item-strong: #d0346a; }
+[data-campaign-type="collection-launch"] { --item-bg: #f6e1e6; --item-fg: #7d1d36; --item-strong: #a3284a; }
+[data-campaign-type="holiday"]           { --item-bg: #ffe7df; --item-fg: #a83417; --item-strong: #e04b25; }
+[data-campaign-type="promotion"]         { --item-bg: #fce8ea; --item-fg: #b1323f; --item-strong: #e05563; }
 
-/* Photoshoot types */
-[data-shoot-type="studio"]    { --item-bg: #dcf0f7; --item-fg: #0b5a6e; --item-strong: #0e7f9c; }
-[data-shoot-type="editorial"] { --item-bg: #f1e7dd; --item-fg: #6b4423; --item-strong: #8b5a2b; }
+/* Photoshoot types — yellows */
+[data-shoot-type="studio"]    { --item-bg: #fdf3c4; --item-fg: #7a5c00; --item-strong: #d4a106; }
+[data-shoot-type="editorial"] { --item-bg: #fdebcc; --item-fg: #85520a; --item-strong: #d98a0b; }
 
 .item-dot {
   display: inline-block;
@@ -8357,3 +8358,66 @@ th.th-select { text-align: center; cursor: default; padding-left: 4px; padding-r
 @media (max-width: 760px) {
   .mg-pane .company-form-body { grid-template-columns: 1fr; }
 }
+
+/* Styles table: COMPANY styles — no photoshoot. */
+.style-no-shoot {
+  color: var(--text-muted);
+  font-size: 11.5px;
+  font-style: italic;
+  white-space: nowrap;
+}
+
+/* ============================================================
+   Magento → Events (js/magento-events.js)
+   ============================================================ */
+.mg-events-table { width: 1180px; min-width: 1180px; margin: 0 auto; }
+.mg-events-table .col-title       { width: 340px; }
+.mg-events-table .col-show        { width: 170px; }
+.mg-events-table .col-date        { width: 130px; }
+.mg-events-table .col-status      { width: 140px; }
+.mg-events-table .col-trade-show  { width: 270px; }
+.mg-events-table td[data-col="title"] { font-weight: 600; overflow: hidden; }
+.mg-events-table td[data-col="tradeShow"] { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mg-events-table.is-loading tbody { opacity: 0.55; transition: opacity 120ms; }
+/* The trade show, in its own colours (data-show). */
+.mg-event-show {
+  display: inline-block;
+  padding: 2px 9px;
+  border-radius: 999px;
+  background: var(--item-bg);
+  color: var(--item-fg);
+  font-size: 11.5px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+#mgEventControls .btn { padding-top: 5px; padding-bottom: 5px; }
+.mg-event-form-card { max-width: 720px; }
+.mg-event-content { font-family: var(--font-mono); font-size: 12px; line-height: 1.5; resize: vertical; }
+/* Delete sits at the left, away from Save. */
+.mg-event-delete { margin-right: auto; }
+.mg-event-delete[hidden] { display: none; }
+.mg-events-table .mg-row-disabled td[data-col="title"] { color: var(--text-muted); }
+.mg-events-table td[data-col="title"], .mg-events-table td[data-col="tradeShow"] { text-align: left; }
+.app-title-tab-dropdown-item[hidden] { display: none; }
+
+/* ============================================================
+   Trade shows → Import CSV (js/trade-show-import.js)
+   ============================================================ */
+.ts-import-card { width: min(720px, calc(100vw - 32px)); }
+.ts-import-body { display: flex; flex-direction: column; gap: 12px; }
+.ts-import-intro { margin: 0; font-size: 13px; line-height: 1.5; }
+.ts-import-list { max-height: 52vh; overflow: auto; border: 1px solid var(--border); border-radius: 6px; }
+.ts-import-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.ts-import-table th {
+  position: sticky; top: 0; z-index: 1;
+  padding: 7px 10px; text-align: left;
+  background: var(--surface-2, #f6f7f9); color: var(--text-muted);
+  font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em;
+}
+.ts-import-table td { padding: 6px 10px; border-top: 1px solid var(--border); white-space: nowrap; }
+.ts-import-table tr.is-skipped td { color: var(--text-muted); }
+.ts-import-result { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 11px; font-weight: 600; }
+.ts-import-result[data-kind="new"]     { background: #e1f5ee; color: #0f6e56; }
+.ts-import-result[data-kind="update"]  { background: #e1ecfb; color: #1f56a5; }
+.ts-import-result[data-kind="same"],
+.ts-import-result[data-kind="skip"]    { background: #eef0f3; color: #6b7280; }

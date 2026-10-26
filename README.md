@@ -356,6 +356,25 @@ on both. These need the integration's **Sales → Operations → Orders**
 permissions (plus **Customers → Customer Groups** for group names); a
 missing one is named in the table.
 
+**Events** (Magento menu → Events) are the store's events — from its events
+extension, not Magento itself — and each one is a trade show. Add, edit and
+delete them here: Title, Content, Start, End and Status save straight to
+Magento. The extension's routes and field names aren't known ahead, so the
+helper reads them from the store's own API map (`eventsApi` shows what it
+found). Each event's **Trade show** comes from the app's trade show on the
+same dates, or else from its name ("MAGIC Las Vegas Feb 2027" → Magic Las
+Vegas); saving an event adds or moves that trade show in the app, and
+**Add to Trade Shows** does it for an existing one. Deleting an event
+leaves the app's trade show alone.
+
+Dates: the extension keeps a date and time in UTC and the admin shows it in
+the store's time zone, so an event saved at UTC midnight shows the evening
+before (Oct 19 → "Oct 18, 5:00 PM"). The app saves the store's midnight
+instead, and **Fix dates** re-saves the events saved the old way — the days
+don't change. The time zone is the store's (Stores permission), else the
+`MAGENTO_TIMEZONE` secret, else America/Los_Angeles. Needs the
+integration's **Events** and **Manage Events** permissions.
+
 Saves are made at the "All Store Views" scope — the default values, as in
 the Magento admin with no store view chosen. A store view that overrides a
 value (a translated name, say) keeps its own.
@@ -487,8 +506,13 @@ each visit. Only computers that can reach the server see the photos.
 **Need to Shoot** is a flag on a Style # + Color. Tick styles in the Styles
 tab (the header box ticks everything in the current view) and use **Add to
 Need to Shoot**, or add one style at a time with the **+ Need to Shoot**
-button in its Shoot cell (**+ Shoot again** for one that's been shot). The
-Photoshoots tab lists them with where each stands:
+button in its Shoot cell (**+ Shoot again** for one that's been shot).
+
+Styles with N41 status **COMPANY** never need a shoot (`NO_SHOOT_STATUSES`
+in `js/config.js`). They show "No shoot needed", every add skips them, and
+they can't go into a photoshoot. One that was on the list before is hidden.
+
+The Photoshoots tab lists them with where each stands:
 
 | Status | Meaning |
 |---|---|

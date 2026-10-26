@@ -40,10 +40,12 @@ async function bootApp() {
   initItemPane();
   initCampaignForm();
   initTradeShowForm();
+  initTradeShowImport();
   initBannersView();
   initBannerForm();
   initMailchimp();
   initMagento();
+  initMgEvents();
   initColumnFilterPopover();
   initStylesView();
   initStyleImages();

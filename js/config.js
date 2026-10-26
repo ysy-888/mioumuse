@@ -114,6 +114,9 @@ const MAX_BANNER_FILE_BYTES = 10 * 1024 * 1024;
 // ── Photoshoots ──────────────────────────────────────────────────────────────
 
 /** What kind of shoot. The first is what a new shoot starts as. */
+/** N41 statuses that never need a photoshoot — kept off Need to Shoot and out of shoots. */
+const NO_SHOOT_STATUSES = ["COMPANY"];
+
 const PHOTOSHOOT_TYPES = [
   { key: "studio", label: "Studio" },
   { key: "editorial", label: "Editorial" },

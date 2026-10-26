@@ -53,6 +53,13 @@
  *   bulk       { skus, op, categoryId? }
  *                                   op: enable | disable | addCategory | removeCategory
  *   category   { id, changes }      changes: { name?, isActive? }
+ *   events                          every event (the store's events
+ *                                   extension, found in its API map)
+ *   saveEvent  { id?, changes }      create (no id) or change an event:
+ *                                   title, content, start, end, status
+ *   deleteEvent { id }
+ *   fixEventDates                   re-save events saved at UTC midnight
+ *   eventsApi                       the event routes and fields found
  *
  * Product changes the app sends:
  *   name, price, specialPrice, status (1 | 2), visibility (1–4), weight,
@@ -76,7 +83,7 @@ import { AsyncLocalStorage } from "node:async_hooks";
  * copy running in Supabase is older than the app expects. Bump it (and
  * MG_HELPER_VERSION in js/magento.js) whenever this file changes.
  */
-const HELPER_VERSION = "2026-10-23.6";
+const HELPER_VERSION = "2026-10-26.2";
 
 /**
  * Where a request's time went: each Magento call is counted and timed, per
@@ -965,6 +972,329 @@ function flattenTree(node: any, parents: string[], out: CategoryRow[]) {
   children.forEach(child => flattenTree(child, trail, out));
 }
 
+// ── Events ───────────────────────────────────────────────────────────────────
+//
+// Events come from the store's events extension, not Magento itself, so
+// their routes and field names aren't known ahead. They're read from the
+// store's own API map (/rest/all/schema — only the routes this integration
+// may call): the routes with "event" in them, grouped by resource; the list,
+// get, create, update and delete routes picked from their methods; and the
+// event's fields from its definition, matched by name (title, content,
+// start, end, status). Needs the integration's Events permissions.
+//
+// Dates: the extension keeps a date-and-time in UTC and the admin shows it
+// in the store's time zone. A start of "2027-10-19 00:00:00" (UTC midnight)
+// shows as Oct 18, 5:00 PM in Pacific time. So the app saves the store's
+// local midnight (2027-10-19 07:00:00 UTC), which the admin shows as
+// Oct 19, 12:00 AM. Reading, an exact UTC midnight is taken as the date
+// it names (how existing events were saved); any other time is converted
+// to the store's time zone.
+
+type EventsApi = {
+  base: string;
+  list: { path: string; criteria: boolean } | null;
+  get: string | null;
+  create: string | null;
+  update: { path: string; method: string } | null;
+  remove: string | null;
+  bodyKey: string;
+  // The event's own field names: { id, title, content, start, end, status }.
+  fields: Record<string, string | null>;
+  // Every field the event has, with its type, and the ones a save needs.
+  properties: Record<string, string>;
+  required: string[];
+  routes: string[];
+};
+
+let eventsApiCache: { at: number; api: EventsApi } | null = null;
+
+async function fetchSchema() {
+  for (const scope of ["all", "default"]) {
+    const res = await fetch(`${BASE}/rest/${scope}/schema?services=all`, {
+      headers: { Authorization: `Bearer ${TOKEN}`, Accept: "application/json" },
+    });
+    if (res.ok) return await res.json();
+  }
+  throw new UserError("Couldn't read the store's API map (/rest/all/schema).", 502);
+}
+
+// deno-lint-ignore no-explicit-any
+function resolveRef(schema: any, ref: unknown) {
+  const name = String(ref ?? "").replace(/^#\/definitions\//, "");
+  return name ? schema.definitions?.[name] ?? null : null;
+}
+
+async function findEventsApi(): Promise<EventsApi> {
+  if (eventsApiCache && Date.now() - eventsApiCache.at < 10 * 60_000) return eventsApiCache.api;
+  const schema = await fetchSchema();
+  // deno-lint-ignore no-explicit-any
+  const ops: { path: string; method: string; op: any }[] = [];
+  // deno-lint-ignore no-explicit-any
+  Object.entries(schema.paths ?? {}).forEach(([path, methods]: [string, any]) => {
+    // deno-lint-ignore no-explicit-any
+    Object.entries(methods ?? {}).forEach(([method, op]: [string, any]) => {
+      // By its path, or its service's name (an extension's routes may not say "event").
+      if (!/event/i.test(`${path} ${(op?.tags ?? []).join(" ")} ${op?.operationId ?? ""}`)) return;
+      ops.push({ path: path.replace(/^\/V1/, ""), method: method.toUpperCase(), op });
+    });
+  });
+  if (!ops.length) {
+    // What the integration can call, by area, so it's clear what's there.
+    const areas = new Map<string, number>();
+    Object.keys(schema.paths ?? {}).forEach(p => {
+      const area = p.replace(/^\/V1\//, "").split("/")[0];
+      areas.set(area, (areas.get(area) ?? 0) + 1);
+    });
+    const list = [...areas.entries()].sort((a, b) => b[1] - a[1]).map(([a, n]) => `${a} (${n})`).join(", ");
+    throw new UserError(
+      `Magento's API has no event routes this integration can call. A permission ticked in the integration only opens routes an extension provides — the events extension may have none. The integration can reach: ${list || "nothing"}.`,
+      403,
+    );
+  }
+  // A resource: the path without its {id} and trailing search / list words.
+  const baseOf = (p: string) => p.replace(/\/\{[^}]+\}$/, "").replace(/\/(search|list|getList|getlist)$/i, "");
+  const bases = new Map<string, number>();
+  ops.forEach(o => bases.set(baseOf(o.path), (bases.get(baseOf(o.path)) ?? 0) + 1));
+  // The events themselves: most routes, preferring one that ends in "event(s)".
+  const base = [...bases.entries()]
+    .sort((a, b) => Number(/events?$/i.test(b[0])) - Number(/events?$/i.test(a[0])) || b[1] - a[1])[0][0];
+  const mine = ops.filter(o => baseOf(o.path) === base);
+  const withId = (o: { path: string }) => /\/\{[^}]+\}$/.test(o.path);
+  // deno-lint-ignore no-explicit-any
+  const hasCriteria = (o: any) => (o.op.parameters ?? []).some((p: any) => /searchCriteria/.test(String(p.name)));
+  const listOp = mine.find(o => o.method === "GET" && hasCriteria(o)) ?? mine.find(o => o.method === "GET" && !withId(o));
+  const getOp = mine.find(o => o.method === "GET" && withId(o));
+  const createOp = mine.find(o => o.method === "POST" && !withId(o));
+  const updateOp = mine.find(o => o.method === "PUT" && withId(o)) ?? mine.find(o => o.method === "PUT")
+    ?? mine.find(o => o.method === "POST" && withId(o));
+  const removeOp = mine.find(o => o.method === "DELETE");
+
+  // The event's definition, from a save's body ({ event: {…} }) or a get's reply.
+  // deno-lint-ignore no-explicit-any
+  const bodyOf = (o: any) => (o?.op.parameters ?? []).find((p: any) => p.in === "body")?.schema;
+  let bodyKey = "event";
+  // deno-lint-ignore no-explicit-any
+  let def: any = null;
+  const body = bodyOf(createOp) ?? bodyOf(updateOp);
+  if (body?.properties) {
+    bodyKey = Object.keys(body.properties).find(k => body.properties[k].$ref) ?? Object.keys(body.properties)[0] ?? bodyKey;
+    def = resolveRef(schema, body.properties[bodyKey]?.$ref);
+  }
+  def ??= resolveRef(schema, getOp?.op.responses?.["200"]?.schema?.$ref);
+  const properties: Record<string, string> = Object.fromEntries(
+    // deno-lint-ignore no-explicit-any
+    Object.entries(def?.properties ?? {}).map(([k, v]: [string, any]) => [k, String(v.type ?? (v.$ref ? "object" : ""))]),
+  );
+  const names = Object.keys(properties);
+  const pick = (exact: RegExp, loose: RegExp) => names.find(n => exact.test(n)) ?? names.find(n => loose.test(n)) ?? null;
+  const fields = {
+    id: pick(/^(event_id|id|entity_id)$/i, /_id$/i),
+    title: pick(/^(title|name|event_title|event_name)$/i, /title|name/i),
+    content: pick(/^(content|description|event_content|event_description)$/i, /content|desc/i),
+    start: pick(/^(start|start_date|start_time|event_start|start_at|date_start|from_date)$/i, /start|from/i),
+    end: pick(/^(end|end_date|end_time|event_end|end_at|date_end|to_date)$/i, /end|to_date/i),
+    status: pick(/^(status|is_active|enabled|is_enabled|active)$/i, /status|active|enable/i),
+  };
+  const api: EventsApi = {
+    base,
+    list: listOp ? { path: listOp.path, criteria: hasCriteria(listOp) } : null,
+    get: getOp?.path ?? null,
+    create: createOp?.path ?? null,
+    update: updateOp ? { path: updateOp.path, method: updateOp.method } : null,
+    remove: removeOp?.path ?? null,
+    bodyKey,
+    fields,
+    properties,
+    required: Array.isArray(def?.required) ? def.required.map(String) : [],
+    routes: ops.map(o => `${o.method} /V1${o.path}`),
+  };
+  eventsApiCache = { at: Date.now(), api };
+  return api;
+}
+
+/** A route with its {id} filled in. */
+function eventPath(path: string, id: unknown) {
+  return path.replace(/\{[^}]+\}/, encodeURIComponent(String(id)));
+}
+
+// ── The store's time zone ──
+
+let storeTimezone: string | null = null;
+
+async function getStoreTimezone() {
+  if (storeTimezone) return storeTimezone;
+  let tz = (Deno.env.get("MAGENTO_TIMEZONE") ?? "").trim();
+  if (!tz) {
+    try {
+      // deno-lint-ignore no-explicit-any
+      const configs: any[] = (await mg("/store/storeConfigs")) ?? [];
+      // deno-lint-ignore no-explicit-any
+      tz = String((configs.find((c: any) => Number(c.id) === 1) ?? configs[0])?.timezone ?? "");
+    } catch {
+      /* not allowed — the default below */
+    }
+  }
+  storeTimezone = tz || "America/Los_Angeles";
+  return storeTimezone;
+}
+
+/** Minutes the time zone is ahead of UTC at that moment (Pacific: -420 / -480). */
+function tzOffsetMinutes(utcMs: number, tz: string) {
+  const parts = Object.fromEntries(new Intl.DateTimeFormat("en-US", {
+    timeZone: tz, hourCycle: "h23", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit",
+  }).formatToParts(new Date(utcMs)).map(p => [p.type, p.value]));
+  const asUtc = Date.UTC(+parts.year, +parts.month - 1, +parts.day, +parts.hour, +parts.minute, +parts.second);
+  return Math.round((asUtc - utcMs) / 60_000);
+}
+
+const pad2 = (n: number) => String(n).padStart(2, "0");
+
+function utcString(ms: number) {
+  const d = new Date(ms);
+  return `${d.getUTCFullYear()}-${pad2(d.getUTCMonth() + 1)}-${pad2(d.getUTCDate())} ${pad2(d.getUTCHours())}:${pad2(d.getUTCMinutes())}:${pad2(d.getUTCSeconds())}`;
+}
+
+/** "2027-10-19" → the store's midnight that day, in UTC: "2027-10-19 07:00:00". */
+function storeMidnightUtc(ymd: string, tz: string) {
+  const [y, m, d] = ymd.split("-").map(Number);
+  const guess = Date.UTC(y, m - 1, d);
+  let ms = guess - tzOffsetMinutes(guess, tz) * 60_000;
+  // Across a daylight-saving change the offset at the answer can differ.
+  ms = guess - tzOffsetMinutes(ms, tz) * 60_000;
+  return utcString(ms);
+}
+
+/** A stored date (UTC) → the day it means, "YYYY-MM-DD" (see the note above). */
+function eventDay(raw: unknown, tz: string) {
+  const s = String(raw ?? "").trim();
+  const m = s.match(/^(\d{4}-\d{2}-\d{2})(?:[ T](\d{2}):(\d{2})(?::(\d{2}))?)?/);
+  if (!m) return "";
+  if (!m[2] || (m[2] === "00" && m[3] === "00" && (m[4] ?? "00") === "00")) return m[1];
+  const ms = Date.parse(`${m[1]}T${m[2]}:${m[3]}:${m[4] ?? "00"}Z`);
+  const local = new Date(ms + tzOffsetMinutes(ms, tz) * 60_000);
+  return `${local.getUTCFullYear()}-${pad2(local.getUTCMonth() + 1)}-${pad2(local.getUTCDate())}`;
+}
+
+/** Saved the old way: an exact UTC midnight, which the admin shows the day before. */
+function isUtcMidnight(raw: unknown) {
+  return /^\d{4}-\d{2}-\d{2}[ T]00:00(:00)?/.test(String(raw ?? ""));
+}
+
+// deno-lint-ignore no-explicit-any
+function summarizeEvent(e: any, api: EventsApi, tz: string) {
+  const f = api.fields;
+  const get = (k: string | null) => (k ? e?.[k] : undefined);
+  const status = get(f.status);
+  return {
+    id: get(f.id) ?? null,
+    title: String(get(f.title) ?? ""),
+    content: String(get(f.content) ?? ""),
+    start: eventDay(get(f.start), tz),
+    end: eventDay(get(f.end), tz),
+    startRaw: String(get(f.start) ?? ""),
+    endRaw: String(get(f.end) ?? ""),
+    enabled: status === undefined ? null : ["1", "true", "enabled", "yes", "active"].includes(String(status).toLowerCase()),
+    needsDateFix: isUtcMidnight(get(f.start)) || isUtcMidnight(get(f.end)),
+  };
+}
+
+// deno-lint-ignore no-explicit-any
+async function listRawEvents(api: EventsApi): Promise<any[]> {
+  if (!api.list) throw new UserError("The integration can't list events — no events list route is open to it.", 403);
+  if (!api.list.criteria) {
+    const body = await mg(api.list.path);
+    return Array.isArray(body) ? body : body?.items ?? [];
+  }
+  // deno-lint-ignore no-explicit-any
+  const out: any[] = [];
+  for (let page = 1; page <= 25; page++) {
+    const body = await mg(`${api.list.path}?${criteria([], null, page, 200)}`);
+    const items = Array.isArray(body) ? body : body?.items ?? [];
+    out.push(...items);
+    const total = Number(body?.total_count ?? out.length);
+    if (!items.length || out.length >= total) break;
+  }
+  return out;
+}
+
+// deno-lint-ignore no-explicit-any
+async function getRawEvent(api: EventsApi, id: unknown): Promise<any> {
+  if (api.get) {
+    const body = await mg(eventPath(api.get, id));
+    return body?.[api.bodyKey] ?? body;
+  }
+  const all = await listRawEvents(api);
+  const found = all.find(e => String(e?.[api.fields.id ?? "id"]) === String(id));
+  if (!found) throw new UserError("That event isn't in Magento anymore.", 404);
+  return found;
+}
+
+/** A field's value as the event keeps it: status 1 / 0 (or true / false), dates in UTC. */
+function eventValue(api: EventsApi, key: string, value: unknown, tz: string, dateStyle: "datetime" | "date") {
+  const name = api.fields[key];
+  if (!name) return undefined;
+  if (key === "status") {
+    const on = Boolean(value);
+    return api.properties[name] === "boolean" ? on : on ? 1 : 0;
+  }
+  if (key === "start" || key === "end") {
+    const ymd = String(value ?? "");
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(ymd)) throw new UserError(`Pick a ${key} date.`);
+    return dateStyle === "date" ? ymd : storeMidnightUtc(ymd, tz);
+  }
+  return String(value ?? "");
+}
+
+/** "Fall Market 2027" → "fall-market-2027". */
+function slugify(s: string) {
+  return s.toLowerCase().normalize("NFKD").replace(/[^\w\s-]/g, "").trim().replace(/[\s_-]+/g, "-").slice(0, 80);
+}
+
+/**
+ * Save an event: changes { title?, content?, start?, end?, status? } onto
+ * the event as Magento has it (a save takes the whole event). A new event
+ * starts from an existing one's other settings (store views and the like),
+ * so it's set up the way the store's events are.
+ */
+// deno-lint-ignore no-explicit-any
+async function saveEvent(id: unknown, changes: Record<string, unknown>): Promise<any> {
+  const api = await findEventsApi();
+  const tz = await getStoreTimezone();
+  const isNew = id === null || id === undefined || id === "";
+  if (isNew ? !api.create : !api.update) {
+    throw new UserError(`The integration can't ${isNew ? "create" : "change"} events — tick Manage Events in its API permissions.`, 403);
+  }
+  // deno-lint-ignore no-explicit-any
+  let event: Record<string, any>;
+  let dateStyle: "datetime" | "date" = "datetime";
+  if (isNew) {
+    const sample = (await listRawEvents(api).catch(() => []))[0] ?? {};
+    if (/^\d{4}-\d{2}-\d{2}$/.test(String(sample[api.fields.start ?? ""] ?? ""))) dateStyle = "date";
+    // Settings copied from an existing event: not its own fields, ids, dates or URL.
+    const own = new Set(Object.values(api.fields).filter(Boolean) as string[]);
+    event = Object.fromEntries(Object.entries(sample).filter(([k]) =>
+      !own.has(k) && !/(^|_)id$|created|updated|url|identifier|slug/i.test(k) || /store/i.test(k)));
+    // A URL key, when the event has one, from the title.
+    const urlKey = Object.keys(api.properties).find(k => /url_key|identifier|slug/i.test(k));
+    if (urlKey) event[urlKey] = slugify(String(changes.title ?? "")) + `-${Date.now().toString(36).slice(-4)}`;
+  } else {
+    event = { ...(await getRawEvent(api, id)) };
+    if (/^\d{4}-\d{2}-\d{2}$/.test(String(event[api.fields.start ?? ""] ?? ""))) dateStyle = "date";
+  }
+  for (const key of ["title", "content", "start", "end", "status"]) {
+    if (!(key in changes)) continue;
+    const value = eventValue(api, key, changes[key], tz, dateStyle);
+    if (value !== undefined) event[api.fields[key]!] = value;
+  }
+  if (isNew && api.fields.status && !(api.fields.status in event)) event[api.fields.status] = eventValue(api, "status", true, tz, dateStyle);
+  const payload = JSON.stringify({ [api.bodyKey]: event });
+  const saved = isNew
+    ? await mg(api.create!, { method: "POST", body: payload }, "all")
+    : await mg(eventPath(api.update!.path, id), { method: api.update!.method, body: payload }, "all");
+  const raw = saved && typeof saved === "object" ? saved[api.bodyKey] ?? saved : { ...event, [api.fields.id ?? "id"]: saved ?? id };
+  return summarizeEvent(raw, api, tz);
+}
+
 // ── Actions ──────────────────────────────────────────────────────────────────
 
 // deno-lint-ignore no-explicit-any
@@ -1373,6 +1703,63 @@ const actions: Record<string, (p: any) => Promise<unknown>> = {
     if (!Object.keys(category).length) throw new UserError("Nothing to change.");
     await mg(`/categories/${encodeURIComponent(id)}`, { method: "PUT", body: JSON.stringify({ category }) }, "all");
     return { id: String(id) };
+  },
+
+  // ── Events ──
+
+  /** Every event, with what the integration can do to them. */
+  async events() {
+    const api = await findEventsApi();
+    const tz = await getStoreTimezone();
+    const items = (await listRawEvents(api)).map(e => summarizeEvent(e, api, tz));
+    return {
+      items,
+      timezone: tz,
+      can: { create: Boolean(api.create), update: Boolean(api.update), remove: Boolean(api.remove) },
+      fields: api.fields,
+    };
+  },
+
+  /** What was found in the store's API map — for when events don't line up. */
+  async eventsApi() {
+    eventsApiCache = null;
+    return { ...(await findEventsApi()), timezone: await getStoreTimezone() };
+  },
+
+  /** Create (no id) or change an event. changes: { title, content, start, end, status }. */
+  async saveEvent({ id, changes }) {
+    if (!changes || typeof changes !== "object") throw new UserError("Nothing to save.");
+    if ("title" in changes && !String(changes.title ?? "").trim()) throw new UserError("An event needs a title.");
+    if (changes.start && changes.end && String(changes.end) < String(changes.start)) throw new UserError("The end date can't be before the start date.");
+    return await saveEvent(id, changes);
+  },
+
+  async deleteEvent({ id }) {
+    if (!id) throw new UserError("Which event?");
+    const api = await findEventsApi();
+    if (!api.remove) throw new UserError("The integration can't delete events — tick Manage Events in its API permissions.", 403);
+    await mg(eventPath(api.remove, id), { method: "DELETE" }, "all");
+    return { id };
+  },
+
+  /**
+   * Re-save the events saved at UTC midnight (which the admin shows as the
+   * evening before) at the store's midnight instead — same days.
+   */
+  async fixEventDates() {
+    const api = await findEventsApi();
+    const tz = await getStoreTimezone();
+    const events = (await listRawEvents(api)).map(e => summarizeEvent(e, api, tz)).filter(e => e.needsDateFix);
+    const results = await eachLimited(events, 3, async e => {
+      try {
+        await saveEvent(e.id, { start: e.start, end: e.end || e.start });
+        return "";
+      } catch (err) {
+        return `${e.title}: ${err instanceof Error ? err.message : String(err)}`;
+      }
+    });
+    const failed = results.filter(Boolean);
+    return { fixed: events.length - failed.length, failed };
   },
 };
 
