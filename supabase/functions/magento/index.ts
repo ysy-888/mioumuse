@@ -40,8 +40,9 @@
  *   customerFields                  the store's Company / Is Activated
  *                                   fields (found by label), with counts
  *   setCustomerActivation { id, value }
- *                                   change a customer's activation (the
- *                                   only customer edit the app makes)
+ *                                   change a customer's activation
+ *   setCustomerCompany { id, value }
+ *                                   change a customer's company
  *   customer   { id }               one customer, with their orders
  *   skuList    { …products filters } every matching SKU, in sort order
  *   catalogIndex                    every product's [sku, type, status,
@@ -85,7 +86,7 @@ import { AsyncLocalStorage } from "node:async_hooks";
  * copy running in Supabase is older than the app expects. Bump it (and
  * MG_HELPER_VERSION in js/magento.js) whenever this file changes.
  */
-const HELPER_VERSION = "2026-10-30.2";
+const HELPER_VERSION = "2026-10-30.4";
 
 /**
  * Where a request's time went: each Magento call is counted and timed, per
@@ -1555,6 +1556,7 @@ const actions: Record<string, (p: any) => Promise<unknown>> = {
         name: i.name ?? "",
         sku: i.sku ?? "",
         qtyOrdered: Number(i.qty_ordered ?? 0),
+        qtyInvoiced: Number(i.qty_invoiced ?? 0),
         qtyShipped: Number(i.qty_shipped ?? 0),
         qtyRefunded: Number(i.qty_refunded ?? 0),
         qtyCanceled: Number(i.qty_canceled ?? 0),
@@ -1643,6 +1645,33 @@ const actions: Record<string, (p: any) => Promise<unknown>> = {
     const custom = (customer.custom_attributes ?? []).filter((a: any) => a.attribute_code !== activation.code);
     custom.push({ attribute_code: activation.code, value: String(value) });
     customer.custom_attributes = custom;
+    const saved = await mg(`/customers/${encodeURIComponent(id)}`, { method: "PUT", body: JSON.stringify({ customer }) });
+    return summarizeCustomer(saved);
+  },
+
+  /**
+   * Change a customer's company. Magento's Customers table shows the main
+   * address's company, so that changes, and so does the store's Company field
+   * when it has one. Saved whole, like activation. Orders keep their own copy.
+   */
+  async setCustomerCompany({ id, value }) {
+    if (!id) throw new UserError("Which customer?");
+    const company = String(value ?? "").trim();
+    if (company.length > 255) throw new UserError("That company name is too long.");
+    const { company: field } = await findCustomerFields();
+
+    const customer = await mg(`/customers/${encodeURIComponent(id)}`);
+    // deno-lint-ignore no-explicit-any
+    const addresses: any[] = customer.addresses ?? [];
+    const main = addresses.find(a => String(a.id) === String(customer.default_billing)) ?? addresses[0];
+    if (!field && !main) throw new UserError("This customer has no address to hold a company. Add one in Magento first.");
+    if (main) main.company = company;
+    if (field) {
+      // deno-lint-ignore no-explicit-any
+      const custom = (customer.custom_attributes ?? []).filter((a: any) => a.attribute_code !== field.code);
+      custom.push({ attribute_code: field.code, value: company });
+      customer.custom_attributes = custom;
+    }
     const saved = await mg(`/customers/${encodeURIComponent(id)}`, { method: "PUT", body: JSON.stringify({ customer }) });
     return summarizeCustomer(saved);
   },

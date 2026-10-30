@@ -8254,7 +8254,7 @@ th.th-select { text-align: center; cursor: default; padding-left: 4px; padding-r
 .mg-orders-table tbody tr.mg-order-flagged.is-open td { background: var(--row-selected-bg); }
 
 /* The order / customer pane. */
-.mg-sales-pane { width: 620px; }
+.mg-sales-pane { width: 860px; }
 .mg-pane-message { display: block; padding: 18px 16px; }
 .mg-link {
   padding: 0;
@@ -8287,6 +8287,30 @@ th.th-select { text-align: center; cursor: default; padding-left: 4px; padding-r
   background: none;
   white-space: normal;
 }
+.mg-company-input { width: 100%; max-width: 320px; }
+/* Order items: the name takes what the others leave. */
+.mg-order-items { table-layout: fixed; }
+.mg-order-items th:nth-child(2) { width: 120px; }
+.mg-order-items th:nth-child(3) { width: 76px; }
+.mg-order-items th:nth-child(4) { width: 70px; }
+.mg-order-items th:nth-child(5) { width: 80px; }
+.mg-order-items th:nth-child(6) { width: 90px; }
+.mg-order-items td { overflow-wrap: anywhere; }
+.mg-order-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 0;
+  border: none;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.mg-order-item:hover span:last-child { text-decoration: underline; }
+.mg-order-item .mg-thumb { flex: none; width: 28px; height: 34px; }
 .mg-mini-table tr.clickable-row { cursor: pointer; }
 .mg-mini-table tr.clickable-row:hover td { background: var(--row-hover); }
 .mg-totals { background: none; border: none; padding: 0; }

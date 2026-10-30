@@ -70,7 +70,7 @@ let mgSelected = new Set();
 let mgPane = null;
 
 /** The helper version this app expects (HELPER_VERSION in supabase/functions/magento). */
-const MG_HELPER_VERSION = "2026-10-30.2";
+const MG_HELPER_VERSION = "2026-10-30.4";
 
 /** Per action, the last call's timing: { roundTripMs, totalMs, authMs, magentoCalls, magentoMs, slowest… }. */
 const mgTimings = {};
@@ -916,7 +916,7 @@ async function openMagentoPane(sku) {
 
   const row = mgPage.items.find(p => p.sku === sku);
   // Show what the list already knows while the full product loads.
-  const seed = { ...row, description: "", shortDescription: "", metaTitle: "", metaDescription: "", weight: null };
+  const seed = { ...row, sku, description: "", shortDescription: "", metaTitle: "", metaDescription: "", weight: null };
   mgPane = { saved: seed, draft: structuredClone(seed), loading: true };
   mgPaneCategorySearch = "";
   pane.hidden = false;

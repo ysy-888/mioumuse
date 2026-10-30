@@ -1,7 +1,8 @@
 /**
  * Magento → Orders and Customers. Read-only, except a customer's
  * activation (the store's own "Is Activated" field), which can be changed
- * from the table or the pane, and canceling orders (js/magento-n41.js).
+ * from the table or the pane, their company (from the pane), and canceling
+ * orders (js/magento-n41.js).
  *
  * Two lists from the store, each filtered, searched, sorted and paged by
  * Magento (the helper's orders / customers actions), and one side pane that
@@ -392,6 +393,53 @@ async function saveMgActivation(row, value, control) {
   } finally {
     control.disabled = false;
   }
+}
+
+/** The customer's company, editable: Enter or clicking away saves, Esc undoes. */
+function createMgCompanyInput(c) {
+  const input = document.createElement("input");
+  input.type = "text";
+  input.className = "form-input mg-company-input";
+  input.value = mgCustomerCompany(c);
+  input.placeholder = "No company";
+  input.setAttribute("aria-label", `Company for ${c.name || c.email}`);
+  input.addEventListener("keydown", e => {
+    if (e.key === "Enter") saveMgCompany(c, input);
+    if (e.key === "Escape") {
+      e.stopPropagation(); // not the pane's Esc
+      input.value = mgCustomerCompany(c);
+      input.blur();
+    }
+  });
+  input.addEventListener("blur", () => saveMgCompany(c, input));
+  return input;
+}
+
+async function saveMgCompany(c, input) {
+  if (input.disabled) return;
+  const value = input.value.trim();
+  if (value === mgCustomerCompany(c)) {
+    input.value = value;
+    return;
+  }
+  input.disabled = true;
+  try {
+    const saved = await callMagento("setCustomerCompany", { id: c.id, value });
+    // The same customer elsewhere on screen (list row, pane, their orders).
+    [c, ...MG_SALES.customers.page.items.filter(row => String(row.id) === String(c.id))].forEach(row => {
+      Object.assign(row, { company: saved.company, custom: saved.custom, addresses: saved.addresses });
+    });
+    MG_SALES.orders.page.items.forEach(o => {
+      if (String(o.customerId) === String(c.id)) o.company = mgCustomerCompany(saved);
+    });
+    renderMgSales("customers");
+    renderMgSales("orders");
+    showIndicator(`${c.name || c.email}: Company — ${mgCustomerCompany(saved) || "none"}`, "success");
+  } catch (err) {
+    showIndicator(err.message || "Couldn't change the company.", "error");
+  }
+  input.value = mgCustomerCompany(c);
+  input.disabled = false;
 }
 
 /** Showing a list: loads it the first time. */
@@ -799,10 +847,11 @@ function renderMgOrderPane(o, title, subtitle, body) {
     ["Coupon", o.couponCode],
   ]);
 
-  const items = mgMiniTable("mg-order-items", ["Item", "SKU", "Qty", "Shipped", "Price", "Total"], o.items.map(i => [
-    i.name,
-    i.sku,
+  const thumbs = [];
+  const items = mgMiniTable("mg-order-items", ["Item", "Qty", "Invoiced", "Shipped", "Price", "Total"], o.items.map(i => [
+    createMgOrderItemLink(i, thumbs),
     String(i.qtyOrdered) + (i.qtyCanceled ? ` (${i.qtyCanceled} canceled)` : "") + (i.qtyRefunded ? ` (${i.qtyRefunded} refunded)` : ""),
+    String(i.qtyInvoiced ?? EMPTY_DISPLAY),
     String(i.qtyShipped),
     money(i.price),
     money(i.rowTotal),
@@ -890,6 +939,50 @@ function renderMgOrderPane(o, title, subtitle, body) {
     mgPaneSection("Shipments", shipments, o.shipments.length ? String(o.shipments.length) : ""),
     mgPaneSection("Comments", history, o.history.length ? String(o.history.length) : ""),
   );
+  fillMgOrderThumbs(thumbs);
+}
+
+/** An item's thumbnail and name, opening the product. The picture arrives after (fillMgOrderThumbs). */
+function createMgOrderItemLink(item, thumbs) {
+  const link = document.createElement("button");
+  link.type = "button";
+  link.className = "mg-order-item";
+  link.title = `${item.sku} — open in Products`;
+  const thumb = createMgThumb({});
+  thumbs.push({ sku: item.sku, thumb });
+  const name = document.createElement("span");
+  name.textContent = item.name || item.sku;
+  link.append(thumb, name);
+  link.addEventListener("click", () => {
+    showMagentoSubview("products");
+    openMagentoPane(item.sku);
+  });
+  return link;
+}
+
+/** sku → product, for those with a picture. */
+async function loadMgProductImages(skus) {
+  if (!skus.length) return new Map();
+  const res = await callMagento("products", { skus: [...new Set(skus)] });
+  return new Map((res?.items ?? []).filter(getMgImageUrl).map(p => [p.sku, p]));
+}
+
+/**
+ * The items' pictures, read from Products. A Simple item without its own uses
+ * its group's. No picture stays an empty box; a failed read changes nothing.
+ */
+async function fillMgOrderThumbs(thumbs) {
+  try {
+    const images = await loadMgProductImages(thumbs.map(t => t.sku));
+    const groupOf = sku => mgChildGroup.get(sku) ?? prefixGroupFor(sku);
+    const groups = await loadMgProductImages(thumbs.filter(t => !images.has(t.sku)).map(t => groupOf(t.sku)).filter(Boolean));
+    thumbs.forEach(({ sku, thumb }) => {
+      const product = images.get(sku) ?? groups.get(groupOf(sku));
+      if (product) thumb.replaceWith(createMgThumb(product));
+    });
+  } catch {
+    // The items read fine without pictures.
+  }
 }
 
 function renderMgCustomerPane(c, title, subtitle, body) {
@@ -900,7 +993,7 @@ function renderMgCustomerPane(c, title, subtitle, body) {
   const summary = mgPaneSummary([
     ["Email", c.email],
     ["Group", mgGroupName(c.groupId)],
-    ["Company", mgCustomerCompany(c)],
+    ["Company", createMgCompanyInput(c)],
     [mgCustomerFields?.activation?.label ?? "Is Activated", mgCustomerFields ? createMgActivationControl(c) : ""],
     [mgCustomerFields?.license?.label ?? "Business License", mgCustomerFields?.license ? createMgLicensePaneValue(c) : ""],
     ["Phone", c.phone],

@@ -314,7 +314,8 @@ status, items, total, ship-to, payment and shipping. Filter by **Status**
 (All / Today / 7 / 30 days); search order #, name or email; sort by a
 column; page through. Click an order for its items (shipped, canceled,
 refunded), totals, billing and shipping addresses, shipments with tracking
-numbers, and its comment history.
+numbers, and its comment history. Each item shows a thumbnail (its group's
+if it has none of its own); click it to open the product in Products.
 
 **Orders against N41.** Canceling on N41 doesn't reach Magento, so those
 orders stay Pending or Processing there. **Import N41 Sales Orders** (⋮ menu
@@ -355,8 +356,11 @@ the account's Company field and falls back to the address's company; Is
 Activated shows as a switch (a yes / no field) or a dropdown (a choice like
 Pending / Approved), headed with whatever the store calls it. **Changing it
 saves straight to Magento** — from the table or the customer's pane;
-deactivating asks first. This is the only customer edit the app makes, and
-it needs the **Customers → All Customers → Actions → Edit** permission. If
+deactivating asks first. **Company** can be edited in the customer's pane
+(Enter or clicking away saves, Esc undoes): it changes the main address's
+company, which is what Magento's Customers table shows, and the account's
+Company field if the store has one. Existing orders keep their own copy.
+Both edits need the **Customers → All Customers → Actions → Edit** permission. If
 no such field is found, the app lists the store's customer fields so the
 right one can be picked. Click one for their details,
 saved addresses, and orders (newest 100) with what they've spent; click an
