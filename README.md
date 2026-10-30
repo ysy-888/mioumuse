@@ -225,12 +225,13 @@ filtering and sorting, so it stays quick on a big catalog.
 - **Available** — is it showing on the webstore? Grouped styles are
   visible (Catalog, Search) and their Simple items (colours) are "Not
   Visible Individually", so:
-  - a **Simple item** is available when it's Enabled, Qty ≥ 1 and In Stock,
+  - a **Simple item** is available when it's Enabled, Salable Qty is above
+    0 and In Stock (Qty ≥ 1 stands in until Salable Qty is read, or if it can't be),
     *and* its group is Enabled and In Stock — an item in no group, or in an
     unavailable group, doesn't show;
   - a **Grouped style** is available when it's Enabled and In Stock (it has
     no qty), *and* at least one of its items is available.
-  The column says Available / Not available and why not ("Qty 0", "Group
+  The column says Available / Not available and why not ("Salable Qty 0", "Group
   T2846 is Disabled", "No available items", "Not in a group"). It's worked
   out from a brief index of the whole catalog (every product's status,
   visibility, qty and Stock Status — loaded with the tab and on Refresh,

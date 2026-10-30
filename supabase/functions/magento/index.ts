@@ -52,6 +52,7 @@
  *                                   visibility value (for the filters)
  *   colorOptions                    Color's choices { options, problem }
  *   product    { sku }              one product, with its content fields
+ *   salableQty { skus }             Salable Quantity per SKU, { quantities, problem }
  *   update     { sku, changes }     save a product's fields (below)
  *   bulk       { skus, op, categoryId? }
  *                                   op: enable | disable | addCategory | removeCategory
@@ -65,7 +66,8 @@
  *   eventsApi                       the event routes and fields found
  *
  * Product changes the app sends:
- *   name, price, specialPrice, status (1 | 2), visibility (1–4), weight,
+ *   name, price, specialPrice, status (1 | 2), visibility (1–4), weight, qty,
+ *   inStock (Stock Status: true | false),
  *   colorId (the Color option's id; "" clears it),
  *   categoryIds (the full list — replaces what's there), description,
  *   shortDescription, urlKey, metaTitle, metaDescription
@@ -86,7 +88,7 @@ import { AsyncLocalStorage } from "node:async_hooks";
  * copy running in Supabase is older than the app expects. Bump it (and
  * MG_HELPER_VERSION in js/magento.js) whenever this file changes.
  */
-const HELPER_VERSION = "2026-10-30.4";
+const HELPER_VERSION = "2026-10-30.10";
 
 /**
  * Where a request's time went: each Magento call is counted and timed, per
@@ -579,6 +581,84 @@ async function addSimpleStock(need: Stocked[]) {
 }
 
 /**
+ * A product's Qty (the total across sources) and / or Stock Status; what isn't
+ * given stays as it is. A Simple item with one source has that source's row
+ * set; several can't be set from one total. Grouped items, and a store without
+ * MSI (or not allowed), use the legacy stock item.
+ */
+async function setProductStock(sku: string, type: string, c: Record<string, unknown>) {
+  const hasQty = "qty" in c;
+  const hasStatus = "inStock" in c;
+  const qty = Number(c.qty);
+  if (hasQty && (c.qty === null || c.qty === "" || !Number.isFinite(qty) || qty < 0)) throw new UserError("Qty must be a number, 0 or more.");
+  if (hasStatus && typeof c.inStock !== "boolean") throw new UserError("Stock Status is In Stock or Out of Stock.");
+
+  // deno-lint-ignore no-explicit-any
+  let sources: any[] | null = null;
+  if (type !== "grouped") {
+    try {
+      const q = criteria([[["sku", sku, "eq"]]], null, 1, 20);
+      sources = (await mg(`/inventory/source-items?${q}`))?.items ?? [];
+    } catch {
+      /* the legacy stock item, below */
+    }
+  }
+  if (sources) {
+    if (sources.length > 1) throw new UserError(`${sku} has stock in ${sources.length} sources. Change its stock in Magento.`);
+    const source = sources[0];
+    const status = hasStatus ? (c.inStock ? 1 : 0) : source ? Number(source.status) : 1;
+    await mg("/inventory/source-items", {
+      method: "POST",
+      body: JSON.stringify({ sourceItems: [{ sku, source_code: source?.source_code ?? "default", quantity: hasQty ? qty : Number(source?.quantity ?? 0), status }] }),
+    });
+    return;
+  }
+  const item = await mg(`/stockItems/${encodeURIComponent(sku)}`);
+  await mg(`/products/${encodeURIComponent(sku)}/stockItems/${encodeURIComponent(item.item_id)}`, {
+    method: "PUT",
+    body: JSON.stringify({ stockItem: { qty: hasQty ? qty : item.qty, is_in_stock: hasStatus ? c.inStock : item.is_in_stock } }),
+  });
+}
+
+/** The stock the store sells from; 1, Magento's default, if that can't be read. */
+async function findSaleStockId() {
+  try {
+    // deno-lint-ignore no-explicit-any
+    const site = ((await mg("/store/websites")) ?? []).find((w: any) => Number(w.id) !== 0);
+    const stock = await mg(`/inventory/stock-resolver/website/${encodeURIComponent(site.code)}`);
+    return Number(stock?.stock_id) || 1;
+  } catch {
+    return 1;
+  }
+}
+
+/**
+ * Salable Quantity, sku → number (null when Magento has none): Quantity less
+ * what open orders have reserved. It's one call per SKU, so a few at a time;
+ * problem says why when none came back.
+ */
+async function salableQuantities(skus: string[]) {
+  const stockId = await findSaleStockId();
+  const quantities: Record<string, number | null> = {};
+  let problem = "";
+  await eachLimited(skus, 8, async sku => {
+    try {
+      const value = await mg(`/inventory/get-product-salable-quantity/${encodeURIComponent(sku)}/${stockId}`);
+      quantities[sku] = value === null ? null : Number(value);
+    } catch (err) {
+      quantities[sku] = null;
+      problem ||= err instanceof Error ? err.message : String(err);
+    }
+  });
+  return { quantities, problem: Object.values(quantities).some(v => v !== null) ? "" : problem };
+}
+
+async function addSalable<T extends { sku: string; type: string; salableQty?: number | null }>(p: T): Promise<T> {
+  p.salableQty = p.type === "grouped" ? null : (await salableQuantities([p.sku])).quantities[p.sku];
+  return p;
+}
+
+/**
  * Every product's stock at once, for the catalog index: Magento's low-stock
  * list with a ceiling no product reaches (all stock items, keyed by product
  * id — grouped products included), or failing that the inventory source
@@ -678,29 +758,51 @@ const ORDER_LIST_FIELDS = [
   // All of it: the store's own order fields (Order Comment, First Order) are
   // extension attributes whose names aren't known ahead.
   "extension_attributes",
+  "custom_attributes",
 ].join(",");
 
+/** Parts of an order's extension attributes that aren't the store's own fields. */
+const NOT_STORE_FIELDS = new Set(["shipping_assignments", "applied_taxes", "item_applied_taxes", "payment_additional_info"]);
+
 /**
- * The store's own order fields, found by name wherever they turn up — the
- * order, its extension attributes, or the payment's: { key → value }.
+ * Every field under `value`, nested or listed. An extension's order
+ * attributes (First Order, Order Comment) can come as a list of entries like
+ * { attribute_code: "first_order", value: "1" }, each read as name → value.
  */
 // deno-lint-ignore no-explicit-any
-function orderCustomFields(o: any): Record<string, unknown> {
+function collectFields(value: any, out: Record<string, unknown>) {
+  if (Array.isArray(value)) value.forEach(v => collectFields(v, out));
+  if (!value || typeof value !== "object" || Array.isArray(value)) return;
+  const name = ["attribute_code", "code", "key", "name", "label"].map(k => value[k]).find(v => typeof v === "string" && v);
+  if (name && value.value !== null && typeof value.value !== "object" && value.value !== undefined && !(name in out)) out[name] = value.value;
+  Object.entries(value).forEach(([k, v]) => {
+    if (NOT_STORE_FIELDS.has(k)) return;
+    if (v !== null && typeof v === "object") collectFields(v, out);
+    else if (v !== null && !(k in out)) out[k] = v;
+  });
+}
+
+/** The fields an order carries beyond Magento's own: { key → value }. */
+// deno-lint-ignore no-explicit-any
+function storeOrderFields(o: any) {
   const out: Record<string, unknown> = {};
-  // deno-lint-ignore no-explicit-any
-  const take = (obj: any) => {
-    if (!obj || typeof obj !== "object" || Array.isArray(obj)) return;
-    Object.entries(obj).forEach(([k, v]) => {
-      if (v !== null && typeof v !== "object" && !(k in out)) out[k] = v;
-    });
-  };
-  take(o.extension_attributes);
-  take(o.payment?.extension_attributes);
-  take(o);
+  collectFields(o.extension_attributes, out);
+  collectFields(o.custom_attributes, out);
+  collectFields(o.payment?.extension_attributes, out);
   return out;
 }
 
-const isFirstOrderKey = (k: string) => /first_?order/i.test(k);
+/** Those, plus the order's own top-level values. */
+// deno-lint-ignore no-explicit-any
+function orderCustomFields(o: any): Record<string, unknown> {
+  const out = storeOrderFields(o);
+  Object.entries(o).forEach(([k, v]) => {
+    if (v !== null && typeof v !== "object" && !(k in out)) out[k] = v;
+  });
+  return out;
+}
+
+const isFirstOrderKey = (k: string) => /first[\s_-]?order/i.test(k);
 const isCommentKey = (k: string) => /comment|customer_note|order_note/i.test(k) && !/histor|notify/i.test(k);
 
 /**
@@ -732,7 +834,7 @@ function summarizeOrder(o: any) {
   const billing = summarizeAddress(o.billing_address);
   const shipping = summarizeAddress(o.extension_attributes?.shipping_assignments?.[0]?.shipping?.address) ?? billing;
   const custom = orderCustomFields(o);
-  const firstOrderKey = Object.keys(custom).find(isFirstOrderKey);
+  const firstOrderKeys = Object.keys(custom).filter(isFirstOrderKey);
   return {
     id: o.entity_id,
     number: String(o.increment_id ?? ""),
@@ -756,8 +858,11 @@ function summarizeOrder(o: any) {
     shipping: o.shipping_description ?? "",
     card: summarizeCard(o.payment),
     comment: String(Object.entries(custom).find(([k, v]) => isCommentKey(k) && String(v).trim())?.[1] ?? "").trim(),
-    // The store's First Order field (1 / 0); null when the store has none.
-    firstOrder: firstOrderKey ? ["1", "true", "yes"].includes(String(custom[firstOrderKey]).toLowerCase()) : null,
+    // The store's First Order field (1 / 0); null when the API doesn't give
+    // it (addFirstOrders then works it out).
+    firstOrder: firstOrderKeys.length
+      ? firstOrderKeys.some(k => Number(custom[k]) === 1 || ["true", "yes"].includes(String(custom[k]).toLowerCase()))
+      : null,
   };
 }
 
@@ -783,6 +888,37 @@ function orderCriteria(p: Record<string, unknown>, page: number, pageSize: numbe
   const q = criteria(groups, { field: sortField ?? "created_at", dir: sortField ? (p.dir === "DESC" ? "DESC" : "ASC") : "DESC" }, page, pageSize);
   q.set("fields", `items[${fields}],total_count`);
   return q;
+}
+
+/**
+ * First orders, for when the store's First Order field doesn't come through
+ * the API (a store's own order column usually doesn't): an order is its
+ * customer's first if it's their earliest. Guests have no history to look at.
+ * If that can't be read, the orders just go untagged.
+ */
+async function addFirstOrders<T extends { id: unknown; customerId: unknown; firstOrder: boolean | null }>(orders: T[]): Promise<T[]> {
+  const unknown = orders.filter(o => o.firstOrder === null && o.customerId);
+  const ids = [...new Set(unknown.map(o => String(o.customerId)))];
+  if (!ids.length) return orders;
+  try {
+    const bodies = await eachLimited(skuBatches(ids), 4, batch => {
+      const q = criteria([batch.map(id => ["customer_id", id, "eq"] as Filter)], { field: "created_at", dir: "ASC" }, 1, 10000);
+      return mg(`/orders?${q}&fields=items[entity_id,customer_id],total_count`);
+    });
+    const earliest = new Map<string, string>();
+    // deno-lint-ignore no-explicit-any
+    bodies.flatMap(b => b?.items ?? []).forEach((o: any) => {
+      const id = String(o.customer_id);
+      if (!earliest.has(id)) earliest.set(id, String(o.entity_id));
+    });
+    unknown.forEach(o => {
+      const first = earliest.get(String(o.customerId));
+      if (first) o.firstOrder = first === String(o.id);
+    });
+  } catch {
+    // Untagged, as before.
+  }
+  return orders;
 }
 
 const CUSTOMER_LIST_FIELDS = [
@@ -860,10 +996,15 @@ const CUSTOMER_SORT: Record<string, string> = {
   name: "lastname", email: "email", createdAt: "created_at", group: "group_id",
 };
 
-function customerCriteria(p: Record<string, unknown>, page: number, pageSize: number) {
+function customerCriteria(p: Record<string, unknown>, page: number, pageSize: number, companyCode = "") {
   const groups: Filter[][] = [];
   const search = String(p.search ?? "").trim();
-  if (search) groups.push(["email", "firstname", "lastname"].map(field => [field, `%${search}%`, "like"] as Filter));
+  if (search) {
+    // billing_company is the default billing address's company; the store's
+    // own Company field, when it has one, is searched too.
+    const fields = ["email", "firstname", "lastname", "billing_company", ...(companyCode ? [companyCode] : [])];
+    groups.push(fields.map(field => [field, `%${search}%`, "like"] as Filter));
+  }
   groups.push(listParam(p.groupId).map(g => ["group_id", g, "eq"] as Filter));
   // The store's activation field: { code, values } — any of these values.
   // deno-lint-ignore no-explicit-any
@@ -880,26 +1021,30 @@ function customerCriteria(p: Record<string, unknown>, page: number, pageSize: nu
 
 /**
  * How many orders each customer on the page has placed with their account
- * (guest checkouts aren't tied to an account). The customer search can't
- * say, so the page's customers' orders are asked for — just their customer
- * id — 10 customers per call (a long id list makes too long a web address),
- * the calls side by side. If orders can't be read, counts stay unknown.
+ * (guest checkouts aren't tied to an account), and their numbers, which the
+ * app looks up in the N41 report. The customer search can't say, so the
+ * page's customers' orders are asked for — just their customer id and number
+ * — 10 customers per call (a long id list makes too long a web address), the
+ * calls side by side. If orders can't be read, counts stay unknown.
  */
-async function addOrderCounts<T extends { id: unknown; orderCount?: number | null }>(customers: T[]): Promise<T[]> {
+async function addOrderCounts<T extends { id: unknown; orderCount?: number | null; orderNumbers?: string[] }>(customers: T[]): Promise<T[]> {
   if (!customers.length) return customers;
-  const counts = new Map<string, number>();
+  const numbers = new Map<string, string[]>();
   try {
     const ids = customers.map(c => String(c.id));
     const bodies = await Promise.all(skuBatches(ids).map(batch => {
       const q = criteria([batch.map(id => ["customer_id", id, "eq"] as Filter)], null, 1, 10000);
-      return mg(`/orders?${q}&fields=items[customer_id],total_count`);
+      return mg(`/orders?${q}&fields=items[customer_id,increment_id],total_count`);
     }));
     // deno-lint-ignore no-explicit-any
     bodies.flatMap(b => b?.items ?? []).forEach((o: any) => {
       const id = String(o.customer_id);
-      counts.set(id, (counts.get(id) ?? 0) + 1);
+      numbers.set(id, [...numbers.get(id) ?? [], String(o.increment_id ?? "")]);
     });
-    customers.forEach(c => (c.orderCount = counts.get(String(c.id)) ?? 0));
+    customers.forEach(c => {
+      c.orderNumbers = numbers.get(String(c.id)) ?? [];
+      c.orderCount = c.orderNumbers.length;
+    });
   } catch {
     customers.forEach(c => (c.orderCount = null));
   }
@@ -1442,7 +1587,8 @@ const actions: Record<string, (p: any) => Promise<unknown>> = {
   async orders(params) {
     const { page, pageSize } = pageParams(params);
     const body = await mg(`/orders?${orderCriteria(params, page, pageSize, ORDER_LIST_FIELDS)}`);
-    return { items: await addOrderCompanies((body?.items ?? []).map(summarizeOrder)), total: Number(body?.total_count ?? 0), page, pageSize };
+    const items = await addFirstOrders(await addOrderCompanies((body?.items ?? []).map(summarizeOrder)));
+    return { items, total: Number(body?.total_count ?? 0), page, pageSize };
   },
 
   /**
@@ -1547,9 +1693,13 @@ const actions: Record<string, (p: any) => Promise<unknown>> = {
     } catch (err) {
       shipmentsProblem = err instanceof Error ? err.message : String(err);
     }
-    const [summary] = await addOrderCompanies([summarizeOrder(o)]);
+    const summarized = summarizeOrder(o);
+    // Which store fields the API gave, when First Order wasn't among them.
+    const storeFields = summarized.firstOrder === null ? Object.keys(storeOrderFields(o)) : null;
+    const [summary] = await addFirstOrders(await addOrderCompanies([summarized]));
     return {
       ...summary,
+      storeFields,
       // Child rows of configurable / bundle items repeat their parent.
       // deno-lint-ignore no-explicit-any
       items: (o.items ?? []).filter((i: any) => !i.parent_item_id).map((i: any) => ({
@@ -1597,7 +1747,8 @@ const actions: Record<string, (p: any) => Promise<unknown>> = {
 
   async customers(params) {
     const { page, pageSize } = pageParams(params);
-    const body = await mg(`/customers/search?${customerCriteria(params, page, pageSize)}`);
+    const companyCode = String(params.search ?? "").trim() ? (await findCustomerFields()).company?.code : "";
+    const body = await mg(`/customers/search?${customerCriteria(params, page, pageSize, companyCode)}`);
     const items = (body?.items ?? []).map(summarizeCustomer);
     return { items: await addOrderCounts(items), total: Number(body?.total_count ?? 0), page, pageSize };
   },
@@ -1743,17 +1894,31 @@ const actions: Record<string, (p: any) => Promise<unknown>> = {
   async product({ sku }) {
     if (!sku) throw new UserError("Which product?");
     const [p, colors] = await Promise.all([getProduct(sku), getColorNames()]);
-    return (await addStock([detail(p, colors)]))[0];
+    return addSalable((await addStock([detail(p, colors)]))[0]);
+  },
+
+  /** Salable Quantity for a page of SKUs, asked for after the page shows. */
+  salableQty({ skus }) {
+    const list: string[] = Array.isArray(skus) ? [...new Set(skus.map(String))].slice(0, 200) : [];
+    return salableQuantities(list);
   },
 
   async update({ sku, changes }) {
     if (!sku) throw new UserError("Which product?");
     const colors = await getColorNames();
     if (!changes || typeof changes !== "object" || !Object.keys(changes).length) return (await addStock([detail(await getProduct(sku), colors)]))[0];
-    const product = buildProductPayload(sku, changes);
-    await mg(`/products/${encodeURIComponent(sku)}`, { method: "PUT", body: JSON.stringify({ product }) }, "all");
+    // Qty and Stock Status aren't part of the product: they're saved to its stock.
+    const { qty, inStock, ...fields } = changes;
+    if (Object.keys(fields).length) {
+      const product = buildProductPayload(sku, fields);
+      await mg(`/products/${encodeURIComponent(sku)}`, { method: "PUT", body: JSON.stringify({ product }) }, "all");
+    }
+    if ("qty" in changes || "inStock" in changes) await setProductStock(sku, (await getProduct(sku)).type_id, changes);
     // Read back what Magento actually kept.
-    return (await addStock([detail(await getProduct(sku), colors)]))[0];
+    const saved = (await addStock([detail(await getProduct(sku), colors)]))[0];
+    if ("qty" in changes) saved.qty = Number(qty);
+    if ("inStock" in changes) saved.inStock = inStock;
+    return addSalable(saved);
   },
 
   /** One change across many products. Each SKU's outcome is reported, so a partial run is visible. */

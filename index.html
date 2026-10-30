@@ -6,7 +6,7 @@
 <title>MIOU MUSE</title>
 <link rel="icon" href="favicon.png?v=2" type="image/png" />
 <link rel="apple-touch-icon" href="favicon.png?v=2" />
-<link rel="stylesheet" href="crm.css?v=20261030-1806" />
+<link rel="stylesheet" href="crm.css?v=20261030-2112" />
 </head>
 <body>
 
@@ -733,6 +733,7 @@
         <col class="col-type" />
         <col class="col-price" />
         <col class="col-qty" />
+        <col class="col-salable" />
         <col class="col-stock" />
         <col class="col-visibility" />
         <col class="col-status" />
@@ -750,16 +751,17 @@
           <th data-col="type">Type</th>
           <th data-col="price">Price</th>
           <th data-col="qty">Qty</th>
+          <th data-col="salableQty" title="Qty less what open orders have reserved">Salable Qty</th>
           <th data-col="stockStatus">Stock Status</th>
           <th data-col="visibility">Visibility</th>
           <th data-col="status">Status</th>
-          <th data-col="available" title="Showing on the webstore: enabled, in stock, qty 1+, and (for an item) in an available group">Available</th>
+          <th data-col="available" title="Showing on the webstore: enabled, in stock, salable qty above 0, and (for an item) in an available group">Available</th>
           <th data-col="categories">Categories</th>
           <th data-col="updatedAt">Updated</th>
         </tr>
       </thead>
       <tbody id="mgProductsBody">
-        <tr class="state-row"><td colspan="14">Loading products…</td></tr>
+        <tr class="state-row"><td colspan="15">Loading products…</td></tr>
       </tbody>
     </table>
     </div>
@@ -852,6 +854,7 @@
         <col class="col-email" />
         <col class="col-group" />
         <col class="col-company" />
+        <col class="col-n41-customer" />
         <col class="col-activation" />
         <col class="col-orders" />
         <col class="col-location" />
@@ -864,6 +867,7 @@
           <th data-col="email">Email</th>
           <th data-col="group">Group</th>
           <th data-col="company">Company</th>
+          <th data-col="n41Customer">N41 Customer</th>
           <th data-col="activation">Is Activated</th>
           <th data-col="orders" title="Orders placed with the account (guest checkouts aren't counted)">Orders</th>
           <th data-col="location">Location</th>
@@ -872,7 +876,7 @@
         </tr>
       </thead>
       <tbody id="mgCustomersBody">
-        <tr class="state-row"><td colspan="9">Loading customers…</td></tr>
+        <tr class="state-row"><td colspan="10">Loading customers…</td></tr>
       </tbody>
     </table>
     </div>
@@ -886,6 +890,8 @@
         <span class="item-pane-subtitle" id="mgSalesPaneSubtitle"></span>
       </div>
       <div class="item-pane-header-actions">
+        <!-- A customer's Activated switch. -->
+        <span class="mg-pane-header-slot" id="mgSalesPaneHeaderSlot"></span>
         <!-- This customer / order in the Magento admin (needs MAGENTO_ADMIN_URL). -->
         <a class="btn mg-admin-link" id="mgSalesPaneAdmin" target="_blank" rel="noopener" hidden>
           Open in Magento
@@ -930,39 +936,57 @@
     <div class="item-pane-header">
       <div class="item-pane-title-group">
         <span class="item-pane-title" id="mgPaneTitle"></span>
-        <span class="item-pane-subtitle" id="mgPaneSubtitle"></span>
       </div>
       <div class="item-pane-header-actions">
+        <!-- The Enabled switch, as on the table. -->
+        <span class="mg-pane-header-slot" id="mgPaneHeaderSlot"></span>
+        <!-- This product in the Magento admin (needs MAGENTO_ADMIN_URL). -->
+        <a class="btn mg-admin-link" id="mgPaneAdmin" target="_blank" rel="noopener" hidden>
+          Open in Magento
+          <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><path d="M15 3h6v6"/><path d="M10 14 21 3"/></svg>
+        </a>
         <button type="button" class="item-pane-icon-btn item-pane-close" id="mgPaneClose" aria-label="Close" title="Close">✕</button>
       </div>
     </div>
     <div class="item-pane-body">
       <div class="mg-pane-preview" id="mgPanePreview"></div>
       <form class="company-form-body mg-pane-form" id="mgPaneForm" novalidate>
-        <div class="form-field">
-          <span class="form-label">Status</span>
-          <div class="filter-btn-group mg-pane-status" id="mgPaneStatus" role="group" aria-label="Status">
-            <button type="button" class="filter-btn" data-value="1">Enabled</button>
-            <button type="button" class="filter-btn" data-value="2">Disabled</button>
+        <label class="form-field">
+          <span class="form-label">Stock Status</span>
+          <select class="form-input" id="mgPaneStockStatus" data-field="inStock">
+            <option value="true">In Stock</option>
+            <option value="false">Out of Stock</option>
+          </select>
+        </label>
+        <!-- Share one column. Grouped items have no qty of their own. -->
+        <div class="mg-pane-qty-pair" id="mgPaneQtyPair">
+          <label class="form-field">
+            <span class="form-label">Qty</span>
+            <input type="number" class="form-input" id="mgPaneQty" data-field="qty" min="0" step="1" />
+          </label>
+          <div class="form-field">
+            <span class="form-label">Salable Qty</span>
+            <span class="mg-pane-static" id="mgPaneSalable"></span>
           </div>
+        </div>
+        <!-- Full width unless there's a group to sit beside it (js/magento.js). -->
+        <label class="form-field form-field--full" id="mgPaneNameField">
+          <span class="form-label">Name</span>
+          <input type="text" class="form-input" id="mgPaneName" data-field="name" autocomplete="off" />
+        </label>
+        <div class="form-field mg-pane-group-field" id="mgPaneGroupField" hidden>
+          <span class="form-label" id="mgPaneGroupLabel">Simple items</span>
+          <span class="mg-pane-group-list" id="mgPaneGroupList"></span>
         </div>
         <label class="form-field">
           <span class="form-label">Visibility</span>
           <select class="form-input" id="mgPaneVisibility" data-field="visibility"></select>
-        </label>
-        <label class="form-field form-field--full">
-          <span class="form-label">Name</span>
-          <input type="text" class="form-input" id="mgPaneName" data-field="name" autocomplete="off" />
         </label>
         <!-- Hidden when the store's Color isn't a dropdown (js/magento.js). -->
         <label class="form-field" id="mgPaneColorField">
           <span class="form-label">Color</span>
           <select class="form-input" id="mgPaneColor" data-field="colorId"></select>
         </label>
-        <div class="form-field form-field--full mg-pane-group-field" id="mgPaneGroupField" hidden>
-          <span class="form-label" id="mgPaneGroupLabel">Simple items</span>
-          <span class="mg-pane-group-list" id="mgPaneGroupList"></span>
-        </div>
         <label class="form-field">
           <span class="form-label">Price</span>
           <input type="number" class="form-input" id="mgPanePrice" data-field="price" min="0" step="0.01" />
@@ -1651,39 +1675,39 @@
   </div>
 </div>
 
-<script src="js/config.js?v=20261030-1806"></script>
+<script src="js/config.js?v=20261030-2112"></script>
 <!-- Needs SUPABASE_URL/KEY from config.js and the CDN client above. -->
-<script src="js/auth.js?v=20261030-1806"></script>
-<script src="js/util.js?v=20261030-1806"></script>
-<script src="js/dates.js?v=20261030-1806"></script>
-<script src="js/store.js?v=20261030-1806"></script>
-<script src="js/tasks.js?v=20261030-1806"></script>
-<script src="js/app-shell.js?v=20261030-1806"></script>
-<script src="js/record-list.js?v=20261030-1806"></script>
-<script src="js/item-pane.js?v=20261030-1806"></script>
-<script src="js/campaign-form.js?v=20261030-1806"></script>
-<script src="js/trade-show-form.js?v=20261030-1806"></script>
-<script src="js/banners.js?v=20261030-1806"></script>
-<script src="js/banner-form.js?v=20261030-1806"></script>
-<script src="js/mailchimp.js?v=20261030-1806"></script>
-<script src="js/style-import.js?v=20261030-1806"></script>
-<script src="js/column-filter.js?v=20261030-1806"></script>
-<script src="js/styles.js?v=20261030-1806"></script>
-<script src="js/style-images.js?v=20261030-1806"></script>
-<script src="js/photoshoots.js?v=20261030-1806"></script>
-<script src="js/photoshoot-form.js?v=20261030-1806"></script>
-<script src="js/magento.js?v=20261030-1806"></script>
-<script src="js/magento-availability.js?v=20261030-1806"></script>
-<script src="js/magento-sales.js?v=20261030-1806"></script>
-<script src="js/magento-n41.js?v=20261030-1806"></script>
-<script src="js/magento-events.js?v=20261030-1806"></script>
-<script src="js/trade-show-import.js?v=20261030-1806"></script>
-<script src="js/magento-groups.js?v=20261030-1806"></script>
-<script src="js/table-view.js?v=20261030-1806"></script>
-<script src="js/exports.js?v=20261030-1806"></script>
-<script src="js/copy-menu.js?v=20261030-1806"></script>
-<script src="js/shortcuts.js?v=20261030-1806"></script>
-<script src="js/calendar.js?v=20261030-1806"></script>
-<script src="js/main.js?v=20261030-1806"></script>
+<script src="js/auth.js?v=20261030-2112"></script>
+<script src="js/util.js?v=20261030-2112"></script>
+<script src="js/dates.js?v=20261030-2112"></script>
+<script src="js/store.js?v=20261030-2112"></script>
+<script src="js/tasks.js?v=20261030-2112"></script>
+<script src="js/app-shell.js?v=20261030-2112"></script>
+<script src="js/record-list.js?v=20261030-2112"></script>
+<script src="js/item-pane.js?v=20261030-2112"></script>
+<script src="js/campaign-form.js?v=20261030-2112"></script>
+<script src="js/trade-show-form.js?v=20261030-2112"></script>
+<script src="js/banners.js?v=20261030-2112"></script>
+<script src="js/banner-form.js?v=20261030-2112"></script>
+<script src="js/mailchimp.js?v=20261030-2112"></script>
+<script src="js/style-import.js?v=20261030-2112"></script>
+<script src="js/column-filter.js?v=20261030-2112"></script>
+<script src="js/styles.js?v=20261030-2112"></script>
+<script src="js/style-images.js?v=20261030-2112"></script>
+<script src="js/photoshoots.js?v=20261030-2112"></script>
+<script src="js/photoshoot-form.js?v=20261030-2112"></script>
+<script src="js/magento.js?v=20261030-2112"></script>
+<script src="js/magento-availability.js?v=20261030-2112"></script>
+<script src="js/magento-sales.js?v=20261030-2112"></script>
+<script src="js/magento-n41.js?v=20261030-2112"></script>
+<script src="js/magento-events.js?v=20261030-2112"></script>
+<script src="js/trade-show-import.js?v=20261030-2112"></script>
+<script src="js/magento-groups.js?v=20261030-2112"></script>
+<script src="js/table-view.js?v=20261030-2112"></script>
+<script src="js/exports.js?v=20261030-2112"></script>
+<script src="js/copy-menu.js?v=20261030-2112"></script>
+<script src="js/shortcuts.js?v=20261030-2112"></script>
+<script src="js/calendar.js?v=20261030-2112"></script>
+<script src="js/main.js?v=20261030-2112"></script>
 </body>
 </html>

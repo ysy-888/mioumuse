@@ -12,7 +12,7 @@
  *
  * Orders: Status header filter (only statuses in use, with counts), Placed
  * quick filter (All / Today / 7 / 30 days), search by order #, name, email.
- * Customers: Group header filter, Joined quick filter, search by name, email.
+ * Customers: Group header filter, Joined quick filter, search by name, email, company.
  *
  * Needs the integration's Sales → Operations → Orders (+ Shipments for
  * tracking) and Customers → All Customers permissions; a missing one is
@@ -157,6 +157,7 @@ async function loadMgSalesFacets(kind) {
     const [groups, fields] = await Promise.all([
       callMagento("customerGroups").catch(() => mgCustomerGroups),
       callMagento("customerFields").catch(err => ({ error: err.message })),
+      mgN41.size ? null : loadMgN41(), // the N41 Customer column
     ]);
     mgCustomerGroups = groups;
     mgCustomerFields = fields?.error ? (mgCustomerFields ?? fields) : fields;
@@ -238,34 +239,23 @@ function renderMgOrderStatusButtons() {
   syncMgSalesButtons();
 }
 
-// ── Admin links and the license ──────────────────────────────────────────────
+// ── Admin links ──────────────────────────────────────────────────────────────
 
 /**
- * A customer's or order's page in the Magento admin — when the helper's
+ * A product's, customer's or order's page in the Magento admin — when the helper's
  * MAGENTO_ADMIN_URL secret is set. (Magento's "Add Secret Key to URLs" must
  * be off for these to open the page itself rather than the Dashboard.)
  */
 function mgAdminUrl(kind, id) {
   const base = mgStore?.adminUrl;
   if (!base || id === null || id === undefined) return "";
+  if (kind === "products") return `${base}/catalog/product/edit/id/${encodeURIComponent(id)}/`;
   return kind === "orders"
     ? `${base}/sales/order/view/order_id/${encodeURIComponent(id)}/`
     : `${base}/customer/index/edit/id/${encodeURIComponent(id)}/`;
 }
 
-/**
- * The uploaded business license's file name — the store's file field (found
- * by label). The API gives its stored path (/b/u/license.pdf); the file
- * itself is only viewable in the Magento admin.
- */
-function mgLicenseFile(row) {
-  const code = mgCustomerFields?.license?.code;
-  const value = code ? row.custom?.[code] : null;
-  if (!value) return "";
-  const path = typeof value === "object" ? value.file ?? value.name ?? value.value ?? "" : String(value);
-  return path.split("/").pop();
-}
-
+const MG_EDIT_ICON = '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4z"/></svg>';
 const MG_EXTERNAL_ICON = '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><path d="M15 3h6v6"/><path d="M10 14 21 3"/></svg>';
 
 /**
@@ -286,23 +276,6 @@ function createMgAdminIcon(kind, id, label) {
   // Opening Magento shouldn't also open the row's pane.
   link.addEventListener("click", e => e.stopPropagation());
   return link;
-}
-
-/** The pane: the file's name with the icon to view it in Magento. */
-function createMgLicensePaneValue(c) {
-  const file = mgLicenseFile(c);
-  const wrap = document.createElement("span");
-  wrap.className = "mg-with-icon";
-  if (!file) {
-    wrap.textContent = "Not uploaded";
-    wrap.classList.add("mg-muted");
-    return wrap;
-  }
-  wrap.appendChild(Object.assign(document.createElement("span"), { textContent: file }));
-  const icon = createMgAdminIcon("customers", c.id, "View the license in Magento");
-  if (icon) wrap.appendChild(icon);
-  else wrap.title = "Add the MAGENTO_ADMIN_URL secret in Supabase to link to the Magento admin, where the file can be viewed.";
-  return wrap;
 }
 
 // ── Company and activation ───────────────────────────────────────────────────
@@ -395,51 +368,83 @@ async function saveMgActivation(row, value, control) {
   }
 }
 
-/** The customer's company, editable: Enter or clicking away saves, Esc undoes. */
-function createMgCompanyInput(c) {
-  const input = document.createElement("input");
-  input.type = "text";
-  input.className = "form-input mg-company-input";
-  input.value = mgCustomerCompany(c);
-  input.placeholder = "No company";
-  input.setAttribute("aria-label", `Company for ${c.name || c.email}`);
-  input.addEventListener("keydown", e => {
-    if (e.key === "Enter") saveMgCompany(c, input);
-    if (e.key === "Escape") {
-      e.stopPropagation(); // not the pane's Esc
-      input.value = mgCustomerCompany(c);
-      input.blur();
-    }
-  });
-  input.addEventListener("blur", () => saveMgCompany(c, input));
-  return input;
+/**
+ * A customer's company with a pencil to change it. In the box, Enter or
+ * clicking away saves and Esc undoes. company() reads it; onSaved keeps the
+ * pane's own copy current.
+ */
+function createMgCompanyField(id, label, company, onSaved) {
+  const field = document.createElement("span");
+  field.className = "mg-company-field";
+
+  const show = () => {
+    const name = document.createElement("span");
+    name.className = company() ? "mg-company-name" : "mg-company-name mg-muted";
+    name.textContent = company() || "No company";
+    const edit = document.createElement("button");
+    edit.type = "button";
+    edit.className = "mg-company-edit";
+    edit.title = "Edit company";
+    edit.setAttribute("aria-label", `Edit company for ${label}`);
+    edit.innerHTML = MG_EDIT_ICON;
+    edit.addEventListener("click", startEditing);
+    field.replaceChildren(name, edit);
+  };
+
+  const startEditing = () => {
+    const input = document.createElement("input");
+    input.type = "text";
+    input.className = "form-input mg-company-input";
+    input.value = company();
+    input.placeholder = "No company";
+    input.setAttribute("aria-label", `Company for ${label}`);
+    let finished = false;
+    const save = async () => {
+      if (finished) return;
+      finished = true;
+      const value = input.value.trim();
+      if (value !== company()) {
+        input.disabled = true;
+        await saveMgCompany(id, label, value, onSaved);
+      }
+      show();
+    };
+    input.addEventListener("keydown", e => {
+      if (e.key === "Enter") save();
+      if (e.key === "Escape") {
+        e.stopPropagation(); // not the pane's Esc
+        finished = true;
+        show();
+      }
+    });
+    input.addEventListener("blur", save);
+    field.replaceChildren(input);
+    input.focus();
+    input.select();
+  };
+
+  show();
+  return field;
 }
 
-async function saveMgCompany(c, input) {
-  if (input.disabled) return;
-  const value = input.value.trim();
-  if (value === mgCustomerCompany(c)) {
-    input.value = value;
-    return;
-  }
-  input.disabled = true;
+async function saveMgCompany(id, label, value, onSaved) {
   try {
-    const saved = await callMagento("setCustomerCompany", { id: c.id, value });
-    // The same customer elsewhere on screen (list row, pane, their orders).
-    [c, ...MG_SALES.customers.page.items.filter(row => String(row.id) === String(c.id))].forEach(row => {
+    const saved = await callMagento("setCustomerCompany", { id, value });
+    const company = mgCustomerCompany(saved);
+    onSaved(saved);
+    // The same customer elsewhere on screen (list rows, their orders).
+    MG_SALES.customers.page.items.filter(row => String(row.id) === String(id)).forEach(row => {
       Object.assign(row, { company: saved.company, custom: saved.custom, addresses: saved.addresses });
     });
     MG_SALES.orders.page.items.forEach(o => {
-      if (String(o.customerId) === String(c.id)) o.company = mgCustomerCompany(saved);
+      if (String(o.customerId) === String(id)) o.company = company;
     });
     renderMgSales("customers");
     renderMgSales("orders");
-    showIndicator(`${c.name || c.email}: Company — ${mgCustomerCompany(saved) || "none"}`, "success");
+    showIndicator(`${label}: Company — ${company || "none"}`, "success");
   } catch (err) {
     showIndicator(err.message || "Couldn't change the company.", "error");
   }
-  input.value = mgCustomerCompany(c);
-  input.disabled = false;
 }
 
 /** Showing a list: loads it the first time. */
@@ -480,7 +485,7 @@ function createMgOrderStatusPill(status) {
 function createMgFirstOrderTag() {
   const tag = document.createElement("span");
   tag.className = "mg-first-order";
-  tag.textContent = "First order";
+  tag.textContent = "1st";
   tag.title = "This customer's first order";
   return tag;
 }
@@ -537,7 +542,6 @@ function fillMgSalesCell(kind, col, row, td) {
     else if (col === "number") {
       text(row.number);
       td.dataset.copy = row.number;
-      if (row.firstOrder) td.appendChild(createMgFirstOrderTag());
     }
     else if (col === "date") td.textContent = formatMgDateTime(row.createdAt, { time: true });
     else if (col === "customer") {
@@ -549,7 +553,16 @@ function fillMgSalesCell(kind, col, row, td) {
         td.append(" ", tag);
       }
     } else if (col === "email") text(row.email);
-    else if (col === "company") text(row.company);
+    else if (col === "company") {
+      const cell = document.createElement("div");
+      cell.className = "mg-company-cell";
+      const name = document.createElement("span");
+      name.className = "mg-ellipsis";
+      mountSearchHighlightedText(name, row.company || EMPTY_DISPLAY);
+      cell.appendChild(name);
+      if (row.firstOrder) cell.appendChild(createMgFirstOrderTag());
+      td.appendChild(cell);
+    }
     else if (col === "status") td.appendChild(createMgOrderStatusPill(row.status));
     else if (col === "n41") td.appendChild(createMgN41StatusCell(row));
     else if (col === "n41Customer") td.textContent = mgN41For(row.number)?.customer || EMPTY_DISPLAY;
@@ -576,7 +589,8 @@ function fillMgSalesCell(kind, col, row, td) {
     }
     else if (col === "email") text(row.email);
     else if (col === "group") td.textContent = mgGroupName(row.groupId) || EMPTY_DISPLAY;
-    else if (col === "company") td.textContent = mgCustomerCompany(row) || EMPTY_DISPLAY;
+    else if (col === "company") text(mgCustomerCompany(row));
+    else if (col === "n41Customer") td.textContent = mgN41CustomerName(row.orderNumbers) || EMPTY_DISPLAY;
     else if (col === "activation") td.appendChild(createMgActivationControl(row));
     else if (col === "orders") {
       td.className = "mg-num";
@@ -585,7 +599,7 @@ function fillMgSalesCell(kind, col, row, td) {
     else if (col === "location") td.textContent = row.location || EMPTY_DISPLAY;
     else if (col === "phone") td.textContent = row.phone || EMPTY_DISPLAY;
     else if (col === "createdAt") td.textContent = formatMgDateTime(row.createdAt);
-    if (["name", "email", "company", "location"].includes(col)) td.title = td.textContent;
+    if (["name", "email", "company", "n41Customer", "location"].includes(col)) td.title = td.textContent;
   }
 }
 
@@ -705,7 +719,11 @@ async function openMgSalesPane(kind, id, { back = null } = {}) {
   renderMgSalesPane();
   renderMgSales(kind);
   try {
-    const data = await callMagento(kind === "orders" ? "order" : "customer", { id });
+    const [data] = await Promise.all([
+      callMagento(kind === "orders" ? "order" : "customer", { id }),
+      // A customer opened from an order: the switch and N41 Customer need these.
+      kind === "customers" && (!mgCustomerFields || !mgN41.size) ? loadMgSalesFacets("customers") : null,
+    ]);
     if (mgSalesPane?.kind !== kind || mgSalesPane.id !== id) return;
     mgSalesPane = { ...mgSalesPane, data, loading: false };
   } catch (err) {
@@ -796,6 +814,7 @@ function renderMgSalesPane() {
   const body = document.getElementById("mgSalesPaneBody");
   const backBtn = document.getElementById("mgSalesPaneBack");
   if (backBtn) backBtn.hidden = !back;
+  document.getElementById("mgSalesPaneHeaderSlot")?.replaceChildren();
   // "Open in Magento": this customer or order in the admin.
   const admin = document.getElementById("mgSalesPaneAdmin");
   if (admin) {
@@ -840,7 +859,9 @@ function renderMgOrderPane(o, title, subtitle, body) {
   const summary = mgPaneSummary([
     ["N41 Status", n41 ? createMgN41StatusCell(o) : ""],
     ["N41 Customer Name", n41?.customer],
-    ["Company", o.company],
+    ["Company", o.customerId && !o.guest
+      ? createMgCompanyField(o.customerId, o.customerName || o.email, () => o.company ?? "", saved => { o.company = mgCustomerCompany(saved); })
+      : o.company],
     ["Customer", customer],
     ["N41 Order #", n41?.soNo],
     ["Shipping", o.shipping],
@@ -848,9 +869,10 @@ function renderMgOrderPane(o, title, subtitle, body) {
   ]);
 
   const thumbs = [];
-  const items = mgMiniTable("mg-order-items", ["Item", "Qty", "Invoiced", "Shipped", "Price", "Total"], o.items.map(i => [
+  const items = mgMiniTable("mg-order-items", ["Item", "Qty", "Canceled", "Invoiced", "Shipped", "Price", "Total"], o.items.map(i => [
     createMgOrderItemLink(i, thumbs),
-    String(i.qtyOrdered) + (i.qtyCanceled ? ` (${i.qtyCanceled} canceled)` : "") + (i.qtyRefunded ? ` (${i.qtyRefunded} refunded)` : ""),
+    String(i.qtyOrdered) + (i.qtyRefunded ? ` (${i.qtyRefunded} refunded)` : ""),
+    String(i.qtyCanceled),
     String(i.qtyInvoiced ?? EMPTY_DISPLAY),
     String(i.qtyShipped),
     money(i.price),
@@ -986,19 +1008,24 @@ async function fillMgOrderThumbs(thumbs) {
 }
 
 function renderMgCustomerPane(c, title, subtitle, body) {
-  title.textContent = c.name || c.email;
-  subtitle.textContent = [c.email, mgGroupName(c.groupId)].filter(Boolean).join(" · ");
+  // The business first, the person under it.
+  const company = mgCustomerCompany(c);
+  title.textContent = company || c.name || c.email;
+  subtitle.textContent = company ? c.name || c.email : "";
+  if (mgCustomerFields) document.getElementById("mgSalesPaneHeaderSlot")?.appendChild(createMgActivationControl(c));
   const currency = c.orders[0]?.currency;
 
   const summary = mgPaneSummary([
-    ["Email", c.email],
-    ["Group", mgGroupName(c.groupId)],
-    ["Company", createMgCompanyInput(c)],
-    [mgCustomerFields?.activation?.label ?? "Is Activated", mgCustomerFields ? createMgActivationControl(c) : ""],
-    [mgCustomerFields?.license?.label ?? "Business License", mgCustomerFields?.license ? createMgLicensePaneValue(c) : ""],
-    ["Phone", c.phone],
     ["Joined", formatMgDateTime(c.createdAt)],
-    ["Birthday", c.dob ? formatMdy(String(c.dob).slice(0, 10)) : ""],
+    ["Company", createMgCompanyField(c.id, c.name || c.email, () => mgCustomerCompany(c), saved => {
+      Object.assign(c, { company: saved.company, custom: saved.custom, addresses: saved.addresses });
+      renderMgSalesPane();
+    })],
+    ["N41 Customer", mgN41CustomerName(c.orders.map(o => o.number))],
+    ["Name", c.name],
+    ["Email", c.email],
+    ["Phone", c.phone],
+    ["Group", mgGroupName(c.groupId)],
     ["Orders", c.orderCount.toLocaleString()],
     ["Spent", `${formatMgMoney(c.lifetime, currency)}${c.orderCount > c.orders.length ? ` (last ${c.orders.length} orders)` : ""}`],
   ]);
@@ -1060,8 +1087,8 @@ async function exportMgSalesCsv(kind) {
   } else {
     const activation = mgCustomerFields?.activation;
     downloadCsv(`Magento customers ${todayYmd()}`,
-      ["Name", "Email", "Group", "Company", activation?.label ?? "Is Activated", "Orders", "Location", "Phone", "Joined", "Magento Admin"],
-      rows.map(c => [c.name, c.email, mgGroupName(c.groupId), mgCustomerCompany(c), activation ? mgActivationLabel(c.custom?.[activation.code]) : "", c.orderCount ?? "", c.location, c.phone, c.createdAt, mgAdminUrl("customers", c.id)]));
+      ["Name", "Email", "Group", "Company", "N41 Customer", activation?.label ?? "Is Activated", "Orders", "Location", "Phone", "Joined", "Magento Admin"],
+      rows.map(c => [c.name, c.email, mgGroupName(c.groupId), mgCustomerCompany(c), mgN41CustomerName(c.orderNumbers), activation ? mgActivationLabel(c.custom?.[activation.code]) : "", c.orderCount ?? "", c.location, c.phone, c.createdAt, mgAdminUrl("customers", c.id)]));
   }
   showIndicator(`Exported ${rows.length.toLocaleString()} ${s.noun[1]}`, "success");
 }

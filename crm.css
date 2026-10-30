@@ -7840,7 +7840,7 @@ th.th-select { text-align: center; cursor: default; padding-left: 4px; padding-r
 }
 .mg-connection.is-error { color: var(--danger); font-weight: 600; cursor: help; }
 
-.mg-products-table { min-width: 1910px; }
+.mg-products-table { min-width: 2010px; }
 .mg-products-table .col-available  { width: 150px; min-width: 140px; }
 .mg-products-table .col-stock      { width: 120px; min-width: 110px; }
 .mg-products-table .col-color      { width: 120px; min-width: 100px; }
@@ -7850,6 +7850,7 @@ th.th-select { text-align: center; cursor: default; padding-left: 4px; padding-r
 .mg-products-table .col-type       { width: 140px; min-width: 130px; }
 .mg-products-table .col-price      { width: 120px; min-width: 100px; }
 .mg-products-table .col-qty        { width: 80px;  min-width: 70px; }
+.mg-products-table .col-salable    { width: 100px; min-width: 100px; }
 .mg-products-table .col-visibility { width: 140px; min-width: 120px; }
 .mg-products-table .col-status     { width: 130px; min-width: 120px; }
 /* Categories takes whatever room is left. */
@@ -7987,16 +7988,40 @@ th.th-select { text-align: center; cursor: default; padding-left: 4px; padding-r
   font-weight: 600;
 }
 /* Stock Status: Magento's In Stock / Out of Stock. */
-.mg-stock-pill {
-  display: inline-block;
-  padding: 2px 9px;
+.mg-stock-select {
+  appearance: none;
+  padding: 2px 20px 2px 9px;
+  border: none;
   border-radius: 999px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' fill='none' stroke='%236b7280' stroke-width='3' viewBox='0 0 24 24'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 7px center;
+  font-family: var(--font);
   font-size: 11.5px;
   font-weight: 600;
+  cursor: pointer;
   white-space: nowrap;
 }
-.mg-stock-pill.is-in  { background: #e1f5ee; color: #0f6e56; }
-.mg-stock-pill.is-out { background: #fde7ea; color: #a3233a; }
+.mg-stock-select:disabled { cursor: progress; opacity: 0.6; }
+.mg-stock-select.is-in  { background-color: #e1f5ee; color: #0f6e56; }
+.mg-stock-select.is-out { background-color: #fde7ea; color: #a3233a; }
+.mg-stock-select option { background: var(--surface); color: var(--text); }
+/* Qty in the table: reads as a number until hovered or clicked. */
+.mg-qty-input {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 60px;
+  padding: 2px 4px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: transparent;
+  font: inherit;
+  color: inherit;
+  text-align: center;
+}
+.mg-qty-input:hover,
+.mg-qty-input:focus { border-color: var(--border-strong); background: var(--surface); outline: none; }
+.mg-qty-input:disabled { cursor: progress; opacity: 0.6; }
 
 /* Available: showing on the webstore (js/magento-availability.js). */
 .mg-avail-cell { display: inline-flex; flex-direction: column; align-items: center; gap: 2px; max-width: 100%; }
@@ -8124,10 +8149,12 @@ th.th-select { text-align: center; cursor: default; padding-left: 4px; padding-r
 /* Categories */
 /* Only four columns — sized to them rather than the page. */
 /* ── Magento orders & customers (js/magento-sales.js) ── */
-.mg-orders-table { min-width: 2340px; }
-.mg-orders-table .col-number   { width: 175px; min-width: 165px; }
+/* Every column a set width and the table no wider than they add up to, so
+   hiding columns (Table View) doesn't stretch the ones left. */
+.mg-orders-table { width: 1px; margin: 0 auto; }
+.mg-orders-table .col-number   { width: 92px;  min-width: 92px; }
 .mg-orders-table .col-date     { width: 150px; min-width: 140px; }
-.mg-orders-table .col-customer { width: auto;  min-width: 180px; }
+.mg-orders-table .col-customer { width: 160px; min-width: 130px; }
 .mg-orders-table .col-email    { width: 230px; min-width: 180px; }
 .mg-orders-table .col-company  { width: 200px; min-width: 150px; }
 .mg-orders-table .col-status   { width: 140px; min-width: 130px; }
@@ -8141,8 +8168,8 @@ th.th-select { text-align: center; cursor: default; padding-left: 4px; padding-r
 .mg-orders-table .col-shipping { width: 200px; min-width: 150px; }
 .mg-orders-table .col-comment  { width: 260px; min-width: 180px; }
 /* Every column a set width — no column takes the slack — so the table is
-   as wide as its columns (1,410px) and sits in the middle of the page. */
-.mg-customers-table { width: 1410px; min-width: 1410px; margin: 0 auto; }
+   as wide as its columns (1,610px) and sits in the middle of the page. */
+.mg-customers-table { width: 1610px; min-width: 1610px; margin: 0 auto; }
 .mg-customers-table .col-orders   { width: 80px; }
 .mg-muted { color: var(--text-muted); }
 /* Text, then the open-in-Magento icon beside it. */
@@ -8162,6 +8189,7 @@ th.th-select { text-align: center; cursor: default; padding-left: 4px; padding-r
 .mg-customers-table .col-email    { width: 240px; }
 .mg-customers-table .col-group    { width: 130px; }
 .mg-customers-table .col-company  { width: 220px; }
+.mg-customers-table .col-n41-customer { width: 200px; }
 .mg-customers-table .col-activation { width: 150px; }
 .mg-customers-table .col-location { width: 190px; }
 .mg-customers-table .col-phone    { width: 130px; }
@@ -8182,15 +8210,28 @@ th.th-select { text-align: center; cursor: default; padding-left: 4px; padding-r
 .mg-orders-table td[data-col="n41Order"],
 .mg-customers-table td[data-col="name"],
 .mg-customers-table td[data-col="email"],
-.mg-customers-table td[data-col="company"] { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mg-customers-table td[data-col="company"],
+.mg-customers-table td[data-col="n41Customer"] { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 /* The business is what wholesale customers are known by — it stands out. */
 .mg-orders-table td[data-col="company"],
 .mg-customers-table td[data-col="company"] { font-weight: 700; }
 /* Order # in the table's own font, a touch bolder. */
-.mg-orders-table td[data-col="number"] { font-weight: 600; font-variant-numeric: tabular-nums; }
+.mg-orders-table td[data-col="number"] { font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .mg-customers-table td[data-col="name"] { font-weight: 400; }
 
-/* First order: a yellow tag beside the order #, and in the pane. */
+.mg-orders-table th[data-col="company"],
+.mg-orders-table td[data-col="company"],
+.mg-orders-table th[data-col="n41Customer"],
+.mg-orders-table td[data-col="n41Customer"],
+.mg-customers-table th[data-col="company"],
+.mg-customers-table td[data-col="company"],
+.mg-customers-table th[data-col="n41Customer"],
+.mg-customers-table td[data-col="n41Customer"] { text-align: left; }
+/* The company on the left, the 1st tag at the far right of the cell. */
+.mg-company-cell { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.mg-company-cell .mg-first-order { flex-shrink: 0; margin-left: auto; }
+
+/* First order: a yellow tag in the Company column, and in the pane. */
 .mg-first-order {
   display: inline-block;
   margin-left: 6px;
@@ -8254,7 +8295,9 @@ th.th-select { text-align: center; cursor: default; padding-left: 4px; padding-r
 .mg-orders-table tbody tr.mg-order-flagged.is-open td { background: var(--row-selected-bg); }
 
 /* The order / customer pane. */
-.mg-sales-pane { width: 860px; }
+.mg-sales-pane { width: 660px; }
+.mg-pane-header-slot { display: inline-flex; align-items: center; }
+.mg-pane-header-slot:empty { display: none; }
 .mg-pane-message { display: block; padding: 18px 16px; }
 .mg-link {
   padding: 0;
@@ -8287,14 +8330,27 @@ th.th-select { text-align: center; cursor: default; padding-left: 4px; padding-r
   background: none;
   white-space: normal;
 }
+.mg-company-field { display: inline-flex; align-items: center; gap: 6px; width: 100%; max-width: 320px; min-width: 0; }
 .mg-company-input { width: 100%; max-width: 320px; }
+.mg-company-edit {
+  display: inline-flex;
+  flex-shrink: 0;
+  padding: 3px;
+  border: none;
+  border-radius: 4px;
+  background: none;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.mg-company-edit:hover { color: #1f56a5; background: var(--accent-light); }
 /* Order items: the name takes what the others leave. */
 .mg-order-items { table-layout: fixed; }
-.mg-order-items th:nth-child(2) { width: 120px; }
+.mg-order-items th:nth-child(2) { width: 64px; }
 .mg-order-items th:nth-child(3) { width: 76px; }
-.mg-order-items th:nth-child(4) { width: 70px; }
-.mg-order-items th:nth-child(5) { width: 80px; }
-.mg-order-items th:nth-child(6) { width: 90px; }
+.mg-order-items th:nth-child(4) { width: 72px; }
+.mg-order-items th:nth-child(5) { width: 68px; }
+.mg-order-items th:nth-child(6) { width: 70px; }
+.mg-order-items th:nth-child(7) { width: 80px; }
 .mg-order-items td { overflow-wrap: anywhere; }
 .mg-order-item {
   display: flex;
@@ -8363,7 +8419,33 @@ th.th-select { text-align: center; cursor: default; padding-left: 4px; padding-r
 .mg-pane-preview img { max-height: 220px; max-width: 100%; border-radius: 6px; object-fit: contain; }
 .mg-pane-form { padding: 14px 16px 18px; }
 .mg-pane-form.is-loading { opacity: 0.6; }
-.mg-pane-status { align-self: flex-start; }
+/* Read-only until the field's edit icon is clicked: a light box, even when
+   blank, that turns white with a stronger border to edit. */
+.mg-pane-form .form-label { display: flex; align-items: center; gap: 4px; min-height: 19px; color: var(--text); }
+.mg-pane-form .form-input:disabled,
+.mg-pane-static,
+.mg-pane-group-list,
+.mg-pane-cat-chips {
+  box-sizing: border-box;
+  min-height: 34px;
+  background: #fafafa;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+.mg-pane-form .form-input:disabled {
+  color: var(--text);
+  -webkit-text-fill-color: var(--text);
+  opacity: 1;
+  resize: none;
+  cursor: default;
+}
+.mg-pane-static { display: block; padding: 7px 10px; font-size: 13px; line-height: 18px; color: var(--text); }
+.mg-pane-group-list,
+.mg-pane-cat-chips { padding: 5px 8px; }
+.mg-pane-group-list.is-stacked { flex-direction: column; align-items: flex-start; }
+.mg-pane-qty-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; min-width: 0; }
+.mg-pane-qty-pair[hidden] { display: none; }
+.item-pane-title .mg-avail-cell { flex-shrink: 0; }
 .mg-pane-description { font-family: var(--font-mono); font-size: 12px; }
 .mg-pane-cat-count { color: var(--text-muted); font-weight: 500; }
 .mg-pane-cat-chips { display: flex; flex-wrap: wrap; gap: 4px; min-height: 22px; }
@@ -8401,6 +8483,10 @@ th.th-select { text-align: center; cursor: default; padding-left: 4px; padding-r
   background: var(--surface);
   flex-shrink: 0;
 }
+.mg-pane-footer .btn-primary,
+.mg-pane-footer .btn-primary:hover { background: #111; border-color: #111; color: #fff; }
+.mg-pane-footer .btn-primary:hover:not(:disabled) { background: #333; border-color: #333; }
+.mg-pane-footer .btn-primary:disabled { opacity: 0.6; }
 .mg-pane-footer .modal-footer-message { margin-right: auto; }
 .mg-pane-footer .modal-footer-message.is-error { color: var(--danger); }
 

@@ -53,6 +53,11 @@ function mgN41For(number) {
   return mgN41.get(mgOrderKey(number)) ?? null;
 }
 
+/** A customer's name on N41: the report's name on the first of these orders it has. */
+function mgN41CustomerName(numbers) {
+  return (numbers ?? []).map(n => mgN41For(n)?.customer).find(Boolean) ?? "";
+}
+
 function isMgN41Closed(entry) {
   return String(entry?.status ?? "").trim().toLowerCase() === MG_N41_CLOSED;
 }

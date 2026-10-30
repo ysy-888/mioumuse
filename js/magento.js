@@ -68,9 +68,14 @@ let mgSelected = new Set();
 
 /** The product in the pane: what Magento has (`saved`) and the edit in progress (`draft`). */
 let mgPane = null;
+/** sku → Salable Qty: kept apart from the rows, as it arrives after them. */
+const mgSalable = new Map();
+let mgSalableWarned = false;
+/** A table redraw held back while a Qty is being typed. */
+let mgTableRenderWaiting = false;
 
 /** The helper version this app expects (HELPER_VERSION in supabase/functions/magento). */
-const MG_HELPER_VERSION = "2026-10-30.4";
+const MG_HELPER_VERSION = "2026-10-30.10";
 
 /** Per action, the last call's timing: { roundTripMs, totalMs, authMs, magentoCalls, magentoMs, slowest… }. */
 const mgTimings = {};
@@ -163,16 +168,73 @@ function mgStockStatusText(product) {
   return product.inStock ? "In Stock" : "Out of Stock";
 }
 
-function createMgStockPill(product) {
-  const text = mgStockStatusText(product);
-  const pill = document.createElement("span");
-  if (!text) {
-    pill.textContent = EMPTY_DISPLAY;
-    return pill;
+/** The table's Stock Status: a dropdown in the status colours. Not known yet: blank. */
+function createMgStockControl(product) {
+  if (!mgStockStatusText(product)) {
+    return Object.assign(document.createElement("span"), { textContent: EMPTY_DISPLAY });
   }
-  pill.className = `mg-stock-pill ${product.inStock ? "is-in" : "is-out"}`;
-  pill.textContent = text;
-  return pill;
+  const select = document.createElement("select");
+  select.className = `mg-stock-select ${product.inStock ? "is-in" : "is-out"}`;
+  select.setAttribute("aria-label", `Stock Status for ${product.sku}`);
+  select.append(new Option("In Stock", "true"), new Option("Out of Stock", "false"));
+  select.value = String(product.inStock);
+  select.addEventListener("change", () => saveMgTableStock(product, { inStock: select.value === "true" }, select));
+  return select;
+}
+
+/** The table's Qty: a number box. Enter or clicking away saves, Esc undoes. */
+function createMgQtyInput(product) {
+  const input = document.createElement("input");
+  input.type = "number";
+  input.className = "mg-qty-input";
+  input.min = "0";
+  input.step = "any";
+  input.value = String(product.qty);
+  input.setAttribute("aria-label", `Qty for ${product.sku}`);
+  const save = () => {
+    const unchanged = input.value.trim() === "" || Number(input.value) === product.qty;
+    if (input.disabled) return;
+    if (unchanged) {
+      input.value = String(product.qty);
+      if (mgTableRenderWaiting) renderMgProducts();
+      return;
+    }
+    saveMgTableStock(product, { qty: Number(input.value) }, input);
+  };
+  input.addEventListener("keydown", e => {
+    if (e.key === "Enter") save();
+    if (e.key === "Escape") {
+      e.stopPropagation(); // not the pane's Esc
+      input.value = String(product.qty);
+      input.blur();
+    }
+  });
+  input.addEventListener("blur", save);
+  return input;
+}
+
+/** Stock changed from the table: saved at once, with what it changes redrawn. */
+async function saveMgTableStock(product, changes, control) {
+  control.disabled = true;
+  control.blur();
+  try {
+    const saved = applyMgGroups(await callMagento("update", { sku: product.sku, changes }));
+    Object.assign(product, pickMgSummary(saved));
+    mgSalable.set(product.sku, saved.salableQty ?? null);
+    absorbMgProduct(product);
+    forgetMgSkuList();
+    if (mgPane?.saved.sku === product.sku) {
+      Object.keys(changes).forEach(field => {
+        mgPane.saved[field] = saved[field];
+        mgPane.draft[field] = saved[field];
+      });
+    }
+    showIndicator(`${product.sku} saved to Magento`, "success");
+  } catch (err) {
+    showIndicator(err.message || "Couldn't save the stock.", "error");
+  }
+  control.disabled = false;
+  refreshMgAvailability();
 }
 
 /** Magento's "2026-10-20 14:03:11" (UTC) as MM/DD/YY. */
@@ -264,6 +326,37 @@ async function loadMagentoProducts() {
   }
   mgLoading = false;
   renderMgProducts();
+  loadMgSalable(seq, mgPage.items);
+}
+
+/**
+ * Salable Qty is a call per product, so it comes after the page shows. Grouped
+ * items have none. Not allowed or not there: the column stays blank, once said.
+ */
+async function loadMgSalable(seq, items) {
+  const skus = items.filter(p => p.type !== "grouped").map(p => p.sku);
+  if (!skus.length) return;
+  try {
+    const { quantities, problem } = await callMagento("salableQty", { skus });
+    if (seq !== mgRequestSeq) return;
+    Object.entries(quantities).forEach(([sku, value]) => mgSalable.set(sku, value));
+    renderMgProducts();
+    if (mgPane) renderMagentoPane();
+    if (problem) warnMgSalable(problem);
+  } catch {
+    // The rest of the table is fine without it.
+  }
+}
+
+function warnMgSalable(problem) {
+  if (mgSalableWarned) return;
+  mgSalableWarned = true;
+  showIndicator(`Couldn't read Salable Qty: ${problem}`, "error");
+}
+
+function formatMgSalable(product) {
+  const value = product.type === "grouped" ? null : mgSalable.get(product.sku);
+  return value === null || value === undefined ? EMPTY_DISPLAY : value.toLocaleString();
 }
 
 /** First visit loads everything; later visits keep what's on screen. */
@@ -401,7 +494,7 @@ function renderMagentoSubview() {
       products: "Search SKU or name",
       categories: "Search categories",
       orders: "Search order #, name or email",
-      customers: "Search name or email",
+      customers: "Search name, email or company",
       events: "Search events",
     }[view];
     search.value = products ? mgQuery.search : view === "categories" ? mgCategorySearch : view === "events" ? mgEventsQuery.search : MG_SALES[view].query.search;
@@ -508,6 +601,7 @@ function createMgStatusSwitch(product) {
     try {
       const saved = await callMagento("update", { sku: product.sku, changes: { status: next } });
       Object.assign(product, pickMgSummary(applyMgGroups(saved)));
+      mgSalable.set(product.sku, saved.salableQty ?? null);
       // Enabling or disabling can change what's available — this row's
       // group and items included — so the table is redrawn.
       absorbMgProduct(product);
@@ -589,6 +683,8 @@ function createMgNameCell(product, role) {
   wrap.appendChild(text);
   if (product.type === "grouped") wrap.appendChild(createMgChildCount(product));
   if (product.unlinkedGroup) wrap.appendChild(createMgUnlinkedFlag(product));
+  const admin = createMgAdminIcon("products", product.id, "Open in Magento");
+  if (admin) wrap.appendChild(admin);
   return wrap;
 }
 
@@ -669,6 +765,9 @@ function renderMgProducts() {
   renderMgPager();
   const tbody = document.getElementById("mgProductsBody");
   if (!tbody) return;
+  // Not under someone typing a Qty: Salable Qty can arrive at any moment.
+  mgTableRenderWaiting = Boolean(document.activeElement?.matches(".mg-qty-input:not(:disabled)"));
+  if (mgTableRenderWaiting) return;
   const cols = [...document.querySelectorAll("#mgProductsTable thead th[data-col]")].map(th => th.dataset.col);
   const message = text => {
     tbody.innerHTML = `<tr class="state-row"><td colspan="${cols.length}">${escapeHtml(text)}</td></tr>`;
@@ -717,8 +816,12 @@ function renderMgProducts() {
         }
       } else if (col === "qty") {
         td.className = "mg-num";
-        td.textContent = formatMgQty(product);
-      } else if (col === "stockStatus") td.appendChild(createMgStockPill(product));
+        if (product.type === "grouped" || product.qty === null || product.qty === undefined) td.textContent = formatMgQty(product);
+        else td.appendChild(createMgQtyInput(product));
+      } else if (col === "salableQty") {
+        td.className = "mg-num";
+        td.textContent = formatMgSalable(product);
+      } else if (col === "stockStatus") td.appendChild(createMgStockControl(product));
       else if (col === "available") td.appendChild(createMgAvailCell(product));
       else if (col === "visibility") td.textContent = MG_VISIBILITY[product.visibility] ?? EMPTY_DISPLAY;
       else if (col === "updatedAt") td.textContent = formatMgDate(product.updatedAt);
@@ -900,8 +1003,8 @@ async function runMgBulk(op, categoryId = "") {
 
 // ── Product pane ─────────────────────────────────────────────────────────────
 
-const MG_PANE_FIELDS = ["name", "colorId", "price", "specialPrice", "weight", "urlKey", "visibility", "shortDescription", "description", "metaTitle", "metaDescription"];
-const MG_NUMBER_FIELDS = new Set(["price", "specialPrice", "weight", "visibility"]);
+const MG_PANE_FIELDS = ["name", "colorId", "price", "specialPrice", "qty", "inStock", "weight", "urlKey", "visibility", "shortDescription", "description", "metaTitle", "metaDescription"];
+const MG_NUMBER_FIELDS = new Set(["price", "specialPrice", "qty", "weight", "visibility"]);
 let mgPaneCategorySearch = "";
 
 function isMagentoPaneOpen() {
@@ -928,6 +1031,7 @@ async function openMagentoPane(sku) {
     const full = applyMgGroups(await callMagento("product", { sku }));
     if (mgPane?.saved.sku !== sku) return;
     mgPane = { saved: full, draft: structuredClone(full), loading: false };
+    mgSalable.set(sku, full.salableQty ?? null);
   } catch (err) {
     if (mgPane?.saved.sku !== sku) return;
     mgPane.loading = false;
@@ -951,7 +1055,7 @@ function getMgPaneChanges() {
   if (!mgPane || mgPane.loading) return {};
   const { saved, draft } = mgPane;
   const changes = {};
-  [...MG_PANE_FIELDS, "status"].forEach(f => {
+  MG_PANE_FIELDS.forEach(f => {
     const a = saved[f] ?? (MG_NUMBER_FIELDS.has(f) ? null : "");
     const b = draft[f] ?? (MG_NUMBER_FIELDS.has(f) ? null : "");
     if (a !== b) changes[f] = b;
@@ -970,8 +1074,17 @@ function renderMagentoPane() {
   if (!mgPane) return;
   const { draft, saved } = mgPane;
 
-  document.getElementById("mgPaneTitle").textContent = saved.name || saved.sku;
-  document.getElementById("mgPaneSubtitle").textContent = [saved.sku, MG_TYPES[saved.type] ?? saved.type, saved.updatedAt ? `Updated ${formatMgDate(saved.updatedAt)}` : ""].filter(Boolean).join(" · ");
+  const admin = document.getElementById("mgPaneAdmin");
+  const adminUrl = mgAdminUrl("products", saved.id);
+  admin.hidden = !adminUrl;
+  if (adminUrl) admin.href = adminUrl;
+  const title = document.getElementById("mgPaneTitle");
+  title.textContent = saved.name || saved.sku;
+  title.appendChild(createMgAvailCell(saved));
+  // The table's own switch: it saves at once, and keeps the row in step.
+  const status = createMgStatusSwitch(mgPage.items.find(p => p.sku === saved.sku) ?? saved);
+  status.disabled = Boolean(mgPane.loading);
+  document.getElementById("mgPaneHeaderSlot").replaceChildren(status);
 
   const preview = document.getElementById("mgPanePreview");
   const url = getMgImageUrl(saved);
@@ -993,10 +1106,10 @@ function renderMagentoPane() {
     if (el.value !== text) el.value = text;
     el.disabled = Boolean(mgPane.loading);
   });
-  document.querySelectorAll("#mgPaneStatus .filter-btn").forEach(btn => {
-    btn.classList.toggle("active", Number(btn.dataset.value) === draft.status);
-    btn.disabled = Boolean(mgPane.loading);
-  });
+
+  // Grouped items have no stock of their own.
+  document.getElementById("mgPaneQtyPair").hidden = saved.type === "grouped";
+  document.getElementById("mgPaneSalable").textContent = formatMgSalable(saved);
 
   // Grouping: a Grouped item's Simple items, or the group a Simple item is
   // in — or, when its SKU matches a group it isn't in, that flag.
@@ -1010,10 +1123,14 @@ function renderMagentoPane() {
     };
     const label = document.getElementById("mgPaneGroupLabel");
     const list = document.getElementById("mgPaneGroupList");
-    if (saved.type === "grouped") {
+    const grouped = saved.type === "grouped";
+    // A Grouped item's items get their own row, one under another.
+    groupField.classList.toggle("form-field--full", grouped);
+    list.classList.toggle("is-stacked", grouped);
+    if (grouped) {
       groupField.hidden = false;
-      label.textContent = "Simple items";
-      list.replaceChildren(createMgChildCount(saved), ...(saved.childSkus ?? []).map(chip));
+      label.replaceChildren("Simple items", createMgChildCount(saved));
+      list.replaceChildren(...(saved.childSkus ?? []).map(chip));
     } else if (saved.groupSku || saved.unlinkedGroup) {
       groupField.hidden = false;
       label.textContent = "Group";
@@ -1021,6 +1138,7 @@ function renderMagentoPane() {
     } else {
       groupField.hidden = true;
     }
+    document.getElementById("mgPaneNameField").classList.toggle("form-field--full", groupField.hidden || grouped);
   }
 
   renderMgPaneCategories();
@@ -1132,6 +1250,7 @@ async function saveMagentoPane() {
     absorbMgProduct(saved);
     forgetMgSkuList();
     if (mgPane?.saved.sku === sku) mgPane = { saved, draft: structuredClone(saved), loading: false };
+    mgSalable.set(sku, saved.salableQty ?? null);
     const row = mgPage.items.find(p => p.sku === sku);
     if (row) Object.assign(row, pickMgSummary(saved));
     renderMgProducts();
@@ -1457,12 +1576,13 @@ function initMagento() {
   });
 
   document.getElementById("mgProductsBody")?.addEventListener("click", e => {
-    // The tick box (and its cell) selects; the status switch flips; anywhere else opens the pane.
+    // The tick box (and its cell) selects; the status switch flips; Stock Status
+    // and Qty edit in place; anywhere else opens the pane.
     if (e.target.closest('td[data-col="select"]')) {
       if (e.target.tagName !== "INPUT") e.target.closest("td").querySelector("input")?.click();
       return;
     }
-    if (e.target.closest(".mg-status-switch")) return;
+    if (e.target.closest(".mg-status-switch, .mg-stock-select, .mg-qty-input")) return;
     const tr = e.target.closest("tr[data-sku]");
     if (tr) openMagentoPane(tr.dataset.sku);
   });
@@ -1491,18 +1611,11 @@ function initMagento() {
     const field = e.target.dataset?.field;
     if (!field || !mgPane) return;
     const raw = e.target.value;
-    mgPane.draft[field] = MG_NUMBER_FIELDS.has(field) ? (raw.trim() === "" ? null : Number(raw)) : raw;
+    mgPane.draft[field] = field === "inStock" ? raw === "true" : MG_NUMBER_FIELDS.has(field) ? (raw.trim() === "" ? null : Number(raw)) : raw;
     mgPane.error = "";
     syncMgPaneFooter();
   });
   form?.addEventListener("submit", e => e.preventDefault());
-  document.querySelectorAll("#mgPaneStatus .filter-btn").forEach(btn => {
-    btn.addEventListener("click", () => {
-      if (!mgPane || mgPane.loading) return;
-      mgPane.draft.status = Number(btn.dataset.value);
-      renderMagentoPane();
-    });
-  });
   document.getElementById("mgPaneCategorySearch")?.addEventListener("input", e => {
     mgPaneCategorySearch = e.target.value;
     renderMgPaneCategories();

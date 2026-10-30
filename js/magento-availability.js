@@ -6,8 +6,12 @@
  * seen through their group.
  *
  * A product's own conditions:
- *   Simple   Enabled, Qty ≥ 1, In Stock
+ *   Simple   Enabled, Salable Qty above 0, In Stock
  *   Grouped  Enabled, In Stock (a group has no qty)
+ * Salable Qty is what the store sells by, but Magento gives it one SKU at a
+ * time, so it's read behind the catalog, only for items that pass the rest
+ * (nothing else can be available, and it's never above Qty). Until it's read,
+ * or if it can't be, Qty ≥ 1 stands in.
  * And the grouping:
  *   Simple   only shows through its group, so it's available only when its
  *            group is Enabled and In Stock too (an item in no group, or in
@@ -38,6 +42,11 @@ let mgFlaggedOnly = false;
 let mgSkuListCache = { key: "", skus: null };
 
 const MG_INDEX_CACHE_KEY = scopedStorageKey("magentoCatalogIndex");
+const MG_SALABLE_CACHE_KEY = scopedStorageKey("magentoSalableQty");
+/** SKUs per salableQty call, and calls at once. */
+const MG_SALABLE_BATCH = 200;
+const MG_SALABLE_CALLS = 2;
+let mgCatalogSalableRun = 0;
 
 /**
  * Rows from the helper's catalogIndex. Newer helpers add name, price, date
@@ -69,6 +78,8 @@ function restoreMgIndexCache() {
   try {
     const cached = JSON.parse(localStorage.getItem(MG_INDEX_CACHE_KEY) ?? "null");
     if (Array.isArray(cached?.products)) mgIndex = mgIndexFromRows(cached.products);
+    const salable = JSON.parse(localStorage.getItem(MG_SALABLE_CACHE_KEY) ?? "null");
+    if (Array.isArray(salable)) salable.forEach(([sku, value]) => mgSalable.set(sku, value));
   } catch {
     /* nothing usable kept */
   }
@@ -94,6 +105,7 @@ async function loadMgIndex({ force = false } = {}) {
       mgIndexError = "";
       // The page on screen may have been filled from last time's catalog.
       mgPage.items.forEach(fillMgStockFromIndex);
+      loadMgCatalogSalable();
     } catch (err) {
       mgIndexError = err.message || "Couldn't check availability.";
       showIndicator(`Availability can't be checked: ${mgIndexError}`, "error");
@@ -106,8 +118,50 @@ async function loadMgIndex({ force = false } = {}) {
     }
     renderMgAvailControls();
     renderMgProducts();
+    if (mgPane) renderMagentoPane(); // its Available tag
   })();
   return mgIndexLoading;
+}
+
+/** Salable Qty for every item that could be available, a batch at a time. */
+async function loadMgCatalogSalable() {
+  const run = ++mgCatalogSalableRun;
+  const skus = [...mgIndex].filter(([, r]) => r.type !== "grouped" && r.status === 1 && r.inStock !== false && r.qty > 0).map(([sku]) => sku);
+  const batches = [];
+  for (let i = 0; i < skus.length; i += MG_SALABLE_BATCH) batches.push(skus.slice(i, i + MG_SALABLE_BATCH));
+  let stopped = false;
+  const worker = async () => {
+    while (batches.length && !stopped && run === mgCatalogSalableRun) {
+      try {
+        const { quantities, problem } = await callMagento("salableQty", { skus: batches.shift() });
+        Object.entries(quantities).forEach(([sku, value]) => mgSalable.set(sku, value));
+        if (problem) {
+          stopped = true;
+          warnMgSalable(problem);
+        }
+      } catch {
+        stopped = true; // Qty stands in
+      }
+      if (!mgAvailFilter && run === mgCatalogSalableRun) refreshMgAvailability();
+    }
+  };
+  await Promise.all(Array.from({ length: MG_SALABLE_CALLS }, worker));
+  if (run !== mgCatalogSalableRun || stopped) return;
+  try {
+    localStorage.setItem(MG_SALABLE_CACHE_KEY, JSON.stringify([...mgSalable]));
+  } catch {
+    /* the next visit just reads them again */
+  }
+  // Filtered lists were picked before these came in.
+  forgetMgSkuList();
+  if (hasMgClientFilter()) loadMagentoProducts();
+  else refreshMgAvailability();
+}
+
+function refreshMgAvailability() {
+  renderMgProducts();
+  renderMgAvailControls();
+  if (mgPane) renderMagentoPane();
 }
 
 /** A product just loaded from Magento — the freshest word on it. */
@@ -162,7 +216,10 @@ function mgOwnConditions(sku) {
   let unknown = false;
   if (r.status !== 1) reasons.push("Disabled");
   if (r.type !== "grouped") {
-    if (r.qty === null || r.qty === undefined) unknown = true;
+    const salable = mgSalable.get(sku);
+    if (typeof salable === "number") {
+      if (salable <= 0) reasons.push(`Salable Qty ${salable}`);
+    } else if (r.qty === null || r.qty === undefined) unknown = true;
     else if (r.qty < 1) reasons.push(`Qty ${r.qty}`);
   }
   if (r.inStock === false) reasons.push("Out of Stock");
