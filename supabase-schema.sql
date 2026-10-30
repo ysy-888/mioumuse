@@ -270,6 +270,27 @@ drop policy if exists "magento_groups: own rows only" on magento_groups;
 create policy "magento_groups: own rows only" on magento_groups
   for all using (user_id = auth.uid()) with check (user_id = auth.uid());
 
+-- ── N41 sales orders (Magento → Orders → Import N41 Sales Orders) ───────────
+-- Each web order on N41's Sales Orders report, to compare with Magento. Run this
+-- once in the SQL Editor.
+create table if not exists n41_orders (
+  user_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
+  order_no text not null,                     -- digits of Cust. PO #, no leading zeros
+  po_no text not null default '',             -- as on the report: Web:00000061
+  customer text not null default '',
+  status text not null default '',            -- Closed only if every row is Closed
+  imported_at timestamptz not null default now(),
+  primary key (user_id, order_no)
+);
+
+alter table n41_orders add column if not exists so_no text not null default '';  -- comma-separated when an order has several
+
+alter table n41_orders enable row level security;
+
+drop policy if exists "n41_orders: own rows only" on n41_orders;
+create policy "n41_orders: own rows only" on n41_orders
+  for all using (user_id = auth.uid()) with check (user_id = auth.uid());
+
 -- ── Table views (header menu → Table view) ──────────────────────────────────
 --
 -- One row per user per table: which columns show, and in what order, so a

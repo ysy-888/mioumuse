@@ -282,6 +282,40 @@ async function loadMagentoGroupRows() {
 }
 
 /** Replace every imported group with these (Map groupSku → [childSku]). */
+/**
+ * The N41 Sales Orders report, as imported: orderKey → { poNo, soNo, customer,
+ * status }, plus importedAt — or null when the n41_orders table isn't there yet.
+ */
+async function loadN41OrderRows() {
+  const client = requireClient();
+  const orders = new Map();
+  let importedAt = "";
+  for (let from = 0; ; from += 1000) {
+    const res = await client.from("n41_orders").select("*").order("order_no").range(from, from + 999);
+    if (res.error) {
+      if (from === 0) return null; // the table isn't set up yet
+      throw new Error(res.error.message);
+    }
+    (res.data ?? []).forEach(r => {
+      orders.set(r.order_no, { poNo: r.po_no, soNo: r.so_no ?? "", customer: r.customer, status: r.status });
+      if (r.imported_at > importedAt) importedAt = r.imported_at;
+    });
+    if ((res.data ?? []).length < 1000) break;
+  }
+  return { orders, importedAt };
+}
+
+/** Each report covers a date range, so orders are added or updated, never cleared. */
+async function saveN41OrderRows(orders) {
+  const client = requireClient();
+  const importedAt = new Date().toISOString();
+  const rows = [...orders].map(([order_no, o]) => ({ order_no, po_no: o.poNo, so_no: o.soNo, customer: o.customer, status: o.status, imported_at: importedAt }));
+  for (let i = 0; i < rows.length; i += 500) {
+    throwIfError(await client.from("n41_orders").upsert(rows.slice(i, i + 500), { onConflict: "user_id,order_no" }));
+  }
+  return importedAt;
+}
+
 async function replaceMagentoGroupRows(groups) {
   const client = requireClient();
   const importedAt = new Date().toISOString();

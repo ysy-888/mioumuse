@@ -70,7 +70,7 @@ let mgSelected = new Set();
 let mgPane = null;
 
 /** The helper version this app expects (HELPER_VERSION in supabase/functions/magento). */
-const MG_HELPER_VERSION = "2026-10-26.2";
+const MG_HELPER_VERSION = "2026-10-30.2";
 
 /** Per action, the last call's timing: { roundTripMs, totalMs, authMs, magentoCalls, magentoMs, slowest… }. */
 const mgTimings = {};
@@ -390,7 +390,6 @@ function renderMagentoSubview() {
     mgPager: view !== "categories" && view !== "events",
     // Groups are about products only.
     mgGroupsStatus: products,
-    mgImportGroupsBtn: products,
   };
   Object.entries(show).forEach(([id, visible]) => {
     const el = document.getElementById(id);
@@ -1323,14 +1322,13 @@ function mgCopyText(product) {
 /**
  * Header menu → Export CSV on this page. Products: every product matching
  * the current filters, search and sort — not just the page on screen — so
- * Magento is asked for it 200 at a time. Categories: the tree as shown.
+ * Magento is asked for it 200 at a time.
  */
 async function exportMagentoCsv() {
   if (!mgStore || mgStore.error) {
     showIndicator(mgStore?.error || "Magento hasn't loaded yet.", "error");
     return;
   }
-  if (mgSubview === "categories") return exportMgCategoriesCsv();
   if (isMgSalesView()) return exportMgSalesCsv(mgSubview);
   if (mgSubview === "events") return exportMgEventsCsv();
 
@@ -1394,24 +1392,13 @@ async function exportMagentoCsv() {
   showIndicator(`Exported ${rows.length.toLocaleString()} products`, "success");
 }
 
-function exportMgCategoriesCsv() {
-  const categories = visibleMgCategories();
-  if (!categories.length) {
-    showIndicator("Nothing to export", "error");
-    return;
-  }
-  downloadCsv(`Magento categories ${todayYmd()}`,
-    ["ID", "Parent ID", "Name", "Path", "Level", "Active", "Products"],
-    categories.map(c => [c.id, c.parentId, c.name, c.path, c.level, c.isActive ? "Yes" : "No", c.productCount]));
-  showIndicator(`Exported ${categories.length.toLocaleString()} categories`, "success");
-}
-
 // ── Init ─────────────────────────────────────────────────────────────────────
 
 function initMagento() {
   initMagentoGroups(); // js/magento-groups.js
   initMagentoAvailability(); // js/magento-availability.js
   initMagentoSales(); // js/magento-sales.js
+  initMagentoN41(); // js/magento-n41.js
 
   document.getElementById("mgPaneVisibility")?.replaceChildren(...Object.entries(MG_VISIBILITY).map(([k, v]) => new Option(v, k)));
 

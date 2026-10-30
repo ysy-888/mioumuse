@@ -312,6 +312,11 @@ body {
   cursor: pointer;
 }
 
+/* Without this, display: flex above beats [hidden] and every item shows. */
+.header-menu-item[hidden] {
+  display: none;
+}
+
 .header-menu-item-icon {
   flex-shrink: 0;
   color: var(--text-muted);
@@ -7493,7 +7498,6 @@ th.th-select { text-align: center; cursor: default; padding-left: 4px; padding-r
 
 .shoot-controls[hidden] { display: none; }
 
-.shoot-subtabs .filter-btn { font-weight: 600; }
 .shoot-show-shot { font-size: 12.5px; }
 
 /* Where a style stands: to shoot / scheduled / shot. */
@@ -8120,13 +8124,16 @@ th.th-select { text-align: center; cursor: default; padding-left: 4px; padding-r
 /* Categories */
 /* Only four columns — sized to them rather than the page. */
 /* ── Magento orders & customers (js/magento-sales.js) ── */
-.mg-orders-table { min-width: 1860px; }
+.mg-orders-table { min-width: 2340px; }
 .mg-orders-table .col-number   { width: 175px; min-width: 165px; }
 .mg-orders-table .col-date     { width: 150px; min-width: 140px; }
 .mg-orders-table .col-customer { width: auto;  min-width: 180px; }
 .mg-orders-table .col-email    { width: 230px; min-width: 180px; }
 .mg-orders-table .col-company  { width: 200px; min-width: 150px; }
 .mg-orders-table .col-status   { width: 140px; min-width: 130px; }
+.mg-orders-table .col-n41      { width: 112px; min-width: 104px; }
+.mg-orders-table .col-n41-customer { width: 200px; min-width: 150px; }
+.mg-orders-table .col-n41-order { width: 130px; min-width: 120px; }
 .mg-orders-table .col-qty      { width: 70px;  min-width: 60px; }
 .mg-orders-table .col-total    { width: 110px; min-width: 100px; }
 .mg-orders-table .col-ship-to  { width: 200px; min-width: 150px; }
@@ -8171,6 +8178,8 @@ th.th-select { text-align: center; cursor: default; padding-left: 4px; padding-r
 .mg-orders-table td[data-col="email"],
 .mg-orders-table td[data-col="comment"],
 .mg-orders-table td[data-col="company"],
+.mg-orders-table td[data-col="n41Customer"],
+.mg-orders-table td[data-col="n41Order"],
 .mg-customers-table td[data-col="name"],
 .mg-customers-table td[data-col="email"],
 .mg-customers-table td[data-col="company"] { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -8227,6 +8236,22 @@ th.th-select { text-align: center; cursor: default; padding-left: 4px; padding-r
 .mg-order-status[data-status="fraud"]      { background: #fde7ea; color: #a3233a; }
 .mg-order-status[data-status="canceled"],
 .mg-order-status[data-status="closed"]     { background: #eef0f3; color: #6b7280; }
+
+/* N41 Status — Closed on N41 while still open on Magento stands out. */
+.mg-n41-status {
+  display: inline-block;
+  padding: 2px 9px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  background: #e1ecfb;
+  color: #1f56a5;
+}
+.mg-n41-status[data-status="closed"] { background: #eef0f3; color: #6b7280; }
+.mg-n41-status.is-flagged { background: #fde7ea; color: #a3233a; }
+.mg-orders-table tbody tr.mg-order-flagged td { background: #fff7f8; }
+.mg-orders-table tbody tr.mg-order-flagged.is-open td { background: var(--row-selected-bg); }
 
 /* The order / customer pane. */
 .mg-sales-pane { width: 620px; }

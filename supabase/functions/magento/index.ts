@@ -27,9 +27,11 @@
  *                                   one page of products; status, type,
  *                                   visibility and categoryId each take
  *                                   one value or a list (any matches)
- *   orders     { page, pageSize, sort, dir, search, status, from }
+ *   orders     { page, pageSize, sort, dir, search, status, from, numbers? }
  *                                   one page of orders (read-only)
  *   orderFacets                     order counts per status in use
+ *   openOrders                      every Pending / Processing order, in brief
+ *   cancelOrders { ids }            cancel what isn't invoiced on these orders
  *   order      { id }               one order: items, totals, addresses,
  *                                   shipments + tracking, comments
  *   customers  { page, pageSize, sort, dir, search, groupId, from,
@@ -83,7 +85,7 @@ import { AsyncLocalStorage } from "node:async_hooks";
  * copy running in Supabase is older than the app expects. Bump it (and
  * MG_HELPER_VERSION in js/magento.js) whenever this file changes.
  */
-const HELPER_VERSION = "2026-10-26.2";
+const HELPER_VERSION = "2026-10-30.2";
 
 /**
  * Where a request's time went: each Magento call is counted and timed, per
@@ -130,6 +132,7 @@ function magentoMessage(body: any) {
 
 /** Magento's permission names, as the integration's API tab shows them. */
 const PERMISSION_NAMES: Record<string, string> = {
+  "Magento_Sales::cancel": "Sales → Operations → Orders → Actions → Cancel",
   "Magento_Sales::shipment": "Sales → Operations → Shipments",
   "Magento_Sales::actions_view": "Sales → Operations → Orders → Actions → View",
   "Magento_Sales::sales": "Sales → Operations → Orders",
@@ -770,6 +773,9 @@ function orderCriteria(p: Record<string, unknown>, page: number, pageSize: numbe
       .map(field => [field, `%${search}%`, "like"] as Filter));
   }
   groups.push(listParam(p.status).map(s => ["status", s, "eq"] as Filter));
+  // Chosen orders by number (the app's list of orders flagged against N41).
+  const numbers = listParam(p.numbers);
+  if (numbers.length) groups.push([["increment_id", numbers.join(","), "in"]]);
   if (p.from) groups.push([["created_at", `${p.from} 00:00:00`, "gteq"]]);
   if (p.customerId) groups.push([["customer_id", String(p.customerId), "eq"]]);
   const sortField = ORDER_SORT[String(p.sort ?? "")];
@@ -1438,6 +1444,75 @@ const actions: Record<string, (p: any) => Promise<unknown>> = {
     return { items: await addOrderCompanies((body?.items ?? []).map(summarizeOrder)), total: Number(body?.total_count ?? 0), page, pageSize };
   },
 
+  /**
+   * Every Pending or Processing order, in brief — what the app compares with
+   * the N41 report, since Magento can't filter on the app's N41 data.
+   */
+  async openOrders() {
+    const fields = "items[entity_id,increment_id,status,created_at,customer_firstname,customer_lastname,customer_email,total_qty_ordered,grand_total],total_count";
+    // deno-lint-ignore no-explicit-any
+    const out: any[] = [];
+    for (let page = 1; page <= 100; page++) {
+      const q = criteria([[["status", "pending,processing", "in"]]], { field: "created_at", dir: "DESC" }, page, 200);
+      const body = await mg(`/orders?${q}&fields=${fields}`);
+      const items = body?.items ?? [];
+      out.push(...items);
+      if (!items.length || out.length >= Number(body?.total_count ?? 0)) break;
+    }
+    return out.map(o => ({
+      id: o.entity_id,
+      number: String(o.increment_id ?? ""),
+      status: o.status ?? "",
+      createdAt: o.created_at ?? "",
+      customerName: [o.customer_firstname, o.customer_lastname].filter(Boolean).join(" "),
+      email: o.customer_email ?? "",
+      qty: Number(o.total_qty_ordered ?? 0),
+      total: Number(o.grand_total ?? 0),
+    }));
+  },
+
+  /**
+   * Cancel orders: Magento cancels whatever isn't invoiced yet. An order with
+   * invoiced items doesn't become Canceled — Magento moves it to Complete, or
+   * leaves it Processing while invoiced items are still to ship. Only Pending
+   * and Processing orders are touched; each order's status is read first, in
+   * case it moved on since the table loaded. One order failing doesn't stop
+   * the rest. Needs Sales → Operations → Orders → Actions → Cancel.
+   *
+   * Magento answers true even when there was nothing left to cancel, so the
+   * canceled quantities are compared, before and after.
+   */
+  async cancelOrders({ ids }) {
+    const list = listParam(ids);
+    if (!list.length) throw new UserError("Which orders?");
+    if (list.length > 200) throw new UserError("Cancel up to 200 orders at a time.");
+    // deno-lint-ignore no-explicit-any
+    const canceledQty = (o: any) => (o?.items ?? []).reduce((sum: number, i: any) => sum + Number(i.qty_canceled ?? 0), 0);
+    const results = await eachLimited(list, 3, async id => {
+      const path = `/orders/${encodeURIComponent(id)}`;
+      const fields = "fields=increment_id,status,items[qty_canceled]";
+      let number = "";
+      try {
+        const before = await mg(`${path}?${fields}`);
+        number = String(before?.increment_id ?? "");
+        if (before?.status !== "pending" && before?.status !== "processing") {
+          return { id, number, ok: false, status: before?.status ?? "", error: `It's ${before?.status ?? "not open"} now.` };
+        }
+        await mg(`${path}/cancel`, { method: "POST" });
+        const after = await mg(`${path}?${fields}`);
+        if (canceledQty(after) <= canceledQty(before)) {
+          return { id, number, ok: false, status: after?.status ?? "", error: "Nothing left to cancel — every item is already invoiced." };
+        }
+        return { id, number, ok: true, status: after?.status ?? "", error: "" };
+      } catch (err) {
+        // A missing permission stops every order: say so once, plainly.
+        if (err instanceof UserError && err.status === 403) throw err;
+        return { id, number, ok: false, status: "", error: err instanceof Error ? err.message : String(err) };
+      }
+    });
+    return { results };
+  },
+
   /** How many orders have each status — only statuses in use (for the filter). */
   async orderFacets() {
     // Custom statuses aren't listed anywhere the API reaches, so recent
@@ -1471,8 +1546,9 @@ const actions: Record<string, (p: any) => Promise<unknown>> = {
     } catch (err) {
       shipmentsProblem = err instanceof Error ? err.message : String(err);
     }
+    const [summary] = await addOrderCompanies([summarizeOrder(o)]);
     return {
-      ...summarizeOrder(o),
+      ...summary,
       // Child rows of configurable / bundle items repeat their parent.
       // deno-lint-ignore no-explicit-any
       items: (o.items ?? []).filter((i: any) => !i.parent_item_id).map((i: any) => ({

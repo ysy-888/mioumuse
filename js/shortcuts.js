@@ -19,7 +19,8 @@ const SHORTCUT_SEARCH = {
   tradeShows: ["tradeShowSearchInput"],
   platforms: ["bannerSearchInput"],
   styles: ["styleSearchInput"],
-  photoshoots: ["needSearchInput", "shootSearchInput"],
+  photoshoots: ["shootSearchInput"],
+  needToShoot: ["needSearchInput"],
   magento: ["mgSearchInput"],
 };
 

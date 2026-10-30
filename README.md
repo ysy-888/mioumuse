@@ -62,17 +62,18 @@ reference in index.html so the URLs change on every deploy.
 | `js/styles.js` | Styles tab — the style database table, status / season / category filters, search |
 | `js/style-import.js` | Import Excel — reads the N41 ATS export in the browser, lists every change under Update / New Styles / New Colors tabs, saves, and records it for Update history |
 | `js/style-images.js` | Style photos from a linked network folder — matched by file name, thumbnails, gallery |
-| `js/photoshoots.js` | Photoshoots tab — the Need to Shoot list, the shoots list, the shoot side pane, shoot status badges |
+| `js/photoshoots.js` | The Photoshoots and Need to Shoot pages — the shoots list, the Need to Shoot list, the shoot side pane, shoot status badges |
 | `js/photoshoot-form.js` | Create / edit photoshoot modal |
 | `js/magento-sales.js` | Magento → Orders and Customers (read-only): lists with Status / Group filters, date quick filters, search, sort, paging; the order / customer pane |
-| `js/magento-groups.js` | Magento tab → Import groups: reads a Magento product export's `associated_skus` and saves the exact group links; the "Not in group" flag |
+| `js/magento-n41.js` | Magento → Orders against N41: Import N41 Sales Orders, N41 Status, the Closed on N41 filter, tick orders and cancel them on Magento |
+| `js/magento-groups.js` | ⋮ menu on Magento Products → Import Groups: reads a Magento product export's `associated_skus` and saves the exact group links; the "Not in group" flag |
 | `js/magento.js` | Magento tab — live products (filters, sort, paging, status switch, bulk changes, edit pane) and categories (rename, active, jump to products) |
 | `supabase/functions/magento/` | Edge Function the app calls for Magento; holds the store address and token (secrets `MAGENTO_BASE_URL`, `MAGENTO_ACCESS_TOKEN`) |
 | `js/column-filter.js` | Header filters (the PO app's design): click a column's funnel to tick which values show — used for IHD by month and the Magento products table |
 | `js/shortcuts.js` | Keyboard shortcuts on table pages: ← / → turn pages, Space jumps to search |
 | `js/copy-menu.js` | Right-click → Copy: style numbers (Styles, Need to Shoot, the shoot pane) and Magento product names |
 | `js/table-view.js` | Header menu → Table view: show / hide and reorder any table's columns, saved as that table's default to your account (`table_views`) |
-| `js/exports.js` | CSV downloads and printable (Save as PDF) reports — Need to Shoot, each photoshoot, and the header menu's Export CSV |
+| `js/exports.js` | CSV downloads and printable (Save as PDF) reports — each photoshoot, the banners, and the header menu's Export CSV / PDF |
 | `js/calendar.js` | Home calendar of every campaign, show, and task, with the upcoming rail |
 | `js/main.js` | Boot |
 
@@ -92,7 +93,7 @@ held. Space on a button reached with Tab still presses it.
 ## Header menus
 
 **Home**, then three menus that open on hover: **Marketing** (Campaigns, Trade
-Shows, Platforms), **Photoshoots** (Photoshoots, Styles) and **Magento**
+Shows, Platforms), **Photoshoots** (Photoshoots, Need to Shoot, Styles) and **Magento**
 (Products, Categories). The page you're on is ticked and its menu
 underlined.
 
@@ -271,8 +272,8 @@ filtering and sorting, so it stays quick on a big catalog.
   a Simple item's pane shows its group.
 - **Groups come from a Magento export.** Magento's API lists only a group's
   *enabled* items and can't say which group a product is in, so the exact
-  links come from a product export instead. **Import groups** (header menu ⋮)
-  reads the file in the browser — it's never uploaded — and saves only the
+  links come from a product export instead. **Import Groups** (⋮ menu on
+  Products) reads the file in the browser — it's never uploaded — and saves only the
   group links (`magento_groups`); nothing else in the app or in Magento
   changes. A preview shows the counts and what changed since the last
   import before **Update groups** saves. To get the file: Magento admin →
@@ -306,7 +307,7 @@ filtering and sorting, so it stays quick on a big catalog.
 name to rename it (Enter or click away saves, Esc undoes), switch it active
 or inactive, or **View products** to see the products in it.
 
-**Orders** (read-only) lists the store's orders, newest first: order #,
+**Orders** lists the store's orders, newest first: order #,
 placed (your local time), customer (Guest when they didn't sign in), email,
 status, items, total, ship-to, payment and shipping. Filter by **Status**
 (the header funnel — only statuses in use, with counts) and when placed
@@ -314,6 +315,30 @@ status, items, total, ship-to, payment and shipping. Filter by **Status**
 column; page through. Click an order for its items (shipped, canceled,
 refunded), totals, billing and shipping addresses, shipments with tracking
 numbers, and its comment history.
+
+**Orders against N41.** Canceling on N41 doesn't reach Magento, so those
+orders stay Pending or Processing there. **Import N41 Sales Orders** (⋮ menu
+on Orders) reads N41's Sales Orders report in the browser (.xlsx, .xls or
+.csv): column C Cust. Name, column H Order # (the SO #), column I Status,
+column P Cust. PO #. Only
+`Web:00000061`-style POs count; each is matched to the Magento order number,
+leading zeros aside. An order on several rows is Closed only if every row
+is. A preview shows the counts before **Update N41 Status** saves them
+(`n41_orders`); orders not on the report keep the status they have.
+
+Orders then shows **N41 Status**, **N41 Customer** and **N41 Order #**, and
+an order that's Closed on N41 but
+Pending or Processing on Magento is flagged in red. **Closed on N41 (n)**
+filters to those. Tick orders (Pending and Processing ones have a box; ticks
+stay across pages) and **Cancel orders** cancels them on Magento, after a
+confirmation — this can't be undone. Magento cancels everything not invoiced
+yet: with nothing invoiced the order becomes Canceled; with invoiced items
+it becomes Complete, or stays Processing while invoiced items are still to
+ship. An order with every item invoiced has nothing to cancel and is
+reported as such. Import a fresh report after N41's invoices have reached
+Magento: an invoice that hasn't arrived yet looks uninvoiced, and those
+items would be canceled. Needs the integration's **Sales → Operations →
+Orders → Actions → Cancel** permission.
 
 **Customers** lists accounts: name, email, group, company, Is Activated,
 orders, location, phone, joined. Orders counts what each placed with their
@@ -434,7 +459,7 @@ Links live in the `task_links` table (see `supabase-schema.sql`).
 ## Styles database
 
 The **Styles** tab holds every Style # + Color from the N41 ATS export.
-**Import Excel** (header menu ⋮) reads the .xlsx in the browser (SheetJS, loaded only when
+**Import CSV** (header menu ⋮) reads the export, .csv or .xlsx, in the browser (SheetJS, loaded only when
 importing) — the file itself is never uploaded:
 
 | Column | Field |
@@ -458,7 +483,7 @@ change is listed under three tabs — the count boxes across the top (the file a
 
 Confirming saves only new and changed styles. Styles missing from a newer file are left as they are.
 
-Each import that saves anything is recorded in full. **Update history**
+Each import that saves anything is recorded in full. **Update History**
 (header menu ⋮, on the Styles tab) lists them newest first — when, which
 file, and how many updated / new / unchanged — and opening one shows its
 Update, New Styles and New Colors tabs again — click a row for the style's detail window. Each row has the Styles table's **+ Need to Shoot**, and the two New tabs have **Add all to Need to Shoot** (everything on the tab, as searched; ones already waiting are skipped). Records live in the `style_imports` table (see
@@ -535,33 +560,35 @@ shoot date is flagged **IHD after shoot** — the goods won't be in yet.
 IHD (and Latest IHD on Shoots) also filters by month: click the funnel at
 the right of the header and tick the months to show. **No IHD** covers
 styles without one. A filtered header turns dark; tick everything (Select
-all) to remove the filter. The Need to Shoot PDF names the months it covers.
+all) to remove the filter. 
 
 Need to Shoot and Shoots sort by clicking a column header: ascending, then
 descending, then back to the default order. Blank values always sort last.
 
 ### Exports
 
-- **Need to Shoot**: the header menu's **Export CSV** or **Export PDF**. Both cover
-  the list as it's showing, with the filters and search applied. The PDF
-  is sorted by IHD, earliest first, with styles that have no IHD at the end.
+- **Need to Shoot**: the header menu's **Export CSV** covers the list as it's
+  showing, with the filters and search applied.
+- **Platforms**: the header menu's **Export PDF** lists the banners showing,
+  with their images.
 - **A shoot's ⋯ menu**: **Export CSV** (every style in the shoot) or **PDF
   report**. The report has the shoot details and notes, plus a ☐ Shot
   column to tick on set.
 - PDF reports open the print window: choose **Save as PDF**. Style photos are
   included when the image folder is linked, and late IHDs print in red.
   Reports print on Letter paper (portrait) with dates as MM/DD/YY.
-- The header menu's **Export CSV** follows the page you're on:
-  - Need to Shoot: the list.
-  - Shoots: the open shoot, or every shoot with its styles.
-  - Styles: the filtered styles.
-  - Platforms: banners.
-  - Magento → Products: every product matching the filters, search and
-    sort (all pages, fetched from Magento 200 at a time), with color,
-    each Grouped item's simple-item count and SKUs, category paths, prices,
-    stock and image URLs.
-  - Magento → Categories: the category tree as shown.
-  - Anywhere else: the campaign and trade show schedule.
+- The header menu ⋮ follows the page you're on (Sign Out is always there,
+  and pages with a table also get **Table View**):
+  - Home, Photoshoots, Magento → Categories: nothing else.
+  - Campaigns, Trade Shows: **Export CSV**, that page's records and tasks.
+  - Platforms: **Export PDF**.
+  - Need to Shoot: **Export CSV**, the list.
+  - Styles: **Import CSV**, **Export CSV** (the filtered styles), **Update
+    History**, and the image folder's Link / Reconnect / Rescan and Unlink.
+  - Magento → Products, Orders, Customers: **Export CSV**. Products: every
+    product matching the filters, search and sort (all pages, fetched from
+    Magento 200 at a time), with color, each Grouped item's simple-item
+    count and SKUs, category paths, prices, stock and image URLs.
 
 Data: `shoot_list` (the flag, plus which shoot it was shot in) and
 `photoshoots` (see `supabase-schema.sql`).

@@ -430,9 +430,9 @@ function renderStyleImageStatus() {
  */
 function getStyleImageMenuState() {
   switch (styleImageState) {
-    case "none": return { label: "Link image folder", canUnlink: false };
-    case "needs-permission": return { label: "Reconnect image folder", canUnlink: true };
-    case "ready": return { label: "Rescan image folder", canUnlink: true };
+    case "none": return { label: "Link Image Folder", canUnlink: false };
+    case "needs-permission": return { label: "Reconnect Image Folder", canUnlink: true };
+    case "ready": return { label: "Rescan Image Folder", canUnlink: true };
     default: return { label: "", canUnlink: false }; // unsupported, or mid-scan
   }
 }

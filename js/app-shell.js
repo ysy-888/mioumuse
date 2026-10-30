@@ -2,14 +2,14 @@
  * View switching and the header menu.
  *
  * Views: "home" (calendar + upcoming tasks), "campaigns" and "tradeShows"
- * (lists), "platforms" (banners), "styles" (the style database) and
- * "photoshoots" (Need to Shoot + shoots), and "magento" (the store's
+ * (lists), "platforms" (banners), "styles" (the style database),
+ * "photoshoots" (the shoots), "needToShoot" (styles waiting for one), and "magento" (the store's
  * products and categories, live). A record opens in a side pane over
  * whichever view is showing (js/item-pane.js, js/banners.js,
  * js/photoshoots.js, js/magento.js), not as a view of its own.
  */
 
-const APP_VIEWS = ["home", "campaigns", "tradeShows", "platforms", "styles", "photoshoots", "magento"];
+const APP_VIEWS = ["home", "campaigns", "tradeShows", "platforms", "styles", "photoshoots", "needToShoot", "magento"];
 
 let currentAppView = "home";
 
@@ -67,7 +67,7 @@ function switchAppView(view) {
     bannersTableWrap: view === "platforms",
     stylesToolbar: view === "styles",
     stylesTableWrap: view === "styles",
-    photoshootsToolbar: view === "photoshoots",
+    photoshootsToolbar: isPhotoshootView(view),
     magentoToolbar: view === "magento",
     calendarWrap: view === "home",
   };
@@ -83,11 +83,11 @@ function switchAppView(view) {
   RECORD_LISTS[view]?.apply();
   if (view === "platforms") applyBannerFilters();
   if (view === "styles") applyStyleFilters();
-  if (view === "photoshoots") renderPhotoshootsView();
+  if (isPhotoshootView(view)) renderPhotoshootsView();
   if (view === "magento") enterMagentoView();
-  // The photoshoot and Magento tables show and hide with their sub-view, but
+  // The photoshoot and Magento tables show and hide with their page, but
   // none of them belongs anywhere else.
-  if (view !== "photoshoots") {
+  if (!isPhotoshootView(view)) {
     document.getElementById("needTableWrap").hidden = true;
     document.getElementById("shootsTableWrap").hidden = true;
   }
@@ -104,7 +104,7 @@ function switchAppView(view) {
 // ── Header menus ─────────────────────────────────────────────────────────────
 //
 // Home, then three menus — Marketing (Campaigns, Trade Shows, Platforms),
-// Photoshoots (Photoshoots, Styles), Magento (Products, Categories). Each
+// Photoshoots (Photoshoots, Need to Shoot, Styles), Magento (Products, Categories). Each
 // opens on hover or focus; the page you're on is ticked, and its menu is
 // underlined.
 
@@ -154,29 +154,36 @@ function closeHeaderMenu() {
   if (btn) btn.setAttribute("aria-expanded", "false");
 }
 
+/** The page the menu is for: a view, or Magento's "magento:products" and the like. */
+function currentMenuPage() {
+  const view = getCurrentAppView();
+  return view === "magento" ? `magento:${mgSubview}` : view;
+}
+
 /**
- * Fit the menu to the page it's opened on. An item with data-views shows only
- * on those views; a few also depend on what's open there right now.
+ * Fit the menu to the page it's opened on. An item with data-pages shows only
+ * on those pages; Sign Out is always there. The image folder's items also
+ * depend on the folder's state.
  */
 function syncHeaderMenu() {
-  const view = getCurrentAppView();
-  document.querySelectorAll("#headerMenuDropdown .header-menu-item[data-views]").forEach(item => {
-    item.hidden = !item.dataset.views.split(" ").includes(view);
+  const page = currentMenuPage();
+  const items = [...document.querySelectorAll("#headerMenuDropdown .header-menu-item[data-pages]")];
+  items.forEach(item => {
+    item.hidden = !item.dataset.pages.split(" ").includes(page);
   });
-
-  // A PDF exists for the Need to Shoot list and for one open shoot.
-  const pdf = document.getElementById("headerMenuExportPdf");
-  if (pdf && !pdf.hidden) pdf.hidden = !canExportCurrentViewPdf(); // js/exports.js
 
   // The image folder's one action depends on its state (js/style-images.js).
   const folder = document.getElementById("headerMenuStyleFolder");
   const unlink = document.getElementById("headerMenuStyleFolderUnlink");
-  if (view === "styles" && folder && unlink) {
+  if (page === "styles" && folder && unlink) {
     const { label, canUnlink } = getStyleImageMenuState();
     folder.hidden = !label;
     if (label) folder.querySelector("span").textContent = label;
     unlink.hidden = !canUnlink;
   }
+
+  // Sign Out's divider only when something sits above it.
+  document.getElementById("headerMenuSignOut")?.classList.toggle("header-menu-item-separator", items.some(item => !item.hidden));
 }
 
 function initHeaderMenu() {
@@ -223,14 +230,13 @@ function csvCell(value) {
 }
 
 /**
- * One row per task across every campaign and trade show — what it belongs
- * to, when it's due, and whether it's done. An item with no tasks still
- * gets a row, so nothing scheduled goes missing from the export.
+ * One row per task across the page's campaigns or trade shows — what it
+ * belongs to, when it's due, and whether it's done. An item with no tasks
+ * still gets a row, so nothing scheduled goes missing from the export.
  */
-function exportScheduleCsv() {
-  // Shoots ride the calendar too, but have their own list and export.
+function exportScheduleCsv(type) {
   const items = getAllScheduleItems()
-    .filter(item => item.type !== ITEM_TYPE_PHOTOSHOOT)
+    .filter(item => item.type === type)
     .sort((a, b) => a.startDate.localeCompare(b.startDate));
   if (!items.length) {
     showIndicator("Nothing to export", "error");
@@ -264,10 +270,11 @@ function exportScheduleCsv() {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = `mioumuse-schedule-${todayYmd()}.csv`;
+  const noun = type === ITEM_TYPE_CAMPAIGN ? "campaigns" : "trade-shows";
+  a.download = `mioumuse-${noun}-${todayYmd()}.csv`;
   a.click();
   URL.revokeObjectURL(url);
-  showIndicator(`Exported ${items.length} campaigns and shows`, "success");
+  showIndicator(`Exported ${items.length} ${type === ITEM_TYPE_CAMPAIGN ? "campaigns" : "trade shows"}`, "success");
 }
 
 // ── Nav ──────────────────────────────────────────────────────────────────────

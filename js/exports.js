@@ -9,9 +9,10 @@
  * photos are included when the image folder is linked.
  *
  * What's exported:
- *   Need to Shoot   the list as it's showing (filters and search applied)
- *   a photoshoot    its details and every style in it
- *   header menu     Export CSV follows the page you're on
+ *   Need to Shoot   CSV: the list as it's showing (filters and search applied)
+ *   a photoshoot    CSV or PDF: its details and every style in it
+ *   Platforms       PDF: the banners showing, with their images
+ *   header menu     Export CSV / PDF follow the page you're on
  */
 
 // ── CSV ──────────────────────────────────────────────────────────────────────
@@ -68,6 +69,8 @@ const REPORT_CSS = `
   td.photo { width: 54px; padding: 3px 6px; }
   td.photo img { display: block; width: 46px; height: 46px; object-fit: cover; border-radius: 4px; border: 1px solid #e5e7eb; }
   td.photo .none { width: 46px; height: 46px; border: 1px dashed #d4d9df; border-radius: 4px; }
+  td.banner { width: 190px; padding: 4px 6px; }
+  td.banner img { display: block; width: 178px; max-height: 90px; object-fit: contain; border-radius: 4px; border: 1px solid #e5e7eb; }
   td.strong { font-weight: 700; white-space: nowrap; }
   td.nowrap { white-space: nowrap; }
   td.check { width: 34px; text-align: center; font-size: 15px; color: #8b929c; }
@@ -89,8 +92,9 @@ function escapeReportHtml(value) {
  *
  * columns: [{ label, cell(row) → { text, html?, className? } }]
  * rows:    whatever `cell` reads; each needs styleNo / color for its photo
+ * noun:    what a row is, for the count at the top
  */
-async function printReport({ fileTitle, title, subtitle = "", meta = [], notes = "", columns, rows, photos, footnote = "" }) {
+async function printReport({ fileTitle, title, subtitle = "", meta = [], notes = "", columns, rows, photos, footnote = "", noun = "style" }) {
   if (!rows.length) {
     showIndicator("Nothing to export", "error");
     return;
@@ -120,7 +124,7 @@ async function printReport({ fileTitle, title, subtitle = "", meta = [], notes =
   const html = `<!doctype html><html><head><meta charset="utf-8"><title>${escapeReportHtml(fileTitle)}</title><style>${REPORT_CSS}</style></head><body>
     <header>
       <div><div class="brand">${escapeReportHtml(APP_NAME)}</div><h1>${escapeReportHtml(title)}</h1>${subtitle ? `<div class="sub">${escapeReportHtml(subtitle)}</div>` : ""}</div>
-      <div class="generated">Generated ${escapeReportHtml(generated)}<br>${rows.length} ${rows.length === 1 ? "style" : "styles"}</div>
+      <div class="generated">Generated ${escapeReportHtml(generated)}<br>${rows.length} ${rows.length === 1 ? noun : `${noun}s`}</div>
     </header>
     ${meta.length ? `<div class="meta">${meta.map(([k, v]) => `<div><b>${escapeReportHtml(k)}</b><span>${escapeReportHtml(v)}</span></div>`).join("")}</div>` : ""}
     ${notes ? `<div class="notes">${escapeReportHtml(notes)}</div>` : ""}
@@ -165,15 +169,6 @@ function formatReportDate(value) {
   return m ? `${m[2]}/${m[3]}/${m[1]}` : "";
 }
 
-/** The shoot status badge's wording, with report dates. */
-function reportStatusLabel(status) {
-  const shoot = status.shoots[0];
-  if (status.tone === "needed" || !shoot) return status.label;
-  const date = shoot.date ? formatReportDate(shoot.date) : "No date";
-  if (status.tone === "shot") return `Shot · ${date}`;
-  return `Scheduled · ${date}${status.shoots.length > 1 ? ` +${status.shoots.length - 1}` : ""}`;
-}
-
 /** Photos in reports only when the folder is linked and readable. */
 function reportHasPhotos() {
   return typeof styleImageState !== "undefined" && (styleImageState === "ready" || styleImageState === "scanning");
@@ -216,18 +211,6 @@ function getNeedExportRows() {
   });
 }
 
-function describeNeedFilters() {
-  const parts = [{ all: "All", unscheduled: "Not scheduled", scheduled: "Scheduled" }[needFilter] ?? "All"];
-  if (needShowShot) parts.push("including shot");
-  const q = (document.getElementById("needSearchInput")?.value ?? "").trim();
-  if (q) parts.push(`search "${q}"`);
-  if (isColumnFilterActive("needTable", "ihd")) {
-    const months = monthFilterOptions(filteredNeedRows.map(r => findStyle(r.styleNo, r.color)?.ihd ?? "")).map(o => o.label);
-    parts.push(`IHD: ${months.join(", ")}`);
-  }
-  return parts.join(" · ");
-}
-
 function exportNeedCsv() {
   const rows = getNeedExportRows();
   if (!rows.length) {
@@ -247,36 +230,6 @@ function exportNeedCsv() {
       r.addedAt ? r.addedAt.slice(0, 10) : "",
     ]));
   showIndicator(`Exported ${rows.length} ${rows.length === 1 ? "style" : "styles"}`, "success");
-}
-
-function exportNeedPdf() {
-  // Earliest IHD first, styles with no IHD last; ties keep the list's order.
-  const rows = getNeedExportRows().sort((a, b) => (a.ihd || "9999").localeCompare(b.ihd || "9999"));
-  const scheduled = rows.filter(r => r.status?.tone === "scheduled").length;
-  const late = rows.filter(r => r.ihdLate).length;
-  printReport({
-    fileTitle: `Need to Shoot ${todayYmd()}`,
-    title: "Need to Shoot",
-    subtitle: describeNeedFilters(),
-    meta: [
-      ["Styles", String(rows.length)],
-      ["Not scheduled", String(rows.filter(r => r.status?.tone === "needed").length)],
-      ["Scheduled", String(scheduled)],
-      ["IHD after shoot", String(late)],
-    ],
-    photos: reportHasPhotos(),
-    rows,
-    columns: [
-      { label: "Style #", cell: r => ({ text: r.styleNo, className: "strong" }) },
-      { label: "Color", cell: r => ({ text: r.color, className: "nowrap" }) },
-      { label: "Description", cell: r => ({ text: r.description }) },
-      { label: "Category", cell: r => ({ text: r.category }) },
-      { label: "Season", cell: r => ({ text: r.season }) },
-      { label: "IHD", cell: r => ({ html: r.ihd ? `<span class="${r.ihdLate ? "warn" : ""}">${escapeReportHtml(formatReportDate(r.ihd))}</span>` : "", className: "nowrap" }) },
-      { label: "Shoot", cell: r => ({ html: r.status ? `<span class="pill ${r.status.tone}">${escapeReportHtml(reportStatusLabel(r.status))}</span>${r.shoot ? `<br>${escapeReportHtml(getPhotoshootTitle(r.shoot))}` : ""}` : "", className: "nowrap" }) },
-    ],
-    footnote: late ? "Red IHD: the goods arrive in-house after the scheduled shoot date." : "",
-  });
 }
 
 // ── One photoshoot ───────────────────────────────────────────────────────────
@@ -342,29 +295,6 @@ function exportShootPdf(id) {
   });
 }
 
-/** Every shoot and its styles — one row per style. */
-function exportShootsListCsv() {
-  const shoots = [...getAllPhotoshoots()].sort((a, b) => a.date.localeCompare(b.date));
-  if (!shoots.length) {
-    showIndicator("Nothing to export", "error");
-    return;
-  }
-  const rows = [];
-  shoots.forEach(shoot => {
-    const styles = getShootExportRows(shoot);
-    (styles.length ? styles : [null]).forEach(r => rows.push([
-      getPhotoshootTitle(shoot), shoot.date, getPhotoshootTypeLabel(shoot.type), shoot.model,
-      shoot.status === "complete" ? "Complete" : "Planned",
-      r?.styleNo ?? "", r?.color ?? "", r?.description ?? "", r?.category ?? "", r?.season ?? "", r?.n41 ?? "", r?.ihd ?? "",
-      r?.ihdLate ? "Yes" : "",
-    ]));
-  });
-  downloadCsv(`Photoshoots ${todayYmd()}`,
-    ["Shoot", "Shoot Date", "Type", "Model", "Status", "Style #", "Color", "Description", "Category", "Season", "N41 Status", "IHD", "IHD After Shoot"],
-    rows);
-  showIndicator(`Exported ${shoots.length} ${shoots.length === 1 ? "shoot" : "shoots"}`, "success");
-}
-
 // ── Styles and banners (for the header menu) ─────────────────────────────────
 
 function exportStylesCsv() {
@@ -379,58 +309,50 @@ function exportStylesCsv() {
   showIndicator(`Exported ${rows.length.toLocaleString()} styles`, "success");
 }
 
-function exportBannersCsv() {
+/** Platforms: the banners showing, each with its image, name and styles. */
+function exportBannersPdf() {
   const banners = filteredBanners.length ? filteredBanners : getAllBanners();
-  if (!banners.length) {
-    showIndicator("Nothing to export", "error");
-    return;
-  }
-  const rows = [];
-  banners.forEach(b => {
-    (b.styles.length ? b.styles : [null]).forEach(s => {
-      const style = s ? findStyle(s.styleNo, s.color) : null;
-      rows.push([b.name, getBannerTypeLabel(b.type), b.platforms.map(getPlatformLabel).join(", "), formatBannerSize(b),
-        s?.styleNo ?? "", s?.color ?? "", style?.description ?? "", style?.status ?? "", getBannerImageUrl(b)]);
-    });
+  printReport({
+    fileTitle: `Banners ${todayYmd()}`,
+    title: "Banners",
+    meta: [
+      ["Banners", String(banners.length)],
+      ...PLATFORMS.map(p => [p.label, String(banners.filter(b => b.platforms.includes(p.key)).length)]),
+    ],
+    rows: banners,
+    noun: "banner",
+    columns: [
+      {
+        label: "Image",
+        cell: b => {
+          const url = getBannerImageUrl(b);
+          return { html: url ? `<img src="${escapeReportHtml(url)}" alt="">` : "", className: "banner" };
+        },
+      },
+      { label: "Banner", cell: b => ({ text: b.name, className: "strong" }) },
+      { label: "Type", cell: b => ({ text: getBannerTypeLabel(b.type), className: "nowrap" }) },
+      { label: "Platforms", cell: b => ({ text: b.platforms.map(getPlatformLabel).join(", ") }) },
+      { label: "Size", cell: b => ({ text: formatBannerSize(b), className: "nowrap" }) },
+      { label: "Styles", cell: b => ({ text: b.styles.map(s => [s.styleNo, s.color].filter(Boolean).join(" ")).join(", ") }) },
+    ],
   });
-  downloadCsv(`Banners ${todayYmd()}`,
-    ["Banner", "Type", "Platforms", "Size", "Style #", "Color", "Description", "N41 Status", "Image URL"], rows);
-  showIndicator(`Exported ${banners.length} banners`, "success");
 }
 
-/** Header menu → Export CSV: whatever the current page is about. */
+/** Header menu → Export CSV: the records on the page you're on. */
 function exportCurrentViewCsv() {
   switch (getCurrentAppView()) {
-    case "photoshoots":
-      if (photoshootSubview === "need") return exportNeedCsv();
-      if (paneShootId) return exportShootCsv(paneShootId);
-      return exportShootsListCsv();
+    case "campaigns": return exportScheduleCsv(ITEM_TYPE_CAMPAIGN);
+    case "tradeShows": return exportScheduleCsv(ITEM_TYPE_TRADE_SHOW);
+    case "needToShoot": return exportNeedCsv();
     case "styles": return exportStylesCsv();
-    case "platforms": return exportBannersCsv();
     case "magento": return exportMagentoCsv(); // js/magento.js
-    default: return exportScheduleCsv();
   }
-}
-
-/**
- * Header menu → Export PDF: the Need to Shoot report, or the open shoot's.
- * The Shoots list itself has no PDF, so the item is hidden there.
- */
-function canExportCurrentViewPdf() {
-  if (getCurrentAppView() !== "photoshoots") return false;
-  return photoshootSubview === "need" || Boolean(paneShootId);
-}
-
-function exportCurrentViewPdf() {
-  if (!canExportCurrentViewPdf()) return;
-  if (photoshootSubview === "need") return exportNeedPdf();
-  return exportShootPdf(paneShootId);
 }
 
 function initExports() {
   document.getElementById("headerMenuExportPdf")?.addEventListener("click", () => {
     closeHeaderMenu();
-    exportCurrentViewPdf();
+    exportBannersPdf();
   });
   document.getElementById("shootMenuExportCsv")?.addEventListener("click", () => {
     closeShootPaneMenu();

@@ -6,7 +6,7 @@
 <title>MIOU MUSE</title>
 <link rel="icon" href="favicon.png?v=2" type="image/png" />
 <link rel="apple-touch-icon" href="favicon.png?v=2" />
-<link rel="stylesheet" href="crm.css?v=20261026-2024" />
+<link rel="stylesheet" href="crm.css?v=20261030-1742" />
 </head>
 <body>
 
@@ -36,6 +36,7 @@
       </button>
       <div class="app-title-tab-dropdown" role="menu">
         <button type="button" class="app-title-tab-dropdown-item" id="navTabPhotoshoots" role="menuitem" data-view="photoshoots"><span class="app-title-tab-dropdown-check" aria-hidden="true">✓</span>Photoshoots</button>
+        <button type="button" class="app-title-tab-dropdown-item" id="navTabNeedToShoot" role="menuitem" data-view="needToShoot"><span class="app-title-tab-dropdown-check" aria-hidden="true">✓</span>Need to Shoot</button>
         <button type="button" class="app-title-tab-dropdown-item" id="navTabStyles" role="menuitem" data-view="styles"><span class="app-title-tab-dropdown-check" aria-hidden="true">✓</span>Styles</button>
       </div>
     </div>
@@ -62,43 +63,47 @@
         <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="5" r="1.75"/><circle cx="12" cy="12" r="1.75"/><circle cx="12" cy="19" r="1.75"/></svg>
       </button>
       <div id="headerMenuDropdown" class="header-menu-dropdown" hidden role="menu">
-        <button type="button" class="header-menu-item" id="headerMenuExportCsv" role="menuitem">
+        <!-- Each item with data-pages shows only on those pages (syncHeaderMenu, js/app-shell.js). -->
+        <button type="button" class="header-menu-item" id="headerMenuImportStyles" role="menuitem" data-pages="styles">
+          <svg class="header-menu-item-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M17 8l-5-5-5 5"/><path d="M12 3v12"/></svg>
+          <span>Import CSV</span>
+        </button>
+        <button type="button" class="header-menu-item" id="headerMenuImportGroups" role="menuitem" data-pages="magento:products">
+          <svg class="header-menu-item-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M17 8l-5-5-5 5"/><path d="M12 3v12"/></svg>
+          <span>Import Groups</span>
+        </button>
+        <button type="button" class="header-menu-item" id="headerMenuImportN41" role="menuitem" data-pages="magento:orders">
+          <svg class="header-menu-item-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M17 8l-5-5-5 5"/><path d="M12 3v12"/></svg>
+          <span>Import N41 Sales Orders</span>
+        </button>
+        <button type="button" class="header-menu-item" id="headerMenuExportCsv" role="menuitem" data-pages="campaigns tradeShows needToShoot styles magento:products magento:orders magento:customers">
           <svg class="header-menu-item-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5"/><path d="M12 3v12"/></svg>
           <span>Export CSV</span>
         </button>
-        <!-- Items with data-views show only on those pages (syncHeaderMenu, js/app-shell.js). -->
-        <button type="button" class="header-menu-item" id="headerMenuExportPdf" role="menuitem" data-views="photoshoots">
+        <button type="button" class="header-menu-item" id="headerMenuExportPdf" role="menuitem" data-pages="platforms">
           <svg class="header-menu-item-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9V2h12v7"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><path d="M6 14h12v8H6z"/></svg>
           <span>Export PDF</span>
         </button>
-        <button type="button" class="header-menu-item" id="headerMenuImportGroups" role="menuitem" data-views="magento" title="Read the group links from a Magento product export">
-          <svg class="header-menu-item-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M17 8l-5-5-5 5"/><path d="M12 3v12"/></svg>
-          <span>Import groups</span>
-        </button>
-        <button type="button" class="header-menu-item" id="headerMenuImportStyles" role="menuitem" data-views="styles">
-          <svg class="header-menu-item-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M17 8l-5-5-5 5"/><path d="M12 3v12"/></svg>
-          <span>Import Excel</span>
-        </button>
-        <button type="button" class="header-menu-item" id="headerMenuStyleHistory" role="menuitem" data-views="styles">
+        <button type="button" class="header-menu-item" id="headerMenuStyleHistory" role="menuitem" data-pages="styles">
           <svg class="header-menu-item-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l3 3"/></svg>
-          <span>Update history</span>
+          <span>Update History</span>
         </button>
         <!-- Label follows the folder's state: Link / Reconnect / Rescan (js/style-images.js). -->
-        <button type="button" class="header-menu-item" id="headerMenuStyleFolder" role="menuitem" data-views="styles">
+        <button type="button" class="header-menu-item" id="headerMenuStyleFolder" role="menuitem" data-pages="styles">
           <svg class="header-menu-item-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
-          <span>Link image folder</span>
+          <span>Link Image Folder</span>
         </button>
-        <button type="button" class="header-menu-item" id="headerMenuStyleFolderUnlink" role="menuitem" data-views="styles">
+        <button type="button" class="header-menu-item" id="headerMenuStyleFolderUnlink" role="menuitem" data-pages="styles">
           <svg class="header-menu-item-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M9 13h6"/></svg>
-          <span>Unlink image folder</span>
+          <span>Unlink Image Folder</span>
         </button>
-        <button type="button" class="header-menu-item" id="headerMenuTableView" role="menuitem">
+        <button type="button" class="header-menu-item" id="headerMenuTableView" role="menuitem" data-pages="campaigns tradeShows platforms photoshoots needToShoot styles magento:products magento:orders magento:customers">
           <svg class="header-menu-item-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9M15 21V9"/></svg>
-          <span>Table view</span>
+          <span>Table View</span>
         </button>
         <button type="button" class="header-menu-item header-menu-item-separator" id="headerMenuSignOut" role="menuitem">
           <svg class="header-menu-item-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="M16 17l5-5-5-5"/><path d="M21 12H9"/></svg>
-          <span>Sign out</span>
+          <span>Sign Out</span>
         </button>
       </div>
     </div>
@@ -203,13 +208,6 @@
 <!-- ── Photoshoots toolbar ───────────────────────────────────── -->
 <div id="photoshootsToolbar" class="toolbar" hidden>
   <div class="toolbar-filter-cluster">
-    <div class="toolbar-filter-section">
-      <div class="filter-btn-group shoot-subtabs" id="photoshootSubtabs" role="tablist" aria-label="Photoshoots">
-        <button type="button" class="filter-btn" data-view="need">Need to Shoot</button>
-        <button type="button" class="filter-btn" data-view="shoots">Shoots</button>
-      </div>
-    </div>
-
     <!-- Need to Shoot: filters, and actions on the ticked styles. -->
     <div class="toolbar-filter-section shoot-controls" id="needToolbarControls">
       <div class="filter-btn-group" id="needFilters" role="group" aria-label="Shoot status">
@@ -313,6 +311,14 @@
       <!-- Status shortcuts for the header filter: only statuses in use (js/magento-sales.js). -->
       <span class="toolbar-filter-divider" id="mgOrderStatusDivider" aria-hidden="true" hidden></span>
       <div class="filter-btn-group" id="mgOrderStatusFilters" role="group" aria-label="Status" hidden></div>
+      <!-- Closed on N41, still open on Magento (js/magento-n41.js); hidden until a report is imported. -->
+      <span class="toolbar-filter-divider" id="mgN41FlaggedDivider" aria-hidden="true" hidden></span>
+      <button type="button" class="filter-btn mg-flagged-btn" id="mgN41FlaggedBtn" hidden>Closed on N41</button>
+      <div class="selection-bar" id="mgOrderSelectionBar" hidden>
+        <span class="selection-count" id="mgOrderSelectionCount"></span>
+        <button type="button" class="btn btn-danger" id="mgCancelOrdersBtn">Cancel orders</button>
+        <button type="button" class="btn-close" id="mgClearOrderSelectionBtn" title="Clear selection" aria-label="Clear selection">✕</button>
+      </div>
     </div>
 
     <!-- Events (js/magento-events.js): status, add, and the date fix. -->
@@ -353,8 +359,8 @@
     <span class="mg-connection" id="mgConnection"></span>
     <!-- Groups come from a Magento export (js/magento-groups.js). -->
     <span class="mg-groups-status" id="mgGroupsStatus"></span>
-    <!-- Import groups and Export CSV live in the header menu. -->
     <input type="file" id="mgImportGroupsFile" accept=".csv,text/csv" hidden />
+    <input type="file" id="mgImportN41File" accept=".xlsx,.xls,.csv" hidden />
   </div>
 </div>
 
@@ -793,12 +799,16 @@
     <div class="table-scroll-x">
     <table id="mgOrdersTable" class="record-table mg-orders-table">
       <colgroup>
+        <col class="col-select" />
         <col class="col-number" />
         <col class="col-date" />
         <col class="col-customer" />
         <col class="col-email" />
         <col class="col-company" />
         <col class="col-status" />
+        <col class="col-n41" />
+        <col class="col-n41-customer" />
+        <col class="col-n41-order" />
         <col class="col-qty" />
         <col class="col-total" />
         <col class="col-ship-to" />
@@ -808,12 +818,16 @@
       </colgroup>
       <thead>
         <tr>
+          <th data-col="select" class="th-select"><input type="checkbox" class="row-select" id="mgOrderSelectAll" aria-label="Select all open orders on this page" /></th>
           <th data-col="number">Order #</th>
           <th data-col="date">Placed</th>
           <th data-col="customer">Customer</th>
           <th data-col="email">Email</th>
           <th data-col="company">Company</th>
           <th data-col="status">Status</th>
+          <th data-col="n41">N41 Status</th>
+          <th data-col="n41Customer">N41 Customer</th>
+          <th data-col="n41Order">N41 Order #</th>
           <th data-col="qty">Items</th>
           <th data-col="total">Total</th>
           <th data-col="shipTo">Ship to</th>
@@ -823,7 +837,7 @@
         </tr>
       </thead>
       <tbody id="mgOrdersBody">
-        <tr class="state-row"><td colspan="12">Loading orders…</td></tr>
+        <tr class="state-row"><td colspan="16">Loading orders…</td></tr>
       </tbody>
     </table>
     </div>
@@ -1109,6 +1123,26 @@
       <span class="modal-footer-message" id="mgGroupsImportMessage"></span>
       <button type="button" class="btn" id="mgGroupsImportCancelBtn">Cancel</button>
       <button type="button" class="btn btn-primary" id="mgGroupsImportSaveBtn" disabled>Update groups</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Magento: import N41 sales orders (js/magento-n41.js) ──── -->
+<div id="mgN41ImportOverlay" class="modal-backdrop">
+  <div class="modal-card company-form-card mg-groups-import-card" role="dialog" aria-modal="true" aria-labelledby="mgN41ImportTitle">
+    <div class="modal-header">
+      <h3 id="mgN41ImportTitle">Import N41 Sales Orders</h3>
+      <button type="button" class="btn-close" id="mgN41ImportCloseBtn" aria-label="Close">✕</button>
+    </div>
+    <div class="modal-body mg-groups-import-body">
+      <p class="mg-groups-import-intro" id="mgN41ImportIntro"></p>
+      <div class="item-pane-summary mg-groups-import-summary" id="mgN41ImportSummary"></div>
+      <div class="mg-groups-import-changes" id="mgN41ImportChanges"></div>
+    </div>
+    <div class="modal-footer">
+      <span class="modal-footer-message" id="mgN41ImportMessage"></span>
+      <button type="button" class="btn" id="mgN41ImportCancelBtn">Cancel</button>
+      <button type="button" class="btn btn-primary" id="mgN41ImportSaveBtn">Update N41 Status</button>
     </div>
   </div>
 </div>
@@ -1487,9 +1521,9 @@
     </div>
     <div class="modal-body style-import-body">
       <div class="style-import-pick" id="styleImportPick">
-        <span>Drop the ATS export (.xlsx) here, or</span>
+        <span>Drop the ATS export (.csv or .xlsx) here, or</span>
         <label class="btn btn-primary style-import-choose">
-          <input type="file" id="styleImportFile" accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel" hidden />
+          <input type="file" id="styleImportFile" accept=".csv,text/csv,.xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel" hidden />
           Choose file
         </label>
         <span class="form-hint">Read from row 8: Status (B), Season (D), Category (F), Style # (H), Color (I), Description (L). Rows without a Style # are skipped. Nothing is saved until you confirm.</span>
@@ -1617,38 +1651,39 @@
   </div>
 </div>
 
-<script src="js/config.js?v=20261026-2024"></script>
+<script src="js/config.js?v=20261030-1742"></script>
 <!-- Needs SUPABASE_URL/KEY from config.js and the CDN client above. -->
-<script src="js/auth.js?v=20261026-2024"></script>
-<script src="js/util.js?v=20261026-2024"></script>
-<script src="js/dates.js?v=20261026-2024"></script>
-<script src="js/store.js?v=20261026-2024"></script>
-<script src="js/tasks.js?v=20261026-2024"></script>
-<script src="js/app-shell.js?v=20261026-2024"></script>
-<script src="js/record-list.js?v=20261026-2024"></script>
-<script src="js/item-pane.js?v=20261026-2024"></script>
-<script src="js/campaign-form.js?v=20261026-2024"></script>
-<script src="js/trade-show-form.js?v=20261026-2024"></script>
-<script src="js/banners.js?v=20261026-2024"></script>
-<script src="js/banner-form.js?v=20261026-2024"></script>
-<script src="js/mailchimp.js?v=20261026-2024"></script>
-<script src="js/style-import.js?v=20261026-2024"></script>
-<script src="js/column-filter.js?v=20261026-2024"></script>
-<script src="js/styles.js?v=20261026-2024"></script>
-<script src="js/style-images.js?v=20261026-2024"></script>
-<script src="js/photoshoots.js?v=20261026-2024"></script>
-<script src="js/photoshoot-form.js?v=20261026-2024"></script>
-<script src="js/magento.js?v=20261026-2024"></script>
-<script src="js/magento-availability.js?v=20261026-2024"></script>
-<script src="js/magento-sales.js?v=20261026-2024"></script>
-<script src="js/magento-events.js?v=20261026-2024"></script>
-<script src="js/trade-show-import.js?v=20261026-2024"></script>
-<script src="js/magento-groups.js?v=20261026-2024"></script>
-<script src="js/table-view.js?v=20261026-2024"></script>
-<script src="js/exports.js?v=20261026-2024"></script>
-<script src="js/copy-menu.js?v=20261026-2024"></script>
-<script src="js/shortcuts.js?v=20261026-2024"></script>
-<script src="js/calendar.js?v=20261026-2024"></script>
-<script src="js/main.js?v=20261026-2024"></script>
+<script src="js/auth.js?v=20261030-1742"></script>
+<script src="js/util.js?v=20261030-1742"></script>
+<script src="js/dates.js?v=20261030-1742"></script>
+<script src="js/store.js?v=20261030-1742"></script>
+<script src="js/tasks.js?v=20261030-1742"></script>
+<script src="js/app-shell.js?v=20261030-1742"></script>
+<script src="js/record-list.js?v=20261030-1742"></script>
+<script src="js/item-pane.js?v=20261030-1742"></script>
+<script src="js/campaign-form.js?v=20261030-1742"></script>
+<script src="js/trade-show-form.js?v=20261030-1742"></script>
+<script src="js/banners.js?v=20261030-1742"></script>
+<script src="js/banner-form.js?v=20261030-1742"></script>
+<script src="js/mailchimp.js?v=20261030-1742"></script>
+<script src="js/style-import.js?v=20261030-1742"></script>
+<script src="js/column-filter.js?v=20261030-1742"></script>
+<script src="js/styles.js?v=20261030-1742"></script>
+<script src="js/style-images.js?v=20261030-1742"></script>
+<script src="js/photoshoots.js?v=20261030-1742"></script>
+<script src="js/photoshoot-form.js?v=20261030-1742"></script>
+<script src="js/magento.js?v=20261030-1742"></script>
+<script src="js/magento-availability.js?v=20261030-1742"></script>
+<script src="js/magento-sales.js?v=20261030-1742"></script>
+<script src="js/magento-n41.js?v=20261030-1742"></script>
+<script src="js/magento-events.js?v=20261030-1742"></script>
+<script src="js/trade-show-import.js?v=20261030-1742"></script>
+<script src="js/magento-groups.js?v=20261030-1742"></script>
+<script src="js/table-view.js?v=20261030-1742"></script>
+<script src="js/exports.js?v=20261030-1742"></script>
+<script src="js/copy-menu.js?v=20261030-1742"></script>
+<script src="js/shortcuts.js?v=20261030-1742"></script>
+<script src="js/calendar.js?v=20261030-1742"></script>
+<script src="js/main.js?v=20261030-1742"></script>
 </body>
 </html>

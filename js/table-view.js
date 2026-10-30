@@ -20,7 +20,7 @@ const TABLE_VIEW_TABLES = [
   { id: "tradeShowsTable", label: "Trade Shows", view: "tradeShows" },
   { id: "bannersTable", label: "Platforms · Banners", view: "platforms" },
   { id: "stylesTable", label: "Styles", view: "styles" },
-  { id: "needTable", label: "Photoshoots · Need to Shoot", view: "photoshoots" },
+  { id: "needTable", label: "Photoshoots · Need to Shoot", view: "needToShoot" },
   { id: "shootsTable", label: "Photoshoots · Shoots", view: "photoshoots" },
   { id: "mgProductsTable", label: "Magento · Products", view: "magento" },
   { id: "mgOrdersTable", label: "Magento · Orders", view: "magento" },
@@ -139,7 +139,6 @@ function redrawAfterTableView() {
 /** The table on the page you're looking at. */
 function currentTableViewTarget() {
   const view = getCurrentAppView();
-  if (view === "photoshoots") return photoshootSubview === "need" ? "needTable" : "shootsTable";
   if (view === "magento") return { orders: "mgOrdersTable", customers: "mgCustomersTable", events: "mgEventsTable" }[mgSubview] ?? "mgProductsTable";
   return TABLE_VIEW_TABLES.find(t => t.view === view)?.id ?? TABLE_VIEW_TABLES[0].id;
 }

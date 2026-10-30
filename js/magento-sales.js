@@ -1,7 +1,7 @@
 /**
  * Magento → Orders and Customers. Read-only, except a customer's
  * activation (the store's own "Is Activated" field), which can be changed
- * from the table or the pane.
+ * from the table or the pane, and canceling orders (js/magento-n41.js).
  *
  * Two lists from the store, each filtered, searched, sorted and paged by
  * Magento (the helper's orders / customers actions), and one side pane that
@@ -24,7 +24,7 @@ const MG_SALES = {
     body: "mgOrdersBody",
     noun: ["order", "orders"],
     sortable: new Set(["number", "date", "customer", "email", "status", "qty", "total"]),
-    query: { page: 1, pageSize: 50, sort: null, dir: "ASC", search: "", status: null, from: "" },
+    query: { page: 1, pageSize: 50, sort: null, dir: "ASC", search: "", status: null, from: "", flagged: false },
   },
   customers: {
     table: "mgCustomersTable",
@@ -117,7 +117,9 @@ async function loadMgSales(kind) {
   s.error = "";
   renderMgSales(kind);
   try {
-    const page = await callMagento(kind, mgSalesParams(kind));
+    const page = kind === "orders" && s.query.flagged
+      ? await loadMgFlaggedPage(s.query.page, s.query.pageSize) // js/magento-n41.js
+      : await callMagento(kind, mgSalesParams(kind));
     if (seq !== s.seq) return;
     s.page = page;
   } catch (err) {
@@ -143,8 +145,13 @@ function mgSalesParams(kind, extra = {}) {
 /** The filter options: statuses in use, customer groups and fields. Quietly skipped if not allowed. */
 async function loadMgSalesFacets(kind) {
   if (kind === "orders") {
-    mgOrderStatusCounts = await callMagento("orderFacets").catch(() => mgOrderStatusCounts);
+    const [counts] = await Promise.all([
+      callMagento("orderFacets").catch(() => mgOrderStatusCounts),
+      refreshMgN41(), // js/magento-n41.js
+    ]);
+    mgOrderStatusCounts = counts;
     renderMgOrderStatusButtons();
+    if (MG_SALES.orders.query.flagged) await loadMgSales("orders");
   } else {
     const [groups, fields] = await Promise.all([
       callMagento("customerGroups").catch(() => mgCustomerGroups),
@@ -435,6 +442,7 @@ function renderMgSales(kind) {
     updateMgCounter();
     renderMgSalesPager(kind);
   }
+  if (kind === "orders") syncMgOrderSelectionUi();
   const s = MG_SALES[kind];
   const tbody = document.getElementById(s.body);
   if (!tbody) return;
@@ -447,7 +455,7 @@ function renderMgSales(kind) {
   if (s.loading && !s.page.items.length) return message(`Loading ${s.noun[1]}…`);
   if (!s.page.items.length) {
     const q = s.query;
-    const filtered = q.search || q.from || q.status || q.groupId;
+    const filtered = q.search || q.from || q.status || q.groupId || q.flagged;
     return message(filtered ? `No ${s.noun[1]} match the current filters.` : `No ${s.noun[1]} yet.`);
   }
 
@@ -456,6 +464,7 @@ function renderMgSales(kind) {
     const tr = document.createElement("tr");
     tr.className = "clickable-row";
     tr.dataset.id = row.id;
+    if (kind === "orders" && isMgOrderFlagged(row)) tr.classList.add("mg-order-flagged");
     if (mgSalesPane?.kind === kind && String(mgSalesPane.id) === String(row.id)) tr.classList.add("is-open");
     cols.forEach(col => {
       const td = document.createElement("td");
@@ -471,7 +480,13 @@ function renderMgSales(kind) {
 function fillMgSalesCell(kind, col, row, td) {
   const text = value => mountSearchHighlightedText(td, value || EMPTY_DISPLAY);
   if (kind === "orders") {
-    if (col === "number") {
+    if (col === "select") {
+      const box = createMgOrderCheckbox(row);
+      if (box) td.appendChild(box);
+      // The row opens the order; this cell is for the tick box.
+      td.addEventListener("click", e => e.stopPropagation());
+    }
+    else if (col === "number") {
       text(row.number);
       td.dataset.copy = row.number;
       if (row.firstOrder) td.appendChild(createMgFirstOrderTag());
@@ -488,13 +503,16 @@ function fillMgSalesCell(kind, col, row, td) {
     } else if (col === "email") text(row.email);
     else if (col === "company") text(row.company);
     else if (col === "status") td.appendChild(createMgOrderStatusPill(row.status));
+    else if (col === "n41") td.appendChild(createMgN41StatusCell(row));
+    else if (col === "n41Customer") td.textContent = mgN41For(row.number)?.customer || EMPTY_DISPLAY;
+    else if (col === "n41Order") td.textContent = mgN41For(row.number)?.soNo || EMPTY_DISPLAY;
     else if (col === "qty") { td.className = "mg-num"; td.textContent = row.qty ? String(row.qty) : EMPTY_DISPLAY; }
     else if (col === "total") { td.className = "mg-num"; td.textContent = formatMgMoney(row.total, row.currency); }
     else if (col === "shipTo") td.textContent = row.shipTo || EMPTY_DISPLAY;
     else if (col === "payment") td.textContent = row.payment || EMPTY_DISPLAY;
     else if (col === "shipping") td.textContent = row.shipping || EMPTY_DISPLAY;
     else if (col === "comment") text(row.comment);
-    if (["customer", "email", "company", "shipTo", "payment", "shipping", "comment"].includes(col)) td.title = td.textContent;
+    if (["customer", "email", "company", "n41Customer", "n41Order", "shipTo", "payment", "shipping", "comment"].includes(col)) td.title = td.textContent;
   } else {
     if (col === "name") {
       // The name, then the icon to this customer's page in the Magento admin.
@@ -603,6 +621,7 @@ function syncMgSalesButtons() {
       btn.classList.toggle("active", mgDaysAgo(btn.dataset.days) === MG_SALES[kind].query.from);
     });
   });
+  syncMgN41FlaggedButton(); // js/magento-n41.js
   // Status: lit when the filter is just that status (All when off).
   const status = MG_SALES.orders.query.status;
   document.querySelectorAll("#mgOrderStatusFilters .filter-btn").forEach(btn => {
@@ -752,8 +771,9 @@ function renderMgSalesPane() {
 
 function renderMgOrderPane(o, title, subtitle, body) {
   title.textContent = `Order #${o.number}`;
+  title.appendChild(createMgOrderStatusPill(o.status));
   if (o.firstOrder) title.appendChild(createMgFirstOrderTag());
-  subtitle.textContent = [formatMgDateTime(o.createdAt, { time: true }), mgOrderStatusLabel(o.status)].join(" · ");
+  subtitle.textContent = formatMgDateTime(o.createdAt, { time: true });
   const money = v => formatMgMoney(v, o.currency);
 
   // The customer — a link to their pane when they have an account.
@@ -768,14 +788,15 @@ function renderMgOrderPane(o, title, subtitle, body) {
     customer = link;
   } else if (o.guest) customer = `${o.customerName || o.email} (guest)`;
 
+  const n41 = mgN41For(o.number);
   const summary = mgPaneSummary([
-    ["Status", createMgOrderStatusPill(o.status)],
+    ["N41 Status", n41 ? createMgN41StatusCell(o) : ""],
+    ["N41 Customer Name", n41?.customer],
+    ["Company", o.company],
     ["Customer", customer],
-    ["Email", o.email],
-    ["Placed", formatMgDateTime(o.createdAt, { time: true })],
+    ["N41 Order #", n41?.soNo],
     ["Shipping", o.shipping],
     ["Coupon", o.couponCode],
-    ["Total", money(o.totals.grandTotal)],
   ]);
 
   const items = mgMiniTable("mg-order-items", ["Item", "SKU", "Qty", "Shipped", "Price", "Total"], o.items.map(i => [
@@ -926,7 +947,9 @@ async function exportMgSalesCsv(kind) {
   setAppLoading(true, `Exporting ${s.noun[1]} from Magento…`);
   try {
     for (let page = 1; ; page++) {
-      const res = await callMagento(kind, mgSalesParams(kind, { page, pageSize: 200 }));
+      const res = kind === "orders" && s.query.flagged
+        ? await loadMgFlaggedPage(page, 200)
+        : await callMagento(kind, mgSalesParams(kind, { page, pageSize: 200 }));
       rows.push(...(res?.items ?? []));
       setAppLoading(true, `Exporting ${s.noun[1]} from Magento… ${rows.length.toLocaleString()} of ${res.total.toLocaleString()}`);
       if (!res?.items?.length || page * 200 >= res.total) break;
@@ -939,8 +962,8 @@ async function exportMgSalesCsv(kind) {
   }
   if (kind === "orders") {
     downloadCsv(`Magento orders ${todayYmd()}`,
-      ["Order #", "Placed", "Status", "Customer", "Guest", "Email", "Company", "First Order", "Items", "Total", "Currency", "Ship To", "Payment", "Shipping", "Order Comment"],
-      rows.map(o => [o.number, o.createdAt, mgOrderStatusLabel(o.status), o.customerName, o.guest ? "Yes" : "No", o.email, o.company, o.firstOrder ? "Yes" : o.firstOrder === false ? "No" : "", o.qty, o.total ?? "", o.currency, o.shipTo, o.payment, o.shipping, o.comment]));
+      ["Order #", "Placed", "Status", "N41 Status", "N41 Customer", "N41 Order #", "Closed on N41", "Customer", "Guest", "Email", "Company", "First Order", "Items", "Total", "Currency", "Ship To", "Payment", "Shipping", "Order Comment"],
+      rows.map(o => [o.number, o.createdAt, mgOrderStatusLabel(o.status), mgN41For(o.number)?.status ?? "", mgN41For(o.number)?.customer ?? "", mgN41For(o.number)?.soNo ?? "", isMgOrderFlagged(o) ? "Yes" : "", o.customerName, o.guest ? "Yes" : "No", o.email, o.company, o.firstOrder ? "Yes" : o.firstOrder === false ? "No" : "", o.qty, o.total ?? "", o.currency, o.shipTo, o.payment, o.shipping, o.comment]));
   } else {
     const activation = mgCustomerFields?.activation;
     downloadCsv(`Magento customers ${todayYmd()}`,

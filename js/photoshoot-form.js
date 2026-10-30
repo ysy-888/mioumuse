@@ -137,8 +137,8 @@ async function savePhotoshootForm() {
       const created = await createPhotoshoot(fields);
       closePhotoshootForm();
       needSelectedKeys = new Set();
-      photoshootSubview = "shoots";
       shootFilter = "planned";
+      switchAppView("photoshoots");
       refreshPhotoshootViews();
       openShootPane(created.id);
       showIndicator(`${getPhotoshootTitle(created)} created with ${created.styles.length} ${created.styles.length === 1 ? "style" : "styles"}`, "success");

@@ -1,5 +1,6 @@
 /**
- * Photoshoots — the Need to Shoot list and the shoots themselves.
+ * Photoshoots — the shoots themselves, and the Need to Shoot list. Two pages
+ * (views "photoshoots" and "needToShoot") sharing one toolbar.
  *
  *   Need to Shoot   every style flagged for a shoot and not yet shot, with
  *                   where it stands: not scheduled, or scheduled for a
@@ -13,7 +14,6 @@
  * table's Shoot column.
  */
 
-let photoshootSubview = "need"; // "need" | "shoots"
 let needFilter = "all";         // "all" | "unscheduled" | "scheduled"
 let needShowShot = false;
 let shootFilter = "planned";    // "planned" | "complete" | "all"
@@ -170,18 +170,14 @@ function initColumnSort(tableId, sort, columns, render) {
   });
 }
 
-// ── Sub-views ────────────────────────────────────────────────────────────────
+// ── The two pages ────────────────────────────────────────────────────────────
 
-function setPhotoshootSubview(view) {
-  photoshootSubview = view;
-  renderPhotoshootsView();
+function isPhotoshootView(view = getCurrentAppView()) {
+  return view === "photoshoots" || view === "needToShoot";
 }
 
 function renderPhotoshootsView() {
-  document.querySelectorAll("#photoshootSubtabs .filter-btn").forEach(btn => {
-    btn.classList.toggle("active", btn.dataset.view === photoshootSubview);
-  });
-  const need = photoshootSubview === "need";
+  const need = getCurrentAppView() === "needToShoot";
   document.getElementById("needToolbarControls").hidden = !need;
   document.getElementById("shootsToolbarControls").hidden = need;
   document.getElementById("needTableWrap").hidden = !need;
@@ -193,19 +189,12 @@ function renderPhotoshootsView() {
   document.getElementById("newShootBtn").hidden = need;
   if (need) closeShootPane();
 
-  const waiting = getShootListEntries().filter(e => !e.shotShootId).length;
-  const needBtn = document.querySelector('#photoshootSubtabs [data-view="need"]');
-  if (needBtn) needBtn.textContent = `Need to Shoot (${waiting.toLocaleString()})`;
-  const planned = getAllPhotoshoots().filter(s => s.status === "planned").length;
-  const shootsBtn = document.querySelector('#photoshootSubtabs [data-view="shoots"]');
-  if (shootsBtn) shootsBtn.textContent = `Shoots (${planned} planned)`;
-
   if (need) renderNeedTable(); else renderShootsTable();
 }
 
 /** After any change: redraw whatever shows shoot status. */
 function refreshPhotoshootViews() {
-  if (getCurrentAppView() === "photoshoots") renderPhotoshootsView();
+  if (isPhotoshootView()) renderPhotoshootsView();
   if (getCurrentAppView() === "styles" && typeof renderStylesTable === "function") renderStylesTable();
   // Shoots sit on the Home calendar too.
   refreshCalendarIfActive();
@@ -582,7 +571,7 @@ function openShootPane(id) {
   closeShootPaneMenu();
   pane.hidden = false;
   pane.querySelector(".item-pane-body")?.scrollTo({ top: 0 });
-  if (photoshootSubview === "shoots") renderShootsTable();
+  if (getCurrentAppView() === "photoshoots") renderShootsTable();
 }
 
 function closeShootPane() {
@@ -591,7 +580,7 @@ function closeShootPane() {
   closeShootPaneMenu();
   const pane = document.getElementById("shootPane");
   if (pane) pane.hidden = true;
-  if (getCurrentAppView() === "photoshoots" && photoshootSubview === "shoots") renderShootsTable();
+  if (getCurrentAppView() === "photoshoots") renderShootsTable();
   // On Home, the card and calendar day lit up for this shoot go with it.
   if (typeof clearCalGroupSelection === "function") clearCalGroupSelection();
 }
@@ -638,9 +627,6 @@ function initPhotoshoots() {
   initColumnFilter("shootsTable", "latestIhd", {
     options: () => monthFilterOptions(getAllPhotoshoots().map(getShootLatestIhd)),
     onChange: renderShootsTable,
-  });
-  document.querySelectorAll("#photoshootSubtabs .filter-btn").forEach(btn => {
-    btn.addEventListener("click", () => setPhotoshootSubview(btn.dataset.view));
   });
 
   // Need to Shoot controls.
