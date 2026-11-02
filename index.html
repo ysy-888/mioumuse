@@ -6,7 +6,7 @@
 <title>MIOU MUSE</title>
 <link rel="icon" href="favicon.png?v=2" type="image/png" />
 <link rel="apple-touch-icon" href="favicon.png?v=2" />
-<link rel="stylesheet" href="crm.css?v=20261030-2112" />
+<link rel="stylesheet" href="crm.css?v=20261102-1752" />
 </head>
 <body>
 
@@ -735,6 +735,7 @@
         <col class="col-qty" />
         <col class="col-salable" />
         <col class="col-stock" />
+        <col class="col-preorder" />
         <col class="col-visibility" />
         <col class="col-status" />
         <col class="col-available" />
@@ -751,8 +752,9 @@
           <th data-col="type">Type</th>
           <th data-col="price">Price</th>
           <th data-col="qty">Qty</th>
-          <th data-col="salableQty" title="Qty less what open orders have reserved">Salable Qty</th>
+          <th data-col="salableQty" title="Available to sell: Magento's Salable Qty, Qty less what open orders have reserved">ATS</th>
           <th data-col="stockStatus">Stock Status</th>
+          <th data-col="preOrderDate">Pre-Order Date</th>
           <th data-col="visibility">Visibility</th>
           <th data-col="status">Status</th>
           <th data-col="available" title="Showing on the webstore: enabled, in stock, salable qty above 0, and (for an item) in an available group">Available</th>
@@ -761,7 +763,7 @@
         </tr>
       </thead>
       <tbody id="mgProductsBody">
-        <tr class="state-row"><td colspan="15">Loading products…</td></tr>
+        <tr class="state-row"><td colspan="16">Loading products…</td></tr>
       </tbody>
     </table>
     </div>
@@ -965,7 +967,7 @@
             <input type="number" class="form-input" id="mgPaneQty" data-field="qty" min="0" step="1" />
           </label>
           <div class="form-field">
-            <span class="form-label">Salable Qty</span>
+            <span class="form-label" title="Available to sell: Magento's Salable Qty">ATS</span>
             <span class="mg-pane-static" id="mgPaneSalable"></span>
           </div>
         </div>
@@ -996,10 +998,14 @@
           <input type="number" class="form-input" id="mgPaneSpecialPrice" data-field="specialPrice" min="0" step="0.01" placeholder="None" />
         </label>
         <label class="form-field">
+          <span class="form-label">Pre-Order Date</span>
+          <input type="date" class="form-input" id="mgPanePreOrderDate" data-field="preOrderDate" />
+        </label>
+        <label class="form-field">
           <span class="form-label">Weight</span>
           <input type="number" class="form-input" id="mgPaneWeight" data-field="weight" min="0" step="0.01" />
         </label>
-        <label class="form-field">
+        <label class="form-field form-field--full">
           <span class="form-label">URL key</span>
           <input type="text" class="form-input" id="mgPaneUrlKey" data-field="urlKey" autocomplete="off" spellcheck="false" />
         </label>
@@ -1675,39 +1681,39 @@
   </div>
 </div>
 
-<script src="js/config.js?v=20261030-2112"></script>
+<script src="js/config.js?v=20261102-1752"></script>
 <!-- Needs SUPABASE_URL/KEY from config.js and the CDN client above. -->
-<script src="js/auth.js?v=20261030-2112"></script>
-<script src="js/util.js?v=20261030-2112"></script>
-<script src="js/dates.js?v=20261030-2112"></script>
-<script src="js/store.js?v=20261030-2112"></script>
-<script src="js/tasks.js?v=20261030-2112"></script>
-<script src="js/app-shell.js?v=20261030-2112"></script>
-<script src="js/record-list.js?v=20261030-2112"></script>
-<script src="js/item-pane.js?v=20261030-2112"></script>
-<script src="js/campaign-form.js?v=20261030-2112"></script>
-<script src="js/trade-show-form.js?v=20261030-2112"></script>
-<script src="js/banners.js?v=20261030-2112"></script>
-<script src="js/banner-form.js?v=20261030-2112"></script>
-<script src="js/mailchimp.js?v=20261030-2112"></script>
-<script src="js/style-import.js?v=20261030-2112"></script>
-<script src="js/column-filter.js?v=20261030-2112"></script>
-<script src="js/styles.js?v=20261030-2112"></script>
-<script src="js/style-images.js?v=20261030-2112"></script>
-<script src="js/photoshoots.js?v=20261030-2112"></script>
-<script src="js/photoshoot-form.js?v=20261030-2112"></script>
-<script src="js/magento.js?v=20261030-2112"></script>
-<script src="js/magento-availability.js?v=20261030-2112"></script>
-<script src="js/magento-sales.js?v=20261030-2112"></script>
-<script src="js/magento-n41.js?v=20261030-2112"></script>
-<script src="js/magento-events.js?v=20261030-2112"></script>
-<script src="js/trade-show-import.js?v=20261030-2112"></script>
-<script src="js/magento-groups.js?v=20261030-2112"></script>
-<script src="js/table-view.js?v=20261030-2112"></script>
-<script src="js/exports.js?v=20261030-2112"></script>
-<script src="js/copy-menu.js?v=20261030-2112"></script>
-<script src="js/shortcuts.js?v=20261030-2112"></script>
-<script src="js/calendar.js?v=20261030-2112"></script>
-<script src="js/main.js?v=20261030-2112"></script>
+<script src="js/auth.js?v=20261102-1752"></script>
+<script src="js/util.js?v=20261102-1752"></script>
+<script src="js/dates.js?v=20261102-1752"></script>
+<script src="js/store.js?v=20261102-1752"></script>
+<script src="js/tasks.js?v=20261102-1752"></script>
+<script src="js/app-shell.js?v=20261102-1752"></script>
+<script src="js/record-list.js?v=20261102-1752"></script>
+<script src="js/item-pane.js?v=20261102-1752"></script>
+<script src="js/campaign-form.js?v=20261102-1752"></script>
+<script src="js/trade-show-form.js?v=20261102-1752"></script>
+<script src="js/banners.js?v=20261102-1752"></script>
+<script src="js/banner-form.js?v=20261102-1752"></script>
+<script src="js/mailchimp.js?v=20261102-1752"></script>
+<script src="js/style-import.js?v=20261102-1752"></script>
+<script src="js/column-filter.js?v=20261102-1752"></script>
+<script src="js/styles.js?v=20261102-1752"></script>
+<script src="js/style-images.js?v=20261102-1752"></script>
+<script src="js/photoshoots.js?v=20261102-1752"></script>
+<script src="js/photoshoot-form.js?v=20261102-1752"></script>
+<script src="js/magento.js?v=20261102-1752"></script>
+<script src="js/magento-availability.js?v=20261102-1752"></script>
+<script src="js/magento-sales.js?v=20261102-1752"></script>
+<script src="js/magento-n41.js?v=20261102-1752"></script>
+<script src="js/magento-events.js?v=20261102-1752"></script>
+<script src="js/trade-show-import.js?v=20261102-1752"></script>
+<script src="js/magento-groups.js?v=20261102-1752"></script>
+<script src="js/table-view.js?v=20261102-1752"></script>
+<script src="js/exports.js?v=20261102-1752"></script>
+<script src="js/copy-menu.js?v=20261102-1752"></script>
+<script src="js/shortcuts.js?v=20261102-1752"></script>
+<script src="js/calendar.js?v=20261102-1752"></script>
+<script src="js/main.js?v=20261102-1752"></script>
 </body>
 </html>

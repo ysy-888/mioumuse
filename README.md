@@ -231,7 +231,7 @@ filtering and sorting, so it stays quick on a big catalog.
     unavailable group, doesn't show;
   - a **Grouped style** is available when it's Enabled and In Stock (it has
     no qty), *and* at least one of its items is available.
-  The column says Available / Not available and why not ("Salable Qty 0", "Group
+  The column says Available / Not available and why not ("ATS 0", "Group
   T2846 is Disabled", "No available items", "Not in a group"). It's worked
   out from a brief index of the whole catalog (every product's status,
   visibility, qty and Stock Status — loaded with the tab and on Refresh,

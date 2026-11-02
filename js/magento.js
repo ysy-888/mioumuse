@@ -75,7 +75,7 @@ let mgSalableWarned = false;
 let mgTableRenderWaiting = false;
 
 /** The helper version this app expects (HELPER_VERSION in supabase/functions/magento). */
-const MG_HELPER_VERSION = "2026-10-30.10";
+const MG_HELPER_VERSION = "2026-11-02.1";
 
 /** Per action, the last call's timing: { roundTripMs, totalMs, authMs, magentoCalls, magentoMs, slowest… }. */
 const mgTimings = {};
@@ -351,12 +351,21 @@ async function loadMgSalable(seq, items) {
 function warnMgSalable(problem) {
   if (mgSalableWarned) return;
   mgSalableWarned = true;
-  showIndicator(`Couldn't read Salable Qty: ${problem}`, "error");
+  showIndicator(`Couldn't read ATS (Salable Qty): ${problem}`, "error");
 }
 
 function formatMgSalable(product) {
   const value = product.type === "grouped" ? null : mgSalable.get(product.sku);
   return value === null || value === undefined ? EMPTY_DISPLAY : value.toLocaleString();
+}
+
+/** ATS (Salable Qty): green above 0, red at 0 or below. */
+function createMgAtsCell(product) {
+  const value = product.type === "grouped" ? null : mgSalable.get(product.sku);
+  const el = document.createElement("span");
+  el.textContent = formatMgSalable(product);
+  if (typeof value === "number") el.className = `mg-ats ${value > 0 ? "is-pos" : "is-neg"}`;
+  return el;
 }
 
 /** First visit loads everything; later visits keep what's on screen. */
@@ -626,8 +635,8 @@ function createMgStatusSwitch(product) {
 
 /** The list's fields out of a full product, to update a row in place. */
 function pickMgSummary(p) {
-  const { id, sku, name, type, color, colorId, childSkus, groupSource, groupSku, unlinkedGroup, price, specialPrice, status, visibility, categoryIds, qty, inStock, image, urlKey, createdAt, updatedAt } = p;
-  return { id, sku, name, type, color, colorId, childSkus, groupSource, groupSku, unlinkedGroup, price, specialPrice, status, visibility, categoryIds, qty, inStock, image, urlKey, createdAt, updatedAt };
+  const { id, sku, name, type, color, colorId, childSkus, groupSource, groupSku, unlinkedGroup, price, specialPrice, status, visibility, categoryIds, qty, inStock, image, urlKey, preOrderDate, createdAt, updatedAt } = p;
+  return { id, sku, name, type, color, colorId, childSkus, groupSource, groupSku, unlinkedGroup, price, specialPrice, status, visibility, categoryIds, qty, inStock, image, urlKey, preOrderDate, createdAt, updatedAt };
 }
 
 /**
@@ -820,8 +829,9 @@ function renderMgProducts() {
         else td.appendChild(createMgQtyInput(product));
       } else if (col === "salableQty") {
         td.className = "mg-num";
-        td.textContent = formatMgSalable(product);
+        td.appendChild(createMgAtsCell(product));
       } else if (col === "stockStatus") td.appendChild(createMgStockControl(product));
+      else if (col === "preOrderDate") td.textContent = formatMgDate(product.preOrderDate);
       else if (col === "available") td.appendChild(createMgAvailCell(product));
       else if (col === "visibility") td.textContent = MG_VISIBILITY[product.visibility] ?? EMPTY_DISPLAY;
       else if (col === "updatedAt") td.textContent = formatMgDate(product.updatedAt);
@@ -1003,7 +1013,7 @@ async function runMgBulk(op, categoryId = "") {
 
 // ── Product pane ─────────────────────────────────────────────────────────────
 
-const MG_PANE_FIELDS = ["name", "colorId", "price", "specialPrice", "qty", "inStock", "weight", "urlKey", "visibility", "shortDescription", "description", "metaTitle", "metaDescription"];
+const MG_PANE_FIELDS = ["name", "colorId", "price", "specialPrice", "qty", "inStock", "preOrderDate", "weight", "urlKey", "visibility", "shortDescription", "description", "metaTitle", "metaDescription"];
 const MG_NUMBER_FIELDS = new Set(["price", "specialPrice", "qty", "weight", "visibility"]);
 let mgPaneCategorySearch = "";
 
@@ -1109,7 +1119,7 @@ function renderMagentoPane() {
 
   // Grouped items have no stock of their own.
   document.getElementById("mgPaneQtyPair").hidden = saved.type === "grouped";
-  document.getElementById("mgPaneSalable").textContent = formatMgSalable(saved);
+  document.getElementById("mgPaneSalable").replaceChildren(createMgAtsCell(saved));
 
   // Grouping: a Grouped item's Simple items, or the group a Simple item is
   // in — or, when its SKU matches a group it isn't in, that flag.
@@ -1496,7 +1506,9 @@ async function exportMagentoCsv() {
     p.price ?? "",
     p.specialPrice ?? "",
     p.qty ?? "",
+    p.type === "grouped" ? "" : mgSalable.get(p.sku) ?? "",
     mgStockStatusText(p),
+    p.preOrderDate ?? "",
     ...(a => [a.available === true ? "Yes" : a.available === false ? "No" : "", a.reasons.join("; ")])(mgAvailability(p.sku)),
     (p.categoryIds ?? []).map(getMgCategoryPath).join(" | "),
     (p.categoryIds ?? []).join(", "),
@@ -1506,7 +1518,7 @@ async function exportMagentoCsv() {
     p.updatedAt,
   ]);
   downloadCsv(`Magento products ${todayYmd()}`,
-    ["SKU", "Name", "Color", "Type", "Simple Items", "Simple Item SKUs", "Group", "Group Flag", "Status", "Visibility", "Price", "Special Price", "Qty", "Stock Status", "Available", "Why Not Available", "Categories", "Category IDs", "URL Key", "Image URL", "Created", "Updated"],
+    ["SKU", "Name", "Color", "Type", "Simple Items", "Simple Item SKUs", "Group", "Group Flag", "Status", "Visibility", "Price", "Special Price", "Qty", "ATS", "Stock Status", "Pre-Order Date", "Available", "Why Not Available", "Categories", "Category IDs", "URL Key", "Image URL", "Created", "Updated"],
     rows);
   showIndicator(`Exported ${rows.length.toLocaleString()} products`, "success");
 }

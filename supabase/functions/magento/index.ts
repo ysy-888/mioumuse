@@ -70,7 +70,8 @@
  *   inStock (Stock Status: true | false),
  *   colorId (the Color option's id; "" clears it),
  *   categoryIds (the full list — replaces what's there), description,
- *   shortDescription, urlKey, metaTitle, metaDescription
+ *   shortDescription, urlKey, metaTitle, metaDescription,
+ *   preOrderDate ("YYYY-MM-DD"; "" clears it)
  *
  * Saves go to the "all" store scope — the admin's default values, the same
  * as editing with "Default Store View" unchosen in the Magento admin.
@@ -88,7 +89,7 @@ import { AsyncLocalStorage } from "node:async_hooks";
  * copy running in Supabase is older than the app expects. Bump it (and
  * MG_HELPER_VERSION in js/magento.js) whenever this file changes.
  */
-const HELPER_VERSION = "2026-10-30.10";
+const HELPER_VERSION = "2026-11-02.1";
 
 /**
  * Where a request's time went: each Magento call is counted and timed, per
@@ -327,6 +328,44 @@ async function getColorNames() {
   return new Map((await getColorOptions()).map(o => [o.value, o.label]));
 }
 
+// ── Pre-Order Date ───────────────────────────────────────────────────────────
+//
+// The store's own date field, not Magento's — found once, by its label (or
+// code), among the product attributes with "pre" and "order" in their code.
+
+let preOrderCode: string | null = null;
+let preOrderLookup: Promise<string | null> | null = null;
+const PRE_ORDER_RE = /pre[\s_-]?order.*date/i;
+
+function findPreOrderCode() {
+  preOrderLookup ??= (async () => {
+    const q = new URLSearchParams();
+    q.set("searchCriteria[filter_groups][0][filters][0][field]", "attribute_code");
+    q.set("searchCriteria[filter_groups][0][filters][0][value]", "%pre%order%");
+    q.set("searchCriteria[filter_groups][0][filters][0][condition_type]", "like");
+    q.set("searchCriteria[pageSize]", "50");
+    // deno-lint-ignore no-explicit-any
+    const all: any[] = (await mg(`/products/attributes?${q}`))?.items ?? [];
+    const found = all.find(a => PRE_ORDER_RE.test(String(a.default_frontend_label ?? a.frontend_label ?? "")))
+      ?? all.find(a => PRE_ORDER_RE.test(String(a.attribute_code)))
+      ?? all.find(a => ["date", "datetime"].includes(String(a.frontend_input)));
+    preOrderCode = found ? String(found.attribute_code) : null;
+    return preOrderCode;
+  })().catch(() => {
+    preOrderLookup = null; // asked again next time
+    return null;
+  });
+  return preOrderLookup;
+}
+
+/** "YYYY-MM-DD" or "" — by the code found, else any code that looks like it. */
+// deno-lint-ignore no-explicit-any
+function preOrderDate(p: any) {
+  // deno-lint-ignore no-explicit-any
+  const attr = (p.custom_attributes ?? []).find((a: any) => preOrderCode ? a.attribute_code === preOrderCode : PRE_ORDER_RE.test(a.attribute_code));
+  return attr?.value ? String(attr.value).slice(0, 10) : "";
+}
+
 /** The columns the app sorts by, and Magento's names for them. */
 const SORT_FIELDS: Record<string, string> = {
   name: "name",
@@ -376,6 +415,7 @@ function summarize(p: any, colors: Map<string, string>) {
     inStock: stock ? Boolean(stock.is_in_stock) : null,
     image: customAttr(p, "thumbnail") || customAttr(p, "small_image") || customAttr(p, "image") || "",
     urlKey: customAttr(p, "url_key") ?? "",
+    preOrderDate: preOrderDate(p),
     createdAt: p.created_at ?? "",
     updatedAt: p.updated_at ?? "",
   };
@@ -495,6 +535,13 @@ function buildProductPayload(sku: string, c: Record<string, unknown>) {
   Object.entries(text).forEach(([key, code]) => {
     if (has(key)) custom.push({ attribute_code: code, value: String(c[key] ?? "") });
   });
+  // Blank clears it.
+  if (has("preOrderDate")) {
+    if (!preOrderCode) throw new UserError("Couldn't find the Pre-Order Date field in Magento. Give the integration Stores → Attributes → Product access, then Refresh.");
+    const date = String(c.preOrderDate ?? "").trim();
+    if (date && !/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new UserError("Pre-Order Date must be a date.");
+    custom.push({ attribute_code: preOrderCode, value: date });
+  }
   if (custom.length) product.custom_attributes = custom;
   return product;
 }
@@ -1485,6 +1532,7 @@ const actions: Record<string, (p: any) => Promise<unknown>> = {
 
   async products(params) {
     const colorsLoading = getColorNames();
+    const preOrderLoading = findPreOrderCode();
     // deno-lint-ignore no-explicit-any
     let raw: any[];
     let total: number;
@@ -1509,6 +1557,7 @@ const actions: Record<string, (p: any) => Promise<unknown>> = {
       pageSize = built.pageSize;
     }
     const colors = await colorsLoading;
+    await preOrderLoading;
     const summaries = raw.map(p => summarize(p, colors));
     // Stock costs extra calls (one per Grouped item). The app skips it
     // (withStock: false) when its catalog index already has every product's
@@ -1893,7 +1942,7 @@ const actions: Record<string, (p: any) => Promise<unknown>> = {
 
   async product({ sku }) {
     if (!sku) throw new UserError("Which product?");
-    const [p, colors] = await Promise.all([getProduct(sku), getColorNames()]);
+    const [p, colors] = await Promise.all([getProduct(sku), getColorNames(), findPreOrderCode()]);
     return addSalable((await addStock([detail(p, colors)]))[0]);
   },
 
@@ -1905,7 +1954,7 @@ const actions: Record<string, (p: any) => Promise<unknown>> = {
 
   async update({ sku, changes }) {
     if (!sku) throw new UserError("Which product?");
-    const colors = await getColorNames();
+    const [colors] = await Promise.all([getColorNames(), findPreOrderCode()]);
     if (!changes || typeof changes !== "object" || !Object.keys(changes).length) return (await addStock([detail(await getProduct(sku), colors)]))[0];
     // Qty and Stock Status aren't part of the product: they're saved to its stock.
     const { qty, inStock, ...fields } = changes;

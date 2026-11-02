@@ -7840,7 +7840,7 @@ th.th-select { text-align: center; cursor: default; padding-left: 4px; padding-r
 }
 .mg-connection.is-error { color: var(--danger); font-weight: 600; cursor: help; }
 
-.mg-products-table { min-width: 2010px; }
+.mg-products-table { min-width: 2130px; }
 .mg-products-table .col-available  { width: 150px; min-width: 140px; }
 .mg-products-table .col-stock      { width: 120px; min-width: 110px; }
 .mg-products-table .col-color      { width: 120px; min-width: 100px; }
@@ -7851,6 +7851,7 @@ th.th-select { text-align: center; cursor: default; padding-left: 4px; padding-r
 .mg-products-table .col-price      { width: 120px; min-width: 100px; }
 .mg-products-table .col-qty        { width: 80px;  min-width: 70px; }
 .mg-products-table .col-salable    { width: 100px; min-width: 100px; }
+.mg-products-table .col-preorder   { width: 120px; min-width: 110px; }
 .mg-products-table .col-visibility { width: 140px; min-width: 120px; }
 .mg-products-table .col-status     { width: 130px; min-width: 120px; }
 /* Categories takes whatever room is left. */
@@ -8005,6 +8006,16 @@ th.th-select { text-align: center; cursor: default; padding-left: 4px; padding-r
 .mg-stock-select:disabled { cursor: progress; opacity: 0.6; }
 .mg-stock-select.is-in  { background-color: #e1f5ee; color: #0f6e56; }
 .mg-stock-select.is-out { background-color: #fde7ea; color: #a3233a; }
+.mg-ats {
+  display: inline-block;
+  min-width: 34px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-weight: 600;
+  text-align: center;
+}
+.mg-ats.is-pos { background: #e1f5ee; color: #0f6e56; }
+.mg-ats.is-neg { background: #fde7ea; color: #a3233a; }
 .mg-stock-select option { background: var(--surface); color: var(--text); }
 /* Qty in the table: reads as a number until hovered or clicked. */
 .mg-qty-input {

@@ -218,7 +218,7 @@ function mgOwnConditions(sku) {
   if (r.type !== "grouped") {
     const salable = mgSalable.get(sku);
     if (typeof salable === "number") {
-      if (salable <= 0) reasons.push(`Salable Qty ${salable}`);
+      if (salable <= 0) reasons.push(`ATS ${salable}`);
     } else if (r.qty === null || r.qty === undefined) unknown = true;
     else if (r.qty < 1) reasons.push(`Qty ${r.qty}`);
   }
