@@ -59,12 +59,12 @@ reference in index.html so the URLs change on every deploy.
 | `js/banner-form.js` | Add / edit banner modal — image upload, pixel size, up to 4 Style # / Color rows |
 | `js/mailchimp.js` | Mailchimp links on Email tasks — create / edit / schedule / delete, link picker, sync and auto-complete |
 | `supabase/functions/mailchimp/` | Edge Function the app calls for Mailchimp; holds the API key (secret `MAILCHIMP_API_KEY`) |
-| `js/styles.js` | Styles tab — the style database table, status / season / category filters, search |
+| `js/styles.js` | Styles tab — the style database table, Category / Season / N41 Status / IHD header filters, No photos button, search |
 | `js/style-import.js` | Import Excel — reads the N41 ATS export in the browser, lists every change under Update / New Styles / New Colors tabs, saves, and records it for Update history |
 | `js/style-images.js` | Style photos from a linked network folder — matched by file name, thumbnails, gallery |
 | `js/style-pane.js` | The style pane — a style's details, POs and photos, opened from Styles, Need to Shoot and POs |
 | `js/photoshoots.js` | The Photoshoots and Need to Shoot pages — the shoots list, the Need to Shoot list, the shoot side pane, shoot status badges |
-| `js/purchase-orders.js` | The POs page — reading the cost sheet, setting IHDs from Store In, PO lines by month with each colour and its shoot buttons |
+| `js/purchase-orders.js` | The POs page — reading the cost sheet, setting IHDs from Store In, the month list (with archiving), PO lines by month with each colour and its shoot buttons |
 | `js/photoshoot-form.js` | Create / edit photoshoot modal |
 | `js/magento-sales.js` | Magento → Orders and Customers (read-only): lists with Status / Group filters, date quick filters, search, sort, paging; the order / customer pane |
 | `js/magento-n41.js` | Magento → Orders against N41: Import N41 Sales Orders, N41 Status, the Closed on N41 filter, tick orders and cancel them on Magento |
@@ -75,6 +75,7 @@ reference in index.html so the URLs change on every deploy.
 | `js/shortcuts.js` | Keyboard shortcuts on table pages: ← / → turn pages, Space jumps to search |
 | `js/copy-menu.js` | Right-click → Copy: style numbers (Styles, Need to Shoot, the shoot pane) and Magento product names |
 | `js/table-view.js` | Header menu → Table view: show / hide and reorder any table's columns, saved as that table's default to your account (`table_views`) |
+| `js/table-pager.js` | Paging for Styles and Need to Shoot: the footer's First / Prev / Next / Last and rows per page (remembered per table) |
 | `js/exports.js` | CSV downloads and printable (Save as PDF) reports — each photoshoot, the banners, and the header menu's Export CSV / PDF |
 | `js/calendar.js` | Home calendar of every campaign, show, and task, with the upcoming rail |
 | `js/main.js` | Boot |
@@ -85,7 +86,7 @@ On the table pages (`js/shortcuts.js`):
 
 | Key | Does |
 |---|---|
-| ← / → | Previous / next page — Magento Products, Orders, Customers. On Styles, → shows the next batch. Tables that fit on one page ignore them. |
+| ← / → | Previous / next page — Magento Products, Orders, Customers, Styles and Need to Shoot. Tables that fit on one page ignore them. |
 | Space | Jumps to the page's search box; text already there is selected, to type over or edit. |
 
 They stand aside while you're typing (a text box, dropdown or checkbox),
@@ -109,10 +110,10 @@ dropped — `ET6157-BLACK` copies `ET6157`).
 Header menu (⋮) → **Table view** sets which columns a table shows and in
 what order. It opens on the table of the page you're on; the **Table** list
 switches to any other (Campaigns, Trade Shows, Banners, Styles, Need to
-Shoot, Shoots, Magento Products).
+Shoot, POs, Shoots, Magento Products).
 
-- **Show columns**: tick or untick. The tick-box column always stays, and
-  at least one other column has to.
+- **Show columns**: tick or untick. The tick-box column (and on POs, the PO
+  column) always stays first, and at least one other column has to.
 - **Column order**: drag a column up or down (or focus it and press Alt+↑ /
   Alt+↓).
 - **Save as default** applies it and remembers it for that table. A column
@@ -489,6 +490,15 @@ change is listed under three tabs — the count boxes across the top (the file a
   color; the row lists the colors it already has.
 
 Confirming saves only new and changed styles. Styles missing from a newer file are left as they are.
+Deleted styles in the file are skipped (the line under the title counts them).
+
+**Deleting styles:** tick them in the Styles table and click **Delete**. A
+deleted Style # + Color stays in the database, marked with `deleted_at`, but
+it's left out everywhere in the app (Styles, Need to Shoot, POs, banners),
+and an import skips it, so it doesn't come back. Any still waiting on Need to Shoot come
+off it. The trash button in the toolbar (there once something's deleted)
+shows the deleted styles instead; tick some and **Restore** brings them
+back. Needs the `deleted_at` SQL in `supabase-schema.sql`.
 
 Each import that saves anything is recorded in full. **Update History**
 (header menu ⋮, on the Styles tab) lists them newest first — when, which
@@ -496,12 +506,23 @@ file, and how many updated / new / unchanged — and opening one shows its
 Update, New Styles and New Colors tabs again — click a row for the style's detail window. Each row has the Styles table's shoot buttons, and the two New tabs have **Add all to Need to Shoot** (as New Style or New Color) (everything on the tab, as searched; ones already waiting are skipped). Records live in the `style_imports` table (see
 `supabase-schema.sql`); imports made before it was added aren't recorded.
 
+**Notes** on each Style # + Color are typed right in the Notes column of
+the Styles, Need to Shoot or POs table, or in the style pane's bigger box.
+They save when you leave the box (or press Enter in the table); Esc undoes.
+The Styles search covers them, and importing never touches them. Needs
+the `notes` SQL in `supabase-schema.sql`.
+
 **IHD** (in-house date) is edited right in the Styles table. It shows as
 MM/DD/YY, and the first click selects the whole date, so it can be copied
 or pasted over. A typed or pasted date (10/28/26, 10/28/2026, 2026-10-28,
 10/28 for this year, or bare digits: 1028, 102826, 10282026) saves on Enter or when you leave the cell, and Esc
 undoes it. The calendar button picks a date, and ✕ (on hover) clears it.
 It isn't part of the ATS export, and re-importing never touches it.
+
+The table filters from its **Category**, **Season**, **N41 Status** and
+**IHD** headers (COMPANY and CANCEL start unticked under N41 Status). The
+**No photos** button (crossed-out picture) shows only colours with no photos
+that aren't COMPANY, CANCEL or INACTIVE; it needs the image folder linked.
 
 Banner Style # fields look styles up as you type: suggestions, the style's
 colours, and its description and status under the row and in the banner pane.
@@ -536,15 +557,21 @@ each visit. Only computers that can reach the server see the photos.
 
 **Need to Shoot** is a flag on a Style # + Color, with a reason: **New
 Style**, **New Color** or **Reshoot**. Any of the three puts the style on the
-list. In the Shoot cell (Styles, Need to Shoot, POs) the lit button is the
-reason it's waiting: click it again to take the style off, or another to
-change the reason. A dashed outline is the suggested reason. To flag many,
+list. In the Shoot cell (Styles, Need to Shoot, POs) they're icons — a
+T-shirt for New Style, a paint bucket for New Color, a camera for Reshoot —
+and the filled one is the reason it's waiting: click it again to take the
+style off, or another to change the reason. A dashed outline is the
+suggested reason. To flag many,
 tick styles in the Styles tab and use the **Need to Shoot: New Style / New
-Color / Reshoot** buttons. Need to Shoot also filters by reason.
+Color / Reshoot** buttons. Need to Shoot also filters by reason (the same three icons).
+The IHD months down the left of Need to Shoot filter the list: **Show
+all**, **No IHD**, then each month some style on the list arrives in, in a
+folder per year (click a year to open or close it), with its style count.
 
 **Style pane**: click a style on Styles, Need to Shoot or POs and it opens on
 the right — description, category, season, N41 status, IHD (editable), the
-shoot buttons and its POs from the cost sheet, then every photo of it, one under
+shoot buttons and its POs from the cost sheet (folded to a count — click to
+see them), then every photo of it, one under
 the other (click one for full size). Esc or ✕ closes it.
 
 ### POs
@@ -569,16 +596,30 @@ each time.
 Reading it takes every tab named like `11.2026`, the header row with **STYLE
 #**, and lines with dept **S** (new) or **SR** (recut). Company (**C**) lines
 are skipped. Each read replaces the saved PO lines and sets each style's IHD
-(every colour) from Store In: the next one from today, or the latest if all
-have passed.
+(every colour) from Store In: the soonest one that hasn't passed, or the latest
+if all have. A Store In stops counting the day after it passes: each time the
+app opens (and when a new day starts with it open) the saved PO lines are
+checked again, so the IHD moves to the next Store In even if the sheet hasn't
+changed.
+
+The months are listed down the left of the page, oldest first, in a folder per
+year (click a year to open or close it), with how many
+styles each has; click one to show it. The box icon on a month (on hover)
+**archives** it: it moves to the **Archived** group at the bottom of the list
+(click it to open), still viewable, but its Store Ins no longer set IHDs. A
+style whose POs are all in archived months has its IHD cleared, unless the
+IHD isn't one of those Store Ins (typed in by hand). The arrow icon on an
+archived month brings it back. Archives are kept in the `po_month_archive`
+table (see `supabase-schema.sql`), so re-reading the sheet keeps them.
 
 Suggestions (a pale fill on the button) are only for colours with no photos:
 **New Style** on a new PO (S), **New Color** on a recut (SR). Colours already
-waiting or with N41 status CANCEL aren't suggested, and nothing is without the image folder linked.
+waiting or with N41 status CANCEL or INACTIVE aren't suggested, and nothing is without the image folder linked.
 A note under the toolbar counts the month's colours with no photos that aren't
 on Need to Shoot; **Show them** (or **Suggested**) filters the page to just
 those, and then **Add suggested to Need to Shoot** appears to add them all. Reshoot is
-always chosen by hand.
+always chosen by hand. **Need to Shoot** filters the page to the colours already
+waiting on Need to Shoot (not yet shot).
 
 A cost-sheet style is matched to the Styles database by its base Style #
 (`T6941-RE4` → `T6941`, `J5937(B)` → `J5937`, and `P5674ST` falls back to
@@ -615,8 +656,10 @@ styles without one. A filtered header turns dark; tick everything (Select
 all) to remove the filter. 
 
 Need to Shoot and Shoots sort by clicking a column header: ascending, then
-descending, then back to the default order. Blank values always sort last.
-Need to Shoot's default order is IHD, soonest first.
+descending, then back to the default order. Blank values sort last — except
+IHD (and a shoot's Latest IHD): soonest first puts the ones with no IHD at
+the top.
+Need to Shoot's default order is IHD, soonest first (no IHD on top).
 
 ### Exports
 

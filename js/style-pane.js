@@ -7,6 +7,8 @@
 
 let paneStyle = null; // { styleNo, color } while the pane is open
 let stylePaneUrls = [];
+/** The style (styleKey) whose PO list is unfolded, if any. */
+let stylePanePosOpenFor = "";
 
 function revokeStylePaneUrls() {
   stylePaneUrls.forEach(url => URL.revokeObjectURL(url));
@@ -33,9 +35,22 @@ function renderStylePaneSummary(style) {
     return [l, v];
   };
 
+  // Folded to a one-line count; click to see every line. Stays open across
+  // redraws of the same style.
+  const lines = getStylePoLines(style.styleNo);
+  const key = styleKey(style.styleNo, style.color);
+  const posBox = document.createElement("details");
+  posBox.className = "style-pane-pos-box";
+  posBox.open = stylePanePosOpenFor === key;
+  posBox.addEventListener("toggle", () => { stylePanePosOpenFor = posBox.open ? key : ""; });
+  const posSummary = document.createElement("summary");
+  posSummary.className = "style-pane-pos-summary";
+  posSummary.textContent = `${lines.length} ${lines.length === 1 ? "PO" : "POs"}` +
+    (lines.length ? ` · latest ${formatPoMonth(lines[0].month)}` : "");
   const pos = document.createElement("div");
   pos.className = "style-pane-pos";
-  getStylePoLines(style.styleNo).forEach(line => {
+  posBox.append(posSummary, pos);
+  lines.forEach(line => {
     const row = document.createElement("div");
     row.className = "style-pane-po";
     const month = document.createElement("span");
@@ -55,7 +70,17 @@ function renderStylePaneSummary(style) {
     ...field("N41 Status", style.status ? createStyleStatusPill(style.status) : ""),
     ...field("IHD", createIhdInput(style, { onSaved: () => refreshPhotoshootViews() })),
     ...field("Shoot", createStyleShootCell(style)),
-    ...field("POs", pos.childElementCount ? pos : ""),
+    ...field("POs", lines.length ? posBox : ""),
+    ...field("Notes", createStyleNotesInput(style, {
+      multiline: true,
+      // The Styles, Need to Shoot and POs tables show notes too.
+      onSaved: () => {
+        const view = getCurrentAppView();
+        if (view === "styles") applyStyleFilters({ keepShown: true });
+        else if (view === "needToShoot") renderNeedTable();
+        else if (view === "pos") renderPoView();
+      },
+    })),
   );
 }
 
@@ -148,6 +173,12 @@ function refreshStylePane() {
   if (!paneStyle) return;
   renderStylePane();
   syncStylePaneRows();
+}
+
+/** After a field edit: redraw just the details, so the photos don't reload. */
+function refreshStylePaneSummary() {
+  const style = paneStyle && findStyle(paneStyle.styleNo, paneStyle.color);
+  if (style) renderStylePaneSummary(style);
 }
 
 function initStylePane() {

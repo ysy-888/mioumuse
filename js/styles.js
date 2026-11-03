@@ -1,23 +1,25 @@
 /**
  * Styles — the style database imported from the N41 ATS export.
  *
- * A table of every Style # + Color, filtered by N41 status from its column
- * header and by season and category from the two selects, with search across all
- * of it. Thousands of rows, so the table draws a page at a time and grows
+ * A table of every Style # + Color, filtered from the Category, Season, N41
+ * Status and IHD column headers, by the No photos button, and by search
+ * across all of it. Thousands of rows, so the table draws a page at a time and grows
  * with "Show more".
  *
  * Rows can be ticked (or all of the current view at once) and added to the
- * Need to Shoot list; the Shoot column shows where each style stands.
+ * Need to Shoot list, or deleted (kept in the database so imports skip them;
+ * the trash button lists them to restore); the Shoot column shows where each
+ * style stands.
  */
 
-const STYLE_PAGE = 300;
-
 let filteredStyles = [];
-let styleSeasonFilter = "";
-let styleCategoryFilter = "";
+let styleNoPhotosOnly = false; // needs the image folder
+/** The deleted styles instead of the rest, to restore some. Search only. */
+let styleShowDeleted = false;
 let styleSortCol = null;
 let styleSortDir = 1;
-let styleShown = STYLE_PAGE;
+let stylePage = 1;
+let stylePageSize = TABLE_PAGE_SIZE_DEFAULT; // read once the page loads (initStyles)
 
 /**
  * Ticked rows, by styleKey. Kept across filtering and searching, so a
@@ -32,18 +34,20 @@ const STYLE_COLUMNS = {
   category: { value: s => s.category },
   season: { value: s => s.season },
   status: { value: s => s.status },
-  // "YYYY-MM-DD" sorts as a date; blanks sort last either way.
+  // "YYYY-MM-DD" sorts as a date; blanks on top soonest first, at the bottom latest first.
   ihd: { value: s => fixTwoDigitYear(s.ihd) }, // an old 0026-… sorts as 2026, as it shows
+  notes: { value: s => s.notes ?? "" },
 };
 
-/** Distinct values of a field, most common first — for the filter controls. */
-function countStyleValues(field) {
-  const counts = new Map();
-  getAllStyles().forEach(s => counts.set(s[field], (counts.get(s[field]) ?? 0) + 1));
-  return [...counts.entries()].sort((a, b) => b[1] - a[1]);
+/** Statuses the No photos button leaves out (CANCEL also covers CANCELLED…). */
+const NO_PHOTOS_SKIP_STATUSES = ["COMPANY", "CANCEL", "INACTIVE"];
+
+/** The styles the table is showing: the live ones, or the deleted ones. */
+function getShownStyleSource() {
+  return styleShowDeleted ? getDeletedStyles() : getAllStyles();
 }
 
-/** N41 Status header filter: a key per status, blank as (Blank). */
+/** Header filters (N41 Status, Category, Season): a key per value, blank as (Blank). */
 function statusFilterKey(status) {
   return String(status ?? "").trim() || BLANK_FILTER_LABEL;
 }
@@ -67,8 +71,9 @@ function isStatusHiddenByDefault(key) {
 
 function compareStyles(a, b) {
   if (styleSortCol) {
-    // compareSortValues (js/photoshoots.js) keeps blanks last in both directions.
-    const primary = compareSortValues(STYLE_COLUMNS[styleSortCol].value(a), STYLE_COLUMNS[styleSortCol].value(b), styleSortDir);
+    // compareSortValues (js/photoshoots.js) keeps blanks last — but IHD soonest first puts them on top.
+    const primary = compareSortValues(STYLE_COLUMNS[styleSortCol].value(a), STYLE_COLUMNS[styleSortCol].value(b), styleSortDir,
+      { blankFirstAscending: BLANK_FIRST_SORT_COLUMNS.has(styleSortCol) });
     if (primary !== 0) return primary;
   }
   return a.styleNo.localeCompare(b.styleNo, undefined, { numeric: true }) || a.color.localeCompare(b.color);
@@ -77,43 +82,62 @@ function compareStyles(a, b) {
 function applyStyleFilters({ keepShown = false } = {}) {
   const q = (document.getElementById("styleSearchInput")?.value ?? "").trim().toLowerCase();
   setActiveSearchQuery(q);
+  const noPhotos = styleNoPhotosOnly && arePhotosKnown();
 
-  filteredStyles = getAllStyles().filter(s => {
+  filteredStyles = getShownStyleSource().filter(s => {
+    if (styleShowDeleted) return !q || `${s.styleNo} ${s.color} ${s.description} ${s.category} ${s.season} ${s.status} ${s.notes ?? ""}`.toLowerCase().includes(q);
     if (!columnFilterPasses("stylesTable", "status", statusFilterKey(s.status))) return false;
-    if (styleSeasonFilter && s.season !== styleSeasonFilter) return false;
-    if (styleCategoryFilter && s.category !== styleCategoryFilter) return false;
+    if (!columnFilterPasses("stylesTable", "category", statusFilterKey(s.category))) return false;
+    if (!columnFilterPasses("stylesTable", "season", statusFilterKey(s.season))) return false;
+    if (noPhotos && (NO_PHOTOS_SKIP_STATUSES.some(st => statusFilterKey(s.status).toUpperCase().startsWith(st)) || hasStyleImages(s.styleNo, s.color))) return false;
     if (!columnFilterPasses("stylesTable", "ihd", monthFilterKey(s.ihd))) return false;
     if (!q) return true;
-    return `${s.styleNo} ${s.color} ${s.description} ${s.category} ${s.season} ${s.status}`.toLowerCase().includes(q);
+    return `${s.styleNo} ${s.color} ${s.description} ${s.category} ${s.season} ${s.status} ${s.notes ?? ""}`.toLowerCase().includes(q);
   });
   filteredStyles.sort(compareStyles);
-  if (!keepShown) styleShown = STYLE_PAGE;
+  // A new search or filter starts at page 1; a redraw (a save, a photo scan) stays put.
+  stylePage = keepShown ? clampTablePage(stylePage, filteredStyles.length, stylePageSize) : 1;
 
   renderStyleFilters();
   renderStylesTable();
   const counter = document.getElementById("stylesRowCounter");
   if (counter) {
     const n = filteredStyles.length;
-    counter.textContent = n === 1 ? "1 style" : `${n.toLocaleString()} styles`;
+    const noun = styleShowDeleted ? "deleted style" : "style";
+    counter.textContent = n === 1 ? `1 ${noun}` : `${n.toLocaleString()} ${noun}s`;
   }
 }
 
 // ── Filters ──────────────────────────────────────────────────────────────────
 
-/** The season / category selects, rebuilt from the data. */
+/**
+ * The No photos button: only usable once the image folder has been read.
+ * The Deleted button: there once anything's deleted. Showing the deleted
+ * styles turns the rest of the filters off.
+ */
 function renderStyleFilters() {
-  const fillSelect = (id, field, current, label) => {
-    const select = document.getElementById(id);
-    if (!select) return;
-    const values = countStyleValues(field).filter(([v]) => v).sort((a, b) => a[0].localeCompare(b[0]));
-    select.replaceChildren(
-      new Option(`All ${label}`, ""),
-      ...values.map(([v, n]) => new Option(`${v} (${n.toLocaleString()})`, v)),
-    );
-    select.value = current;
-  };
-  fillSelect("styleSeasonFilter", "season", styleSeasonFilter, "seasons");
-  fillSelect("styleCategoryFilter", "category", styleCategoryFilter, "categories");
+  const btn = document.getElementById("styleNoPhotosBtn");
+  if (btn) {
+    const known = arePhotosKnown() && !styleShowDeleted;
+    btn.classList.toggle("active", known && styleNoPhotosOnly);
+    btn.setAttribute("aria-pressed", String(known && styleNoPhotosOnly));
+    btn.disabled = !known;
+    btn.title = btn.getAttribute("aria-label") + (!styleShowDeleted && !arePhotosKnown() ? " — link the image folder (menu ⋮) to filter by photos" : "");
+  }
+  const deleted = document.getElementById("styleDeletedBtn");
+  if (deleted) {
+    const count = getDeletedStyles().length;
+    deleted.hidden = !count && !styleShowDeleted;
+    deleted.classList.toggle("active", styleShowDeleted);
+    deleted.setAttribute("aria-pressed", String(styleShowDeleted));
+    deleted.title = `${deleted.getAttribute("aria-label")} (${count.toLocaleString()})`;
+  }
+}
+
+function setStyleShowDeleted(on) {
+  styleShowDeleted = on;
+  selectedStyleKeys = new Set();
+  applyStyleFilters();
 }
 
 // ── Table ────────────────────────────────────────────────────────────────────
@@ -160,14 +184,17 @@ function renderStylesTable() {
   const cols = [...document.querySelectorAll("#stylesTable thead th[data-col]")].map(th => th.dataset.col);
 
   if (filteredStyles.length === 0) {
-    const msg = getAllStyles().length === 0
-      ? "No styles yet — use Import Excel in the menu (⋮) to load the ATS export."
-      : "No styles match the current filters.";
+    const msg = styleShowDeleted
+      ? (getDeletedStyles().length ? "No deleted styles match the search." : "No deleted styles.")
+      : getAllStyles().length === 0
+        ? "No styles yet — use Import Excel in the menu (⋮) to load the ATS export."
+        : "No styles match the current filters.";
     tbody.innerHTML = `<tr class="state-row"><td colspan="${cols.length}">${escapeHtml(msg)}</td></tr>`;
+    renderStylesPager();
     return;
   }
 
-  const rows = filteredStyles.slice(0, styleShown).map(style => {
+  const rows = filteredStyles.slice((stylePage - 1) * stylePageSize, stylePage * stylePageSize).map(style => {
     const tr = document.createElement("tr");
     // Click a row for all of its photos.
     tr.className = "clickable-row";
@@ -180,6 +207,7 @@ function renderStylesTable() {
       else if (col === "image") td.appendChild(createStyleThumb(style.styleNo, style.color));
       else if (col === "shoot") td.appendChild(createStyleShootCell(style));
       else if (col === "ihd") td.appendChild(createIhdInput(style));
+      else if (col === "notes") td.appendChild(createStyleNotesInput(style, { onSaved: refreshStylePaneSummary }));
       else if (col === "status") td.appendChild(createStyleStatusPill(style.status));
       else mountSearchHighlightedText(td, STYLE_COLUMNS[col].value(style));
       if (col === "description" && style.description) td.title = style.description;
@@ -188,27 +216,81 @@ function renderStylesTable() {
     return tr;
   });
 
-  const remaining = filteredStyles.length - styleShown;
-  if (remaining > 0) {
-    const tr = document.createElement("tr");
-    tr.className = "state-row style-more-row";
-    const td = document.createElement("td");
-    td.colSpan = cols.length;
-    const btn = document.createElement("button");
-    btn.type = "button";
-    btn.className = "btn";
-    btn.textContent = `Show ${Math.min(STYLE_PAGE, remaining).toLocaleString()} more (${remaining.toLocaleString()} left)`;
-    btn.addEventListener("click", () => {
-      styleShown += STYLE_PAGE;
-      renderStylesTable();
-    });
-    td.appendChild(btn);
-    tr.appendChild(td);
-    rows.push(tr);
-  }
   tbody.replaceChildren(...rows);
+  renderStylesPager();
   syncStyleSelectionUi();
   syncStylePaneRows();
+}
+
+function renderStylesPager() {
+  renderTablePager("stylesPager", {
+    total: filteredStyles.length,
+    page: stylePage,
+    pageSize: stylePageSize,
+    noun: "Styles",
+    onPage: n => {
+      stylePage = n;
+      renderStylesTable();
+      document.getElementById("stylesTableWrap")?.scrollTo({ top: 0 });
+    },
+    onPageSize: n => {
+      stylePageSize = n;
+      saveTablePageSize("stylesTable", n);
+      stylePage = 1;
+      renderStylesTable();
+    },
+  });
+}
+
+// ── Notes ────────────────────────────────────────────────────────────────────
+//
+// Free text on a Style # + Color, edited in place: a one-line box in the
+// table, a taller one in the style pane. Saves when you leave it (or Enter
+// in the table); Esc undoes the edit.
+
+function createStyleNotesInput(style, { multiline = false, onSaved } = {}) {
+  const box = document.createElement(multiline ? "textarea" : "input");
+  if (!multiline) box.type = "text";
+  box.className = multiline ? "cell-notes-input cell-notes-input--pane" : "cell-notes-input";
+  if (multiline) box.rows = 3;
+  box.placeholder = multiline ? "Add a note" : "";
+  box.autocomplete = "off";
+  box.value = style.notes ?? "";
+  box.title = style.notes ?? "";
+  box.setAttribute("aria-label", `Notes for ${style.styleNo} ${style.color}`);
+
+  const show = () => {
+    box.value = style.notes ?? "";
+    box.title = style.notes ?? "";
+  };
+  box.addEventListener("keydown", e => {
+    if (e.key === "Enter" && !multiline) {
+      e.preventDefault();
+      box.blur(); // blur saves
+    } else if (e.key === "Escape") {
+      e.stopPropagation();
+      show();
+      box.blur();
+    }
+  });
+  box.addEventListener("blur", async () => {
+    const value = box.value.trim();
+    if (value === (style.notes ?? "")) return show();
+    box.classList.add("is-saving");
+    try {
+      await setStyleNotes(style.styleNo, style.color, value);
+      show();
+      box.classList.add("is-saved");
+      setTimeout(() => box.classList.remove("is-saved"), 1200);
+      onSaved?.();
+    } catch (err) {
+      show();
+      showIndicator(err.message || "Couldn't save the note.", "error");
+    } finally {
+      box.classList.remove("is-saving");
+    }
+  });
+  return box;
 }
 
 // ── IHD (in-house date) ──────────────────────────────────────────────────────
@@ -355,7 +437,7 @@ function createStyleCheckbox(style) {
 }
 
 function getSelectedStyles() {
-  return getAllStyles().filter(s => selectedStyleKeys.has(styleKey(s.styleNo, s.color)));
+  return getShownStyleSource().filter(s => selectedStyleKeys.has(styleKey(s.styleNo, s.color)));
 }
 
 /** The header box (all / some / none of the filtered rows) and the action bar. */
@@ -373,6 +455,53 @@ function syncStyleSelectionUi() {
     bar.hidden = n === 0;
     const count = document.getElementById("styleSelectionCount");
     if (count) count.textContent = `${n.toLocaleString()} selected`;
+    // Deleted styles can only be restored.
+    bar.querySelectorAll("#styleShootLabel, [data-shoot-reason], #styleDeleteBtn").forEach(el => { el.hidden = styleShowDeleted; });
+    document.getElementById("styleRestoreBtn").hidden = !styleShowDeleted;
+  }
+}
+
+/**
+ * Delete the ticked styles: hidden everywhere in the app and skipped by
+ * later imports, but kept in the database, so they can be restored. Any
+ * still waiting on Need to Shoot come off it.
+ */
+async function deleteSelectedStyles() {
+  const styles = getSelectedStyles();
+  if (!styles.length) return;
+  const waiting = styles.filter(s => {
+    const entry = getShootListEntry(s.styleNo, s.color);
+    return entry && !entry.shotShootId;
+  });
+  const n = styles.length === 1 ? `${styles[0].styleNo} ${styles[0].color}` : `${styles.length.toLocaleString()} styles`;
+  const extra = waiting.length ? `\n\n${waiting.length.toLocaleString()} of them ${waiting.length === 1 ? "comes" : "come"} off Need to Shoot.` : "";
+  if (!confirm(`Delete ${n}?\n\nThey're hidden from the app and skipped when the ATS export is imported again. Restore them from the Deleted styles button.${extra}`)) return;
+  try {
+    await setStylesDeleted(styles, true);
+    if (waiting.length) await removeFromShootList(waiting);
+    clearStyleSelection();
+    applyStyleFilters({ keepShown: true });
+    refreshPhotoshootViews();
+    showIndicator(`Deleted ${n}`, "success");
+  } catch (err) {
+    showIndicator(err.message || "Couldn't delete.", "error");
+  }
+}
+
+async function restoreSelectedStyles() {
+  const styles = getSelectedStyles();
+  if (!styles.length) return;
+  const n = styles.length === 1 ? `${styles[0].styleNo} ${styles[0].color}` : `${styles.length.toLocaleString()} styles`;
+  try {
+    await setStylesDeleted(styles, false);
+    selectedStyleKeys = new Set();
+    // Nothing left to restore: back to the styles.
+    if (!getDeletedStyles().length) styleShowDeleted = false;
+    applyStyleFilters({ keepShown: true });
+    refreshPhotoshootViews();
+    showIndicator(`Restored ${n}`, "success");
+  } catch (err) {
+    showIndicator(err.message || "Couldn't restore.", "error");
   }
 }
 
@@ -424,12 +553,23 @@ function sortStylesBy(col) {
 // ── Init ─────────────────────────────────────────────────────────────────────
 
 function initStylesView() {
+  stylePageSize = readTablePageSize("stylesTable");
   document.querySelectorAll("#stylesTable thead th[data-col]").forEach(th => {
     if (!STYLE_COLUMNS[th.dataset.col]) th.classList.add("th-no-sort");
     th.addEventListener("click", () => sortStylesBy(th.dataset.col));
   });
   initColumnFilter("stylesTable", "ihd", {
     options: () => monthFilterOptions(getAllStyles().map(s => s.ihd)),
+    onChange: () => applyStyleFilters(),
+    sortable: true,
+  });
+  initColumnFilter("stylesTable", "category", {
+    options: () => statusFilterOptions(getAllStyles().map(s => s.category)),
+    onChange: () => applyStyleFilters(),
+    sortable: true,
+  });
+  initColumnFilter("stylesTable", "season", {
+    options: () => statusFilterOptions(getAllStyles().map(s => s.season)),
     onChange: () => applyStyleFilters(),
     sortable: true,
   });
@@ -448,7 +588,7 @@ function initStylesView() {
       if (e.target.tagName !== "INPUT") e.target.closest("td").querySelector("input")?.click();
       return;
     }
-    if (e.target.closest('td[data-col="ihd"], .shoot-picker')) return;
+    if (e.target.closest('td[data-col="ihd"], td[data-col="notes"], .shoot-picker')) return;
     const tr = e.target.closest("tr[data-style-no]");
     if (tr) openStylePane(tr.dataset.styleNo, tr.dataset.color);
   });
@@ -465,13 +605,12 @@ function initStylesView() {
     btn.addEventListener("click", () => addSelectedToShootList(btn.dataset.shootReason));
   });
   document.getElementById("styleClearSelectionBtn")?.addEventListener("click", clearStyleSelection);
-  document.getElementById("styleSeasonFilter")?.addEventListener("change", e => {
-    styleSeasonFilter = e.target.value;
+  document.getElementById("styleNoPhotosBtn")?.addEventListener("click", () => {
+    styleNoPhotosOnly = !styleNoPhotosOnly;
     applyStyleFilters();
   });
-  document.getElementById("styleCategoryFilter")?.addEventListener("change", e => {
-    styleCategoryFilter = e.target.value;
-    applyStyleFilters();
-  });
+  document.getElementById("styleDeletedBtn")?.addEventListener("click", () => setStyleShowDeleted(!styleShowDeleted));
+  document.getElementById("styleDeleteBtn")?.addEventListener("click", deleteSelectedStyles);
+  document.getElementById("styleRestoreBtn")?.addEventListener("click", restoreSelectedStyles);
   initStyleImport();
 }

@@ -6,13 +6,13 @@
 <title>MIOU MUSE</title>
 <link rel="icon" href="favicon.png?v=2" type="image/png" />
 <link rel="apple-touch-icon" href="favicon.png?v=2" />
-<link rel="stylesheet" href="crm.css?v=20261103-0055" />
+<link rel="stylesheet" href="crm.css?v=20261103-1957" />
 </head>
 <body>
 
 <!-- Left menu: every page, grouped; the one you're on is filled (js/app-shell.js). -->
 <aside class="app-sidebar" id="appSidebar" aria-label="Main menu">
-  <div class="app-sidebar-brand">MIOU MUSE</div>
+  <div class="app-sidebar-brand"><img class="app-logo" src="logo.svg" alt="MIOU MUSE" /></div>
   <nav class="app-sidenav">
     <button type="button" class="app-sidenav-item" id="navLogoHome" data-view="home">
       <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true"><path d="m3 10 9-7 9 7v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M9 22V12h6v10"/></svg>Home
@@ -128,7 +128,7 @@
           <svg class="header-menu-item-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M9 13h6"/></svg>
           <span>Unlink Image Folder</span>
         </button>
-        <button type="button" class="header-menu-item" id="headerMenuTableView" role="menuitem" data-pages="campaigns tradeShows platforms photoshoots needToShoot styles magento:products magento:orders magento:customers">
+        <button type="button" class="header-menu-item" id="headerMenuTableView" role="menuitem" data-pages="campaigns tradeShows platforms photoshoots needToShoot pos styles magento:products magento:orders magento:customers">
           <svg class="header-menu-item-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9M15 21V9"/></svg>
           <span>Table View</span>
         </button>
@@ -210,9 +210,15 @@
 <!-- ── Styles toolbar ────────────────────────────────────────── -->
 <div id="stylesToolbar" class="toolbar" hidden>
   <div class="toolbar-filter-cluster">
-    <div class="toolbar-filter-section style-select-filters">
-      <select class="form-input style-filter-select" id="styleSeasonFilter" aria-label="Season"></select>
-      <select class="form-input style-filter-select" id="styleCategoryFilter" aria-label="Category"></select>
+    <div class="toolbar-filter-section shoot-controls">
+      <!-- No photos, leaving out COMPANY and CANCEL (js/styles.js). -->
+      <button type="button" class="filter-btn filter-btn-icon" id="styleNoPhotosBtn" aria-label="No photos (not COMPANY, CANCEL or INACTIVE)" aria-pressed="false">
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true"><path d="M2 2l20 20"/><path d="M10.4 3H19a2 2 0 0 1 2 2v8.6M21 19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2"/><path d="m21 15-3.1-3.1M14 14 5 21"/></svg>
+      </button>
+      <!-- Deleted styles instead of the rest; only there once something's deleted. -->
+      <button type="button" class="filter-btn filter-btn-icon" id="styleDeletedBtn" aria-label="Show deleted styles" aria-pressed="false" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>
+      </button>
     </div>
   </div>
 
@@ -225,10 +231,13 @@
     <!-- Shown while rows are ticked. -->
     <div class="selection-bar" id="styleSelectionBar" hidden>
       <span class="selection-count" id="styleSelectionCount"></span>
-      <span class="selection-label">Need to Shoot:</span>
+      <span class="selection-label" id="styleShootLabel">Need to Shoot:</span>
       <button type="button" class="btn btn-primary" data-shoot-reason="newStyle">New Style</button>
       <button type="button" class="btn btn-primary" data-shoot-reason="newColor">New Color</button>
       <button type="button" class="btn btn-primary" data-shoot-reason="reshoot">Reshoot</button>
+      <button type="button" class="btn btn-danger" id="styleDeleteBtn">Delete</button>
+      <!-- In the deleted styles view, instead of the buttons above. -->
+      <button type="button" class="btn btn-primary" id="styleRestoreBtn" hidden>Restore</button>
       <button type="button" class="btn-close" id="styleClearSelectionBtn" title="Clear selection" aria-label="Clear selection">✕</button>
     </div>
     <!-- Photos from a linked network folder (js/style-images.js). -->
@@ -240,8 +249,6 @@
 <div id="posToolbar" class="toolbar" hidden>
   <div class="toolbar-filter-cluster">
     <div class="toolbar-filter-section shoot-controls">
-      <select class="form-input style-filter-select" id="poMonthSelect" aria-label="Month"></select>
-      <span class="toolbar-filter-divider" aria-hidden="true"></span>
       <div class="filter-btn-group" id="poTypeFilters" role="group" aria-label="New or recut">
         <button type="button" class="filter-btn" data-type="all">All</button>
         <button type="button" class="filter-btn" data-type="new">New</button>
@@ -260,6 +267,7 @@
         </button>
       </div>
       <span class="toolbar-filter-divider" aria-hidden="true"></span>
+      <button type="button" class="filter-btn" id="poNeedBtn" title="Show only the colours waiting on Need to Shoot">Need to Shoot</button>
       <button type="button" class="filter-btn" id="poSuggestedBtn">Suggested</button>
       <button type="button" class="btn" id="poAddSuggestedBtn" title="Put every suggestion (the filled buttons) on Need to Shoot">Add suggested to Need to Shoot</button>
     </div>
@@ -290,12 +298,15 @@
         <button type="button" class="filter-btn" data-filter="unscheduled">Not scheduled</button>
         <button type="button" class="filter-btn" data-filter="scheduled">Scheduled</button>
       </div>
+      <span class="toolbar-filter-divider" aria-hidden="true"></span>
       <div class="filter-btn-group" id="needReasonFilters" role="group" aria-label="Why it needs pictures">
         <button type="button" class="filter-btn" data-reason="all">All</button>
-        <button type="button" class="filter-btn" data-reason="newStyle">New Style</button>
-        <button type="button" class="filter-btn" data-reason="newColor">New Color</button>
-        <button type="button" class="filter-btn" data-reason="reshoot">Reshoot</button>
+        <!-- Icons filled in from the Shoot buttons (js/photoshoots.js). -->
+        <button type="button" class="filter-btn filter-btn-icon" data-reason="newStyle" aria-label="New Style" title="New Style"></button>
+        <button type="button" class="filter-btn filter-btn-icon" data-reason="newColor" aria-label="New Color" title="New Color"></button>
+        <button type="button" class="filter-btn filter-btn-icon" data-reason="reshoot" aria-label="Reshoot" title="Reshoot"></button>
       </div>
+      <span class="toolbar-filter-divider" aria-hidden="true"></span>
       <label class="form-check shoot-show-shot">
         <input type="checkbox" id="needShowShot" />
         <span class="form-check-box" aria-hidden="true"></span>
@@ -661,6 +672,7 @@
         <col class="col-status" />
         <col class="col-ihd" />
         <col class="col-shoot" />
+        <col class="col-notes" />
       </colgroup>
       <thead>
         <tr>
@@ -674,17 +686,21 @@
           <th data-col="status">N41 Status</th>
           <th data-col="ihd" title="In-house date">IHD</th>
           <th data-col="shoot">Shoot</th>
+          <th data-col="notes">Notes</th>
         </tr>
       </thead>
       <tbody id="stylesTableBody">
-        <tr class="state-row"><td colspan="10">Loading styles…</td></tr>
+        <tr class="state-row"><td colspan="11">Loading styles…</td></tr>
       </tbody>
     </table>
     </div>
   </div>
 
   <!-- ── Photoshoots: Need to Shoot ──────────────────────────── -->
-  <div id="needTableWrap" class="table-scroll-y" hidden>
+  <!-- IHD months down the left (js/photoshoots.js) filter the list beside them. -->
+  <div id="needTableWrap" class="po-view-content po-layout" hidden>
+    <nav class="po-months" id="needMonthList" aria-label="IHD months"></nav>
+    <div class="table-scroll-y">
     <div class="table-scroll-x">
     <table id="needTable" class="record-table styles-table need-table">
       <colgroup>
@@ -699,6 +715,7 @@
         <col class="col-ihd" />
         <col class="col-shoot" />
         <col class="col-added" />
+        <col class="col-notes" />
       </colgroup>
       <thead>
         <tr>
@@ -713,17 +730,22 @@
           <th data-col="ihd" title="In-house date">IHD</th>
           <th data-col="shoot">Shoot</th>
           <th data-col="added">Added</th>
+          <th data-col="notes">Notes</th>
         </tr>
       </thead>
       <tbody id="needTableBody">
-        <tr class="state-row"><td colspan="11">Loading…</td></tr>
+        <tr class="state-row"><td colspan="12">Loading…</td></tr>
       </tbody>
     </table>
+    </div>
     </div>
   </div>
 
   <!-- ── POs: the cost sheet by month ────────────────────────── -->
-  <div id="posTableWrap" class="table-scroll-y" hidden>
+  <!-- The months down the left (js/purchase-orders.js), the month's POs beside them. -->
+  <div id="posTableWrap" class="po-view-content po-layout" hidden>
+    <nav class="po-months" id="poMonthList" aria-label="Months"></nav>
+    <div class="table-scroll-y">
     <div class="table-scroll-x">
     <table id="poTable" class="record-table styles-table po-table">
       <colgroup>
@@ -733,6 +755,7 @@
         <col class="col-shoot" />
         <col class="col-ihd" />
         <col class="col-status" />
+        <col class="col-notes" />
       </colgroup>
       <thead>
         <tr>
@@ -742,12 +765,14 @@
           <th data-col="shoot">Shoot</th>
           <th data-col="ihd" title="In-house date">IHD</th>
           <th data-col="status">N41 Status</th>
+          <th data-col="notes">Notes</th>
         </tr>
       </thead>
       <tbody id="poTableBody">
-        <tr class="state-row"><td colspan="6">Loading…</td></tr>
+        <tr class="state-row"><td colspan="7">Loading…</td></tr>
       </tbody>
     </table>
+    </div>
     </div>
   </div>
 
@@ -1228,6 +1253,9 @@
   </div>
   <!-- Magento products: paging (js/magento.js). Shown only on that view. -->
   <div class="app-footer-end mg-pager" id="mgPager" hidden></div>
+  <!-- Styles and Need to Shoot: paging (js/table-pager.js), each on its own page. -->
+  <div class="app-footer-end mg-pager" id="stylesPager" hidden></div>
+  <div class="app-footer-end mg-pager" id="needPager" hidden></div>
 </footer>
 
 <!-- ── Table view: show / hide and order columns (js/table-view.js) ── -->
@@ -1779,7 +1807,7 @@
 <!-- ── Sign in ────────────────────────────────────────────────── -->
 <div id="loginScreen" class="login-screen" hidden>
   <div class="login-card">
-    <div class="login-title">MIOU MUSE</div>
+    <div class="login-title"><img class="app-logo app-logo--login" src="logo.svg" alt="MIOU MUSE" /></div>
     <div class="login-subtitle">Sign in to continue</div>
     <form id="loginForm" class="login-form" novalidate>
 
@@ -1814,41 +1842,42 @@
   </div>
 </div>
 
-<script src="js/config.js?v=20261103-0055"></script>
+<script src="js/config.js?v=20261103-1957"></script>
 <!-- Needs SUPABASE_URL/KEY from config.js and the CDN client above. -->
-<script src="js/auth.js?v=20261103-0055"></script>
-<script src="js/util.js?v=20261103-0055"></script>
-<script src="js/dates.js?v=20261103-0055"></script>
-<script src="js/store.js?v=20261103-0055"></script>
-<script src="js/tasks.js?v=20261103-0055"></script>
-<script src="js/app-shell.js?v=20261103-0055"></script>
-<script src="js/record-list.js?v=20261103-0055"></script>
-<script src="js/item-pane.js?v=20261103-0055"></script>
-<script src="js/campaign-form.js?v=20261103-0055"></script>
-<script src="js/trade-show-form.js?v=20261103-0055"></script>
-<script src="js/banners.js?v=20261103-0055"></script>
-<script src="js/banner-form.js?v=20261103-0055"></script>
-<script src="js/mailchimp.js?v=20261103-0055"></script>
-<script src="js/style-import.js?v=20261103-0055"></script>
-<script src="js/column-filter.js?v=20261103-0055"></script>
-<script src="js/styles.js?v=20261103-0055"></script>
-<script src="js/style-images.js?v=20261103-0055"></script>
-<script src="js/photoshoots.js?v=20261103-0055"></script>
-<script src="js/photoshoot-form.js?v=20261103-0055"></script>
-<script src="js/purchase-orders.js?v=20261103-0055"></script>
-<script src="js/style-pane.js?v=20261103-0055"></script>
-<script src="js/magento.js?v=20261103-0055"></script>
-<script src="js/magento-availability.js?v=20261103-0055"></script>
-<script src="js/magento-sales.js?v=20261103-0055"></script>
-<script src="js/magento-n41.js?v=20261103-0055"></script>
-<script src="js/magento-events.js?v=20261103-0055"></script>
-<script src="js/trade-show-import.js?v=20261103-0055"></script>
-<script src="js/magento-groups.js?v=20261103-0055"></script>
-<script src="js/table-view.js?v=20261103-0055"></script>
-<script src="js/exports.js?v=20261103-0055"></script>
-<script src="js/copy-menu.js?v=20261103-0055"></script>
-<script src="js/shortcuts.js?v=20261103-0055"></script>
-<script src="js/calendar.js?v=20261103-0055"></script>
-<script src="js/main.js?v=20261103-0055"></script>
+<script src="js/auth.js?v=20261103-1957"></script>
+<script src="js/util.js?v=20261103-1957"></script>
+<script src="js/dates.js?v=20261103-1957"></script>
+<script src="js/store.js?v=20261103-1957"></script>
+<script src="js/tasks.js?v=20261103-1957"></script>
+<script src="js/app-shell.js?v=20261103-1957"></script>
+<script src="js/table-pager.js?v=20261103-1957"></script>
+<script src="js/record-list.js?v=20261103-1957"></script>
+<script src="js/item-pane.js?v=20261103-1957"></script>
+<script src="js/campaign-form.js?v=20261103-1957"></script>
+<script src="js/trade-show-form.js?v=20261103-1957"></script>
+<script src="js/banners.js?v=20261103-1957"></script>
+<script src="js/banner-form.js?v=20261103-1957"></script>
+<script src="js/mailchimp.js?v=20261103-1957"></script>
+<script src="js/style-import.js?v=20261103-1957"></script>
+<script src="js/column-filter.js?v=20261103-1957"></script>
+<script src="js/styles.js?v=20261103-1957"></script>
+<script src="js/style-images.js?v=20261103-1957"></script>
+<script src="js/photoshoots.js?v=20261103-1957"></script>
+<script src="js/photoshoot-form.js?v=20261103-1957"></script>
+<script src="js/purchase-orders.js?v=20261103-1957"></script>
+<script src="js/style-pane.js?v=20261103-1957"></script>
+<script src="js/magento.js?v=20261103-1957"></script>
+<script src="js/magento-availability.js?v=20261103-1957"></script>
+<script src="js/magento-sales.js?v=20261103-1957"></script>
+<script src="js/magento-n41.js?v=20261103-1957"></script>
+<script src="js/magento-events.js?v=20261103-1957"></script>
+<script src="js/trade-show-import.js?v=20261103-1957"></script>
+<script src="js/magento-groups.js?v=20261103-1957"></script>
+<script src="js/table-view.js?v=20261103-1957"></script>
+<script src="js/exports.js?v=20261103-1957"></script>
+<script src="js/copy-menu.js?v=20261103-1957"></script>
+<script src="js/shortcuts.js?v=20261103-1957"></script>
+<script src="js/calendar.js?v=20261103-1957"></script>
+<script src="js/main.js?v=20261103-1957"></script>
 </body>
 </html>

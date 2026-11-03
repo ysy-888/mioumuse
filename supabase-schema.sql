@@ -252,6 +252,14 @@ create policy "photoshoots: own rows only" on photoshoots
 -- never sends it, so re-importing leaves it alone.
 alter table styles add column if not exists ihd date;
 
+-- Deleted styles (Styles → tick → Delete) stay as rows with deleted_at set,
+-- so a later import skips them instead of adding them back. Restore clears it.
+alter table styles add column if not exists deleted_at timestamptz;
+
+-- Notes on a Style # + Color, typed in the app. Like IHD, the import never
+-- sends it, so re-importing leaves it alone.
+alter table styles add column if not exists notes text not null default '';
+
 -- ── Magento groups (Magento tab → Import groups) ────────────────────────────
 --
 -- Which Simple items belong to each Grouped product, exactly as Magento has
@@ -339,4 +347,20 @@ alter table po_lines enable row level security;
 
 drop policy if exists "po_lines: own rows only" on po_lines;
 create policy "po_lines: own rows only" on po_lines
+  for all using (user_id = auth.uid()) with check (user_id = auth.uid());
+
+-- Archived PO months (POs → month list → archive): still listed, but their
+-- Store Ins no longer set IHDs. Separate from po_lines, which every import
+-- replaces, so an archive survives re-reading the sheet.
+create table if not exists po_month_archive (
+  user_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
+  month text not null,                        -- 2026-07
+  archived_at timestamptz not null default now(),
+  primary key (user_id, month)
+);
+
+alter table po_month_archive enable row level security;
+
+drop policy if exists "po_month_archive: own rows only" on po_month_archive;
+create policy "po_month_archive: own rows only" on po_month_archive
   for all using (user_id = auth.uid()) with check (user_id = auth.uid());

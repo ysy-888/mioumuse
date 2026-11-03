@@ -2,8 +2,8 @@
  * Keyboard shortcuts on the table pages.
  *
  *   ← / →    the previous / next page — Magento's Products, Orders and
- *            Customers (the footer's pager); on Styles, → shows the next
- *            batch ("Show more"). Tables that fit on one page ignore them.
+ *            Customers, Styles and Need to Shoot (the footer's pager).
+ *            Tables that fit on one page ignore them.
  *   Space    the page's search box; text already in it is selected, to
  *            type over or edit.
  *
@@ -53,24 +53,15 @@ function focusPageSearch() {
   return true;
 }
 
-/** The pager's Next / Prev (Magento), or Styles' "Show more"; false when there's none to press. */
+/** The pager's Next / Prev (Magento, Styles, Need to Shoot); false when there's none to press. */
 function turnPage(direction) {
-  const view = getCurrentAppView();
-  if (view === "magento") {
-    const pager = document.getElementById("mgPager");
-    if (!isShowing(pager)) return false;
-    const btn = pager.querySelector(`button[title="${direction < 0 ? "Previous page" : "Next page"}"]`);
-    if (!btn || btn.disabled) return false;
-    btn.click();
-    return true;
-  }
-  if (view === "styles" && direction > 0) {
-    const more = document.querySelector("#stylesTableBody .style-more-row button");
-    if (!more) return false;
-    more.click();
-    return true;
-  }
-  return false;
+  const pagerId = { magento: "mgPager", styles: "stylesPager", needToShoot: "needPager" }[getCurrentAppView()];
+  const pager = pagerId && document.getElementById(pagerId);
+  if (!pager || !isShowing(pager)) return false;
+  const btn = pager.querySelector(`button[title="${direction < 0 ? "Previous page" : "Next page"}"]`);
+  if (!btn || btn.disabled) return false;
+  btn.click();
+  return true;
 }
 
 function initShortcuts() {

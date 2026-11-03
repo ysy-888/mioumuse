@@ -69,6 +69,8 @@ function switchAppView(view) {
     bannersTableWrap: view === "platforms",
     stylesToolbar: view === "styles",
     stylesTableWrap: view === "styles",
+    stylesPager: view === "styles", // in the app footer
+    needPager: view === "needToShoot", // in the app footer
     photoshootsToolbar: isPhotoshootView(view),
     posToolbar: view === "pos",
     posTableWrap: view === "pos",

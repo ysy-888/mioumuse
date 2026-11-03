@@ -21,6 +21,7 @@ const TABLE_VIEW_TABLES = [
   { id: "bannersTable", label: "Platforms · Banners", view: "platforms" },
   { id: "stylesTable", label: "Styles", view: "styles" },
   { id: "needTable", label: "Photoshoots · Need to Shoot", view: "needToShoot" },
+  { id: "poTable", label: "Photoshoots · POs", view: "pos" },
   { id: "shootsTable", label: "Photoshoots · Shoots", view: "photoshoots" },
   { id: "mgProductsTable", label: "Magento · Products", view: "magento" },
   { id: "mgOrdersTable", label: "Magento · Orders", view: "magento" },
@@ -28,8 +29,8 @@ const TABLE_VIEW_TABLES = [
   { id: "mgEventsTable", label: "Magento · Events", view: "magento" },
 ];
 
-/** Always shown, always first — the tick-box column. */
-const TABLE_VIEW_FIXED = new Set(["select"]);
+/** Always shown, always first — the tick-box column, and the POs table's PO column. */
+const TABLE_VIEW_FIXED = new Set(["select", "po"]);
 
 /** Per table: { columns: [{ col, label, th, colEl }] in the original order, current: { order, hidden } }. */
 const tableViewState = new Map();
@@ -361,8 +362,8 @@ function initTableViews() {
     const cols = [...table.querySelectorAll("colgroup col")];
     const columns = ths.map((th, i) => ({
       col: th.dataset.col,
-      // The header's words; the tick-box column has none.
-      label: th.dataset.col === "select" ? "Select (tick box)" : (th.querySelector(".th-label") ?? th).textContent.trim() || th.dataset.col,
+      // The header's words; the tick-box column has none, and icon-only ones go by their aria-label.
+      label: th.dataset.col === "select" ? "Select (tick box)" : (th.querySelector(".th-label") ?? th).textContent.trim() || th.getAttribute("aria-label") || th.dataset.col,
       th,
       colEl: cols[i] ?? null,
     }));

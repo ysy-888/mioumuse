@@ -14,6 +14,8 @@
  * separated by spaces; a "/" in the colour is written "." (file names can't
  * hold "/"), so WHITE.BROWN is WHITE/BROWN. Colours can have spaces
  * ("2 TONE GREY"); the number is optional. Subfolders are searched too.
+ * A number stuck to the colour (OATMEAL.BLUE1) or "_" for "/" still match
+ * when that gives one of the style's colours.
  *
  * The list of file names is cached in the browser, so a later visit shows
  * photos straight away and re-checks the folder in the background.
@@ -22,6 +24,12 @@
 const STYLE_IMAGE_EXTENSIONS = ["jpg", "jpeg", "png", "webp", "gif"];
 const STYLE_IMAGE_DB = "mioumuse-style-images";
 const STYLE_THUMB_PX = 96;
+/** Folders (any level) that never hold style photos — raw shoots and editorials. Not scanned. */
+const STYLE_IMAGE_SKIP_FOLDERS = ["00 SHOOTS", "EDITORIAL PIC"];
+
+function isSkippedImageFolder(name) {
+  return STYLE_IMAGE_SKIP_FOLDERS.includes(String(name).trim().toUpperCase());
+}
 
 /** Folder state: "unsupported" | "none" | "needs-permission" | "scanning" | "ready". */
 let styleImageState = typeof window.showDirectoryPicker === "function" ? "none" : "unsupported";
@@ -134,7 +142,7 @@ async function scanStyleImageFolder(root) {
   async function walk(dir, path) {
     for await (const [name, handle] of dir.entries()) {
       if (handle.kind === "directory") {
-        await walk(handle, [...path, name]);
+        if (!isSkippedImageFolder(name)) await walk(handle, [...path, name]);
       } else {
         seen += 1;
         if (seen % 250 === 0) {
@@ -150,12 +158,33 @@ async function scanStyleImageFolder(root) {
   return entries;
 }
 
+/**
+ * A file's colour as the Styles database writes it, for names that bend
+ * the rules: the number stuck on with no space ("OATMEAL.BLUE1" is
+ * OATMEAL/BLUE, photo 1) or "_" for "/" ("COFFEE_WHITE"). Only used when it
+ * turns the name into a colour the style really has, since some colours
+ * contain "_" ("GREY_NY").
+ */
+function resolveImageColor(style, color, num) {
+  const known = new Set(getStyleColors(style).map(s => normalizeImageColor(s.color)));
+  if (!known.size || known.has(normalizeImageColor(color))) return { color, num };
+  const glued = num ? null : /^(.*\D)(\d+)$/.exec(color);
+  const tries = [
+    { color: color.replace(/_/g, "/"), num },
+    ...(glued ? [{ color: glued[1], num: Number(glued[2]) }, { color: glued[1].replace(/_/g, "/"), num: Number(glued[2]) }] : []),
+  ];
+  return tries.find(t => known.has(normalizeImageColor(t.color))) ?? { color, num };
+}
+
 function buildStyleImageIndex(entries) {
   const index = new Map();
   entries.forEach(e => {
-    const key = styleImageKey(e.style, e.color);
+    // A list cached before those folders were skipped.
+    if (e.path.slice(0, -1).some(isSkippedImageFolder)) return;
+    const { color, num } = resolveImageColor(e.style, e.color, e.num);
+    const key = styleImageKey(e.style, color);
     if (!index.has(key)) index.set(key, []);
-    index.get(key).push({ num: e.num, path: e.path });
+    index.get(key).push({ num, path: e.path });
   });
   index.forEach(list => list.sort((a, b) => a.num - b.num || a.path.join("/").localeCompare(b.path.join("/"))));
   return index;
@@ -319,6 +348,11 @@ function createStyleThumb(styleNo, color, extraClass = "") {
   const count = getStyleImageEntries(styleNo, color).length;
   if (!count || !hasStyleImages(styleNo, color)) {
     el.classList.add("is-empty");
+    // Only crossed out when the folder is linked — otherwise it's just unknown.
+    if (arePhotosKnown()) {
+      el.classList.add("is-missing");
+      el.title = "No photos";
+    }
     return el;
   }
   if (count > 1) el.dataset.count = String(count);

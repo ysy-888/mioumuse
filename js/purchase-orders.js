@@ -17,6 +17,7 @@ let poMonth = "";
 let poTypeFilter = "all"; // "all" | "new" | "recut"
 let poPhotoFilter = "all"; // "all" | "with" | "without" — needs the image folder
 let poSuggestedOnly = false; // just the colours Add suggested would add
+let poNeedOnly = false; // just the colours waiting on Need to Shoot (not yet shot)
 
 // ── Reading the cost sheet ───────────────────────────────────────────────────
 
@@ -33,15 +34,28 @@ function poRecutNumber(poStyle) {
   return m ? Number(m[1] || 1) : 0;
 }
 
-/** Store In: an Excel date number, or text like 11/16/2026 (11/16 takes the tab's year). */
-function poCellDate(value, tabYear) {
+/**
+ * Store In: an Excel date number, or text like 11/16/2026. Only its month
+ * and day are trusted: a date typed without a year gets the year it was
+ * typed in, so 1/4 on the 1.2027 tab can hold 2026. The year is the one
+ * that puts the date nearest the tab's month (1/5 on 12.2025 is 2026).
+ */
+function poCellDate(value, tabYear, tabMonth) {
+  let month, day;
   if (typeof value === "number" && value > 20000) {
-    return new Date(Date.UTC(1899, 11, 30) + Math.round(value) * 86400000).toISOString().slice(0, 10);
+    const d = new Date(Date.UTC(1899, 11, 30) + Math.round(value) * 86400000);
+    month = d.getUTCMonth() + 1;
+    day = d.getUTCDate();
+  } else {
+    const m = String(value ?? "").trim().match(/^(\d{1,2})\/(\d{1,2})(?:\/\d{2,4})?$/);
+    if (!m) return "";
+    month = Number(m[1]);
+    day = Number(m[2]);
   }
-  const m = String(value ?? "").trim().match(/^(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?$/);
-  if (!m) return "";
-  const year = m[3] ? (m[3].length === 2 ? 2000 + Number(m[3]) : Number(m[3])) : tabYear;
-  return `${year}-${m[1].padStart(2, "0")}-${m[2].padStart(2, "0")}`;
+  const tabAt = tabYear * 12 + tabMonth;
+  const year = [tabYear - 1, tabYear, tabYear + 1]
+    .reduce((best, y) => Math.abs(y * 12 + month - tabAt) < Math.abs(best * 12 + month - tabAt) ? y : best);
+  return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
 }
 
 /** Every S / SR line of every month tab. */
@@ -66,7 +80,7 @@ function parseCostSheet(workbook) {
         recut: dept === "SR" ? Math.max(1, poRecutNumber(poStyle)) : 0,
         poNo: String(r.E).trim(),
         dept,
-        storeIn: poCellDate(r.I, Number(tab[2])),
+        storeIn: poCellDate(r.I, Number(tab[2]), Number(tab[1])),
       });
     });
   });
@@ -83,21 +97,32 @@ function getPoStyleColors(styleNo) {
 /**
  * The IHD each style should have: its next Store In from today, or the
  * latest one if they've all passed. Keyed by the database's Style #.
+ *
+ * Archived months don't count. A style whose POs are all in archived months
+ * has its IHD cleared — but only if it's still one of those Store Ins, so a
+ * date typed in by hand is left alone.
  */
 function poIhdsByStyle(lines) {
   const today = todayYmd();
+  const archived = getPoArchivedMonths();
   const dates = new Map();
+  const archivedDates = new Map();
   lines.forEach(line => {
     const colors = getPoStyleColors(line.styleNo);
     if (!line.storeIn || !colors.length) return;
     const key = colors[0].styleNo;
-    if (!dates.has(key)) dates.set(key, []);
-    dates.get(key).push(line.storeIn);
+    const into = archived.has(line.month) ? archivedDates : dates;
+    if (!into.has(key)) into.set(key, []);
+    into.get(key).push(line.storeIn);
   });
   const ihds = new Map();
   dates.forEach((list, styleNo) => {
     list.sort();
     ihds.set(styleNo, list.find(d => d >= today) ?? list[list.length - 1]);
+  });
+  archivedDates.forEach((list, styleNo) => {
+    if (dates.has(styleNo)) return;
+    if (getStyleColors(styleNo).some(s => list.includes(s.ihd))) ihds.set(styleNo, "");
   });
   return ihds;
 }
@@ -117,6 +142,40 @@ async function applyPoIhds(lines, onProgress) {
   };
   await Promise.all(Array.from({ length: 6 }, worker));
   return changes.length;
+}
+
+/**
+ * The day IHDs were last checked against the saved PO lines. A Store In
+ * that has passed stops counting the next day, even if the sheet hasn't
+ * changed, so the check runs when the app opens and when a new day starts.
+ */
+let poIhdsCheckedOn = "";
+
+async function refreshPoIhds() {
+  if (!getAllPoLines().length || poIhdsCheckedOn === todayYmd()) return;
+  poIhdsCheckedOn = todayYmd();
+  try {
+    const changed = await applyPoIhds(getAllPoLines());
+    if (!changed) return;
+    refreshPoDependentViews();
+    showIndicator(`IHD updated from the cost sheet for ${changed.toLocaleString()} ${changed === 1 ? "style" : "styles"} (a Store In passed)`, "success");
+  } catch (err) {
+    poIhdsCheckedOn = "";
+    showIndicator(`Couldn't update IHDs: ${err.message || "save failed"}`, "error");
+  }
+}
+
+/** Archive a month (or bring it back), then re-work the IHDs it affects. */
+async function setPoMonthArchivedAndApply(month, archived) {
+  try {
+    await setPoMonthArchived(month, archived);
+    const changed = await applyPoIhds(getAllPoLines());
+    refreshPoDependentViews();
+    showIndicator(`${formatPoMonth(month)} ${archived ? "archived" : "brought back"} — ${changed.toLocaleString()} ${changed === 1 ? "IHD" : "IHDs"} changed`, "success");
+  } catch (err) {
+    showIndicator(err.message || "Couldn't archive the month.", "error");
+    renderPoView();
+  }
 }
 
 /** Read the workbook, replace the PO lines and set IHDs. Returns false on failure. */
@@ -302,9 +361,11 @@ function getPoMonths() {
   return [...new Set(getAllPoLines().map(l => l.month))].sort();
 }
 
-/** This month if it's there, else the nearest one after it, else the last. */
+/** This month if it's there, else the nearest one after it, else the last — archived ones only if that's all there is. */
 function defaultPoMonth() {
-  const months = getPoMonths();
+  const all = getPoMonths();
+  const live = all.filter(m => !getPoArchivedMonths().has(m));
+  const months = live.length ? live : all;
   const now = todayYmd().slice(0, 7);
   return months.find(m => m >= now) ?? months[months.length - 1] ?? "";
 }
@@ -314,15 +375,150 @@ function formatPoMonth(month) {
   return new Date(y, m - 1, 1).toLocaleString(undefined, { month: "long", year: "numeric" });
 }
 
+// ── Month list ───────────────────────────────────────────────────────────────
+//
+// Down the left of the page, oldest first, each with its style count, in a
+// folder per year that opens and closes. The box icon on a month archives
+// it: it moves to the Archived group at the bottom (folded away unless open,
+// with year folders of its own), and its Store Ins stop setting IHDs.
+
+let poShowArchived = false;
+/** Open year folders, as "live:2026" / "archived:2026". */
+const poOpenYears = new Set();
+/** The month whose year was last opened for it — a newly shown month opens its year once. */
+let poYearOpenedFor = "";
+
+const PO_FOLDER_ICON = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>';
+const PO_FOLDER_OPEN_ICON = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v1"/><path d="M3 7v10a2 2 0 0 0 2 2h12.5a2 2 0 0 0 1.9-1.4L21.5 12a1 1 0 0 0-1-1.3H7.3a2 2 0 0 0-1.9 1.4L3 19"/></svg>';
+
+const PO_ARCHIVE_ICON = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="4" width="20" height="5" rx="1"/><path d="M4 9v9a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9"/><path d="M10 13h4"/></svg>';
+const PO_UNARCHIVE_ICON = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg>';
+
+function createPoMonthItem(month, styleCount, archived) {
+  const item = document.createElement("div");
+  item.className = "po-month" + (month === poMonth ? " is-active" : "") + (archived ? " is-archived" : "");
+
+  const pick = document.createElement("button");
+  pick.type = "button";
+  pick.className = "po-month-pick";
+  pick.setAttribute("aria-current", String(month === poMonth));
+  const name = document.createElement("span");
+  name.className = "po-month-name";
+  // The year is on the folder it sits in.
+  name.textContent = new Date(Number(month.slice(0, 4)), Number(month.slice(5, 7)) - 1, 1).toLocaleString(undefined, { month: "long" });
+  name.title = formatPoMonth(month);
+  const count = document.createElement("span");
+  count.className = "po-month-count";
+  count.textContent = styleCount.toLocaleString();
+  count.title = `${styleCount.toLocaleString()} ${styleCount === 1 ? "style" : "styles"}`;
+  pick.append(name, count);
+  pick.addEventListener("click", () => {
+    poMonth = month;
+    renderPoView();
+  });
+
+  const toggle = document.createElement("button");
+  toggle.type = "button";
+  toggle.className = "po-month-archive";
+  toggle.innerHTML = archived ? PO_UNARCHIVE_ICON : PO_ARCHIVE_ICON;
+  const label = archived
+    ? `Bring back ${formatPoMonth(month)}: its Store Ins set IHDs again`
+    : `Archive ${formatPoMonth(month)}: its Store Ins stop setting IHDs`;
+  toggle.title = label;
+  toggle.setAttribute("aria-label", label);
+  toggle.addEventListener("click", () => {
+    if (!archived && !confirm(`Archive ${formatPoMonth(month)}?\n\nIts Store Ins stop setting IHDs. A style with POs only in archived months has its IHD cleared. You can bring the month back from Archived.`)) return;
+    setPoMonthArchivedAndApply(month, !archived);
+  });
+
+  item.append(pick, toggle);
+  return item;
+}
+
+function renderPoMonthList() {
+  const list = document.getElementById("poMonthList");
+  if (!list) return;
+  const styleCounts = new Map();
+  getAllPoLines().forEach(l => {
+    if (!styleCounts.has(l.month)) styleCounts.set(l.month, new Set());
+    styleCounts.get(l.month).add(l.styleNo);
+  });
+  const months = getPoMonths();
+  if (!months.length) {
+    const empty = document.createElement("div");
+    empty.className = "po-months-empty";
+    empty.textContent = "No months yet";
+    list.replaceChildren(empty);
+    return;
+  }
+  const archivedSet = getPoArchivedMonths();
+  const live = months.filter(m => !archivedSet.has(m));
+  const archived = months.filter(m => archivedSet.has(m));
+  // A month newly showing: open its year (and Archived, if it's there) once,
+  // so it can be seen. Closing it again afterwards sticks.
+  if (poMonth && poMonth !== poYearOpenedFor) {
+    poYearOpenedFor = poMonth;
+    poOpenYears.add(`${archivedSet.has(poMonth) ? "archived" : "live"}:${poMonth.slice(0, 4)}`);
+    if (archivedSet.has(poMonth)) poShowArchived = true;
+  }
+
+  const yearFolders = (list, section) => {
+    const byYear = new Map();
+    list.forEach(m => {
+      const y = m.slice(0, 4);
+      if (!byYear.has(y)) byYear.set(y, []);
+      byYear.get(y).push(m);
+    });
+    const out = [];
+    byYear.forEach((ms, year) => {
+      const key = `${section}:${year}`;
+      const open = poOpenYears.has(key);
+      const head = document.createElement("button");
+      head.type = "button";
+      head.className = "po-year" + (ms.includes(poMonth) ? " has-active" : "");
+      head.setAttribute("aria-expanded", String(open));
+      head.innerHTML = `<span class="po-year-chevron" aria-hidden="true">${open ? "▾" : "▸"}</span>${open ? PO_FOLDER_OPEN_ICON : PO_FOLDER_ICON}`;
+      const label = document.createElement("span");
+      label.className = "po-year-name";
+      label.textContent = year;
+      head.append(label);
+      head.addEventListener("click", () => {
+        if (poOpenYears.has(key)) poOpenYears.delete(key); else poOpenYears.add(key);
+        renderPoMonthList();
+      });
+      out.push(head);
+      if (open) out.push(...ms.map(m => createPoMonthItem(m, styleCounts.get(m)?.size ?? 0, section === "archived")));
+    });
+    return out;
+  };
+
+  const nodes = yearFolders(live, "live");
+  if (archived.length) {
+    const head = document.createElement("button");
+    head.type = "button";
+    head.className = "po-months-archived-toggle";
+    head.setAttribute("aria-expanded", String(poShowArchived));
+    head.textContent = `${poShowArchived ? "▾" : "▸"} Archived (${archived.length})`;
+    head.addEventListener("click", () => {
+      poShowArchived = !poShowArchived;
+      renderPoMonthList();
+    });
+    nodes.push(head);
+    if (poShowArchived) nodes.push(...yearFolders(archived, "archived"));
+  }
+  list.replaceChildren(...nodes);
+  list.querySelector(".po-month.is-active")?.scrollIntoView({ block: "nearest" });
+}
+
 /**
  * Only a colour with no photos is suggested: New Style on a new PO, New Color
- * on a recut. Not one that's already waiting, never shot, or CANCEL in N41. Photos are only
+ * on a recut. Not one that's already waiting, never shot, or CANCEL or INACTIVE in N41. Photos are only
  * known with the image folder linked, so without it nothing is suggested.
  */
 function suggestPoReason(group, style) {
   if (!arePhotosKnown() || hasStyleImages(style.styleNo, style.color)) return "";
   if (isNoShootStyle(style.styleNo, style.color)) return "";
-  if (String(style.status ?? "").trim().toUpperCase() === "CANCEL") return "";
+  if (["CANCEL", "INACTIVE"].includes(String(style.status ?? "").trim().toUpperCase())) return "";
   const entry = getShootListEntry(style.styleNo, style.color);
   if (entry && !entry.shotShootId) return "";
   return group.lines.some(l => l.dept === "S") ? "newStyle" : "newColor";
@@ -343,9 +539,10 @@ function buildPoGroups() {
   groups.forEach(g => {
     if (photos !== "all") g.colors = g.colors.filter(s => hasStyleImages(s.styleNo, s.color) === (photos === "with"));
     if (suggestedOnly) g.colors = g.colors.filter(s => suggestPoReason(g, s));
+    if (poNeedOnly) g.colors = g.colors.filter(s => { const e = getShootListEntry(s.styleNo, s.color); return e && !e.shotShootId; });
   });
   return [...groups.values()].filter(g => {
-    if ((photos !== "all" || suggestedOnly) && !g.colors.length) return false;
+    if ((photos !== "all" || suggestedOnly || poNeedOnly) && !g.colors.length) return false;
     const isNew = g.lines.some(l => l.dept === "S");
     if (poTypeFilter === "new" && !isNew) return false;
     if (poTypeFilter === "recut" && isNew) return false;
@@ -441,20 +638,16 @@ function createPoColorRow(group, style, cols, first) {
     else if (col === "status") td.appendChild(createStyleStatusPill(style.status));
     else if (col === "ihd") setDisplayText(td, style.ihd ? formatMdy(style.ihd) : EMPTY_DISPLAY);
     else if (col === "shoot") td.appendChild(createStyleShootCell(style, { suggested: suggestPoReason(group, style) }));
+    else if (col === "notes") td.appendChild(createStyleNotesInput(style, { onSaved: refreshStylePaneSummary }));
     tr.appendChild(td);
   });
   return tr;
 }
 
 function renderPoView() {
-  const select = document.getElementById("poMonthSelect");
   const months = getPoMonths();
   if (!months.includes(poMonth)) poMonth = defaultPoMonth();
-  if (select) {
-    select.replaceChildren(...months.map(m => new Option(formatPoMonth(m), m)));
-    select.value = poMonth;
-    select.disabled = !months.length;
-  }
+  renderPoMonthList();
   document.querySelectorAll("#poTypeFilters .filter-btn").forEach(btn => {
     btn.classList.toggle("active", btn.dataset.type === poTypeFilter);
   });
@@ -471,6 +664,7 @@ function renderPoView() {
     suggested.disabled = !photosKnown;
     suggested.title = photosKnown ? "Show only the colours Add suggested would add" : "Suggestions need the image folder linked (Styles → menu ⋮)";
   }
+  document.getElementById("poNeedBtn")?.classList.toggle("active", poNeedOnly);
   const add = document.getElementById("poAddSuggestedBtn");
   // Adding is the next step after checking the list, so it shows with Suggested.
   if (add) add.hidden = !(photosKnown && poSuggestedOnly);
@@ -545,6 +739,7 @@ function renderPoNotice() {
     show.addEventListener("click", () => {
       // Every one of them: clear the filters that could hide some.
       poSuggestedOnly = true;
+      poNeedOnly = false;
       poTypeFilter = "all";
       poPhotoFilter = "all";
       const search = document.getElementById("poSearchInput");
@@ -595,10 +790,8 @@ function initPurchaseOrders() {
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "visible" && costSheetState === "ready"
       && Date.now() - costSheetCheckedAt > COST_SHEET_RECHECK_MS) syncCostSheet();
-  });
-  document.getElementById("poMonthSelect")?.addEventListener("change", e => {
-    poMonth = e.target.value;
-    renderPoView();
+    // A new day: Store Ins that passed yesterday stop counting.
+    if (document.visibilityState === "visible") refreshPoIhds();
   });
   document.querySelectorAll("#poTypeFilters .filter-btn").forEach(btn => {
     btn.addEventListener("click", () => {
@@ -615,6 +808,12 @@ function initPurchaseOrders() {
   document.getElementById("poSearchInput")?.addEventListener("input", renderPoView);
   document.getElementById("poSuggestedBtn")?.addEventListener("click", () => {
     poSuggestedOnly = !poSuggestedOnly;
+    if (poSuggestedOnly) poNeedOnly = false; // suggestions are never already waiting
+    renderPoView();
+  });
+  document.getElementById("poNeedBtn")?.addEventListener("click", () => {
+    poNeedOnly = !poNeedOnly;
+    if (poNeedOnly) poSuggestedOnly = false;
     renderPoView();
   });
   document.getElementById("poAddSuggestedBtn")?.addEventListener("click", addPoSuggested);

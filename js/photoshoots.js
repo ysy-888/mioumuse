@@ -20,12 +20,22 @@ let needShowShot = false;
 let shootFilter = "planned";    // "planned" | "complete" | "all"
 let needSelectedKeys = new Set();
 let filteredNeedRows = [];
+let needPage = 1;
+let needPageSize = TABLE_PAGE_SIZE_DEFAULT; // read once the page loads (initPhotoshoots)
+/** The filters the page was last drawn with — a change starts back at page 1. */
+let needPagedFor = "";
 let paneShootId = null;
 
 // ── Status badge ─────────────────────────────────────────────────────────────
 
 function formatShootDate(ymdValue) {
   return ymdValue ? formatTaskDate(ymdValue) : "No date";
+}
+
+/** MM/DD, for the small date pill in a Shoot cell. */
+function formatShootDateShort(ymdValue) {
+  const m = /^\d{4}-(\d{2})-(\d{2})/.exec(ymdValue ?? "");
+  return m ? `${m[1]}/${m[2]}` : "No date";
 }
 
 /**
@@ -38,7 +48,8 @@ function describeShootStatus(styleNo, color) {
   if (entry.shotShootId) {
     const shoot = getPhotoshootById(entry.shotShootId);
     const date = shoot ? formatShootDate(shoot.date) : formatLongDate(entry.shotAt.slice(0, 10));
-    return { tone: "shot", label: `Shot · ${date}`, short: `Shot ${date}`, shoots: shoot ? [shoot] : [] };
+    const shortDate = formatShootDateShort(shoot ? shoot.date : entry.shotAt);
+    return { tone: "shot", label: `Shot · ${date}`, short: `Shot ${shortDate}`, shoots: shoot ? [shoot] : [] };
   }
   const planned = getPlannedShootsFor(styleNo, color);
   if (planned.length) {
@@ -46,11 +57,22 @@ function describeShootStatus(styleNo, color) {
     return {
       tone: "scheduled",
       label: `Scheduled · ${formatShootDate(next.date)}${planned.length > 1 ? ` +${planned.length - 1}` : ""}`,
-      short: `${formatShootDate(next.date)}${planned.length > 1 ? ` +${planned.length - 1}` : ""}`,
+      short: `${formatShootDateShort(next.date)}${planned.length > 1 ? ` +${planned.length - 1}` : ""}`,
       shoots: planned,
     };
   }
   return { tone: "needed", label: getShootReasonLabel(entry.reason) || "To shoot", shoots: [] };
+}
+
+const SHOOT_REASON_ICON_PATHS = {
+  newStyle: '<path d="M20.38 3.46 16 2a4 4 0 0 1-8 0L3.62 3.46a2 2 0 0 0-1.34 2.23l.58 3.47a1 1 0 0 0 .99.84H6v10c0 1.1.9 2 2 2h8a2 2 0 0 0 2-2V10h2.15a1 1 0 0 0 .99-.84l.58-3.47a2 2 0 0 0-1.34-2.23z"/>',
+  newColor: '<path d="m19 11-8-8-8.6 8.6a2 2 0 0 0 0 2.8l5.2 5.2c.8.8 2 .8 2.8 0L19 11Z"/><path d="m5 2 5 5"/><path d="M2 13h15"/><path d="M22 20a2 2 0 1 1-4 0c0-1.6 1.7-2.4 2-4 .3 1.6 2 2.4 2 4Z"/>',
+  reshoot: '<path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/>',
+};
+
+/** New Style = a T-shirt, New Color = a paint bucket, Reshoot = a camera. */
+function shootReasonIcon(key) {
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true">${SHOOT_REASON_ICON_PATHS[key] ?? ""}</svg>`;
 }
 
 /**
@@ -70,12 +92,12 @@ function createShootPicker(styleNo, color, onDone, { suggested = "" } = {}) {
     wrap.classList.add("is-waiting");
     wrap.title = "On Need to Shoot — pick a reason";
   }
-  SHOOT_REASONS.forEach(({ key, label, short }) => {
+  SHOOT_REASONS.forEach(({ key, label }) => {
     const btn = document.createElement("button");
     btn.type = "button";
     btn.className = "shoot-pick";
     btn.dataset.reason = key;
-    btn.textContent = short;
+    btn.innerHTML = shootReasonIcon(key);
     const on = waiting === key;
     btn.setAttribute("aria-pressed", String(on));
     if (!waiting && suggested === key) btn.classList.add("is-suggested");
@@ -128,6 +150,8 @@ function createShootStatusBadge(styleNo, color, { compact = false } = {}) {
   }
   el.className = "shoot-status";
   el.dataset.tone = status.tone;
+  // A scheduled date takes its shoot's type colour (Studio / Editorial).
+  if (status.tone === "scheduled") el.dataset.shootType = status.shoots[0].type;
   el.textContent = compact ? status.short ?? status.label : status.label;
   if (compact) el.title = status.label;
   if (status.shoots.length) {
@@ -185,19 +209,27 @@ const SHOOT_SORT_COLUMNS = {
   status: s => s.status,
 };
 
-function compareSortValues(a, b, dir) {
+/**
+ * Blanks go last — except with `blankFirstAscending` (IHD columns): soonest
+ * first puts the styles with no IHD at the top, latest first at the bottom.
+ */
+function compareSortValues(a, b, dir, { blankFirstAscending = false } = {}) {
   const x = String(a ?? "").trim();
   const y = String(b ?? "").trim();
-  if (!x || !y) return (x ? -1 : 0) + (y ? 1 : 0);
+  if (!x || !y) return ((x ? -1 : 0) + (y ? 1 : 0)) * (blankFirstAscending && dir === 1 ? -1 : 1);
   return dir * x.localeCompare(y, undefined, { numeric: true, sensitivity: "base" });
 }
+
+/** Date columns where soonest first puts the blanks on top. */
+const BLANK_FIRST_SORT_COLUMNS = new Set(["ihd", "latestIhd"]);
 
 /** Re-sort `rows` in place by the clicked column; the existing order breaks ties. */
 function applyColumnSort(rows, sort, columns) {
   if (!sort.col || !columns[sort.col]) return;
   const value = columns[sort.col];
+  const opts = { blankFirstAscending: BLANK_FIRST_SORT_COLUMNS.has(sort.col) };
   const order = new Map(rows.map((r, i) => [r, i]));
-  rows.sort((a, b) => compareSortValues(value(a), value(b), sort.dir) || order.get(a) - order.get(b));
+  rows.sort((a, b) => compareSortValues(value(a), value(b), sort.dir, opts) || order.get(a) - order.get(b));
 }
 
 function initColumnSort(tableId, sort, columns, render) {
@@ -286,11 +318,101 @@ function buildNeedRows() {
     });
 }
 
+// ── IHD months ───────────────────────────────────────────────────────────────
+//
+// Down the left of Need to Shoot: Show all, No IHD, then each IHD month on the
+// list in a folder per year that opens and closes. Picking one filters the
+// list to it. Only months some style on the list has are shown.
+
+let needIhdMonth = "all"; // "all" | "none" | "YYYY-MM"
+/** Open year folders, by year — this year's to start. */
+const needOpenYears = new Set([String(new Date().getFullYear())]);
+/** The month whose year was last opened for it — a newly picked month opens its year once. */
+let needYearOpenedFor = "";
+
+/** "YYYY-MM" of the row's IHD, or "none". */
+function needIhdMonthKey(r) {
+  const ihd = fixTwoDigitYear(findStyle(r.styleNo, r.color)?.ihd ?? "");
+  return /^\d{4}-\d{2}/.test(ihd) ? ihd.slice(0, 7) : "none";
+}
+
+function createNeedMonthItem(key, label, count, { top = false, title = "" } = {}) {
+  const item = document.createElement("div");
+  item.className = "po-month" + (top ? " po-month--top" : "") + (key === needIhdMonth ? " is-active" : "");
+  const pick = document.createElement("button");
+  pick.type = "button";
+  pick.className = "po-month-pick";
+  pick.setAttribute("aria-current", String(key === needIhdMonth));
+  const name = document.createElement("span");
+  name.className = "po-month-name";
+  name.textContent = label;
+  if (title) name.title = title;
+  const n = document.createElement("span");
+  n.className = "po-month-count";
+  n.textContent = count.toLocaleString();
+  n.title = `${count.toLocaleString()} ${count === 1 ? "style" : "styles"}`;
+  pick.append(name, n);
+  pick.addEventListener("click", () => {
+    needIhdMonth = key;
+    renderNeedTable();
+  });
+  item.appendChild(pick);
+  return item;
+}
+
+/** `rows`: the list before the month filter, so each count is what picking it shows. */
+function renderNeedMonthList(rows) {
+  const list = document.getElementById("needMonthList");
+  if (!list) return;
+  const counts = new Map();
+  rows.forEach(r => {
+    const key = needIhdMonthKey(r);
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  });
+  // The picked month stays listed (at 0) while other filters hide all of it.
+  if (needIhdMonth !== "all" && !counts.has(needIhdMonth)) counts.set(needIhdMonth, 0);
+  const months = [...counts.keys()].filter(k => k !== "none").sort();
+  if (needIhdMonth !== needYearOpenedFor && /^\d{4}-\d{2}$/.test(needIhdMonth)) {
+    needYearOpenedFor = needIhdMonth;
+    needOpenYears.add(needIhdMonth.slice(0, 4));
+  }
+
+  const nodes = [createNeedMonthItem("all", "Show all", rows.length, { top: true })];
+  if (counts.has("none")) nodes.push(createNeedMonthItem("none", "No IHD", counts.get("none"), { top: true }));
+  const byYear = new Map();
+  months.forEach(m => {
+    const y = m.slice(0, 4);
+    if (!byYear.has(y)) byYear.set(y, []);
+    byYear.get(y).push(m);
+  });
+  byYear.forEach((ms, year) => {
+    const open = needOpenYears.has(year);
+    const head = document.createElement("button");
+    head.type = "button";
+    head.className = "po-year";
+    head.setAttribute("aria-expanded", String(open));
+    head.innerHTML = `<span class="po-year-chevron" aria-hidden="true">${open ? "▾" : "▸"}</span>${open ? PO_FOLDER_OPEN_ICON : PO_FOLDER_ICON}`;
+    const label = document.createElement("span");
+    label.className = "po-year-name";
+    label.textContent = year;
+    head.appendChild(label);
+    head.addEventListener("click", () => {
+      if (needOpenYears.has(year)) needOpenYears.delete(year); else needOpenYears.add(year);
+      renderNeedTable();
+    });
+    nodes.push(head);
+    if (open) nodes.push(...ms.map(m => createNeedMonthItem(m,
+      new Date(Number(m.slice(0, 4)), Number(m.slice(5, 7)) - 1, 1).toLocaleString(undefined, { month: "long" }),
+      counts.get(m), { title: formatPoMonth(m) })));
+  });
+  list.replaceChildren(...nodes);
+}
+
 function renderNeedTable() {
   const q = (document.getElementById("needSearchInput")?.value ?? "").trim().toLowerCase();
   setActiveSearchQuery(q);
 
-  filteredNeedRows = buildNeedRows().filter(r => {
+  const preMonthRows = buildNeedRows().filter(r => {
     if (needFilter === "unscheduled" && r.status?.tone !== "needed") return false;
     if (needFilter === "scheduled" && r.status?.tone !== "scheduled") return false;
     if (needReasonFilter !== "all" && r.reason !== needReasonFilter) return false;
@@ -299,10 +421,15 @@ function renderNeedTable() {
     if (!q) return true;
     return `${r.styleNo} ${r.color} ${r.description} ${r.category} ${r.season}`.toLowerCase().includes(q);
   });
-  // Default order: IHD, soonest first (no IHD last), then style.
-  filteredNeedRows.sort((a, b) => compareSortValues(NEED_SORT_COLUMNS.ihd(a), NEED_SORT_COLUMNS.ihd(b), 1) ||
+  renderNeedMonthList(preMonthRows);
+  filteredNeedRows = needIhdMonth === "all" ? preMonthRows : preMonthRows.filter(r => needIhdMonthKey(r) === needIhdMonth);
+  // Default order: IHD, soonest first (no IHD on top), then style.
+  filteredNeedRows.sort((a, b) => compareSortValues(NEED_SORT_COLUMNS.ihd(a), NEED_SORT_COLUMNS.ihd(b), 1, { blankFirstAscending: true }) ||
     a.styleNo.localeCompare(b.styleNo, undefined, { numeric: true }) || a.color.localeCompare(b.color));
   applyColumnSort(filteredNeedRows, needSort, NEED_SORT_COLUMNS);
+  const pagedFor = [needFilter, needReasonFilter, needShowShot, needIhdMonth, q].join("|");
+  needPage = pagedFor === needPagedFor ? clampTablePage(needPage, filteredNeedRows.length, needPageSize) : 1;
+  needPagedFor = pagedFor;
 
   document.querySelectorAll("#needFilters .filter-btn").forEach(btn => btn.classList.toggle("active", btn.dataset.filter === needFilter));
   document.querySelectorAll("#needReasonFilters .filter-btn").forEach(btn => btn.classList.toggle("active", btn.dataset.reason === needReasonFilter));
@@ -319,10 +446,11 @@ function renderNeedTable() {
       : "No styles match the current filters.";
     tbody.innerHTML = `<tr class="state-row"><td colspan="${cols.length}">${escapeHtml(msg)}</td></tr>`;
     syncNeedSelectionUi();
+    renderNeedPager();
     return;
   }
 
-  tbody.replaceChildren(...filteredNeedRows.map(r => {
+  tbody.replaceChildren(...filteredNeedRows.slice((needPage - 1) * needPageSize, needPage * needPageSize).map(r => {
     const key = styleKey(r.styleNo, r.color);
     const tr = document.createElement("tr");
     tr.className = "clickable-row";
@@ -356,6 +484,12 @@ function renderNeedTable() {
           break;
         }
         case "added": setDisplayText(td, r.addedAt ? formatLongDate(r.addedAt.slice(0, 10)) : EMPTY_DISPLAY); break;
+        case "notes": {
+          const style = findStyle(r.styleNo, r.color);
+          if (style) td.appendChild(createStyleNotesInput(style, { onSaved: refreshStylePaneSummary }));
+          else setDisplayText(td, EMPTY_DISPLAY);
+          break;
+        }
         default:
           mountSearchHighlightedText(td, r[col] ?? "");
           if (col === "description" && r.description) td.title = r.description;
@@ -364,8 +498,29 @@ function renderNeedTable() {
     });
     return tr;
   }));
+  renderNeedPager();
   syncNeedSelectionUi();
   syncStylePaneRows();
+}
+
+function renderNeedPager() {
+  renderTablePager("needPager", {
+    total: filteredNeedRows.length,
+    page: needPage,
+    pageSize: needPageSize,
+    noun: "Styles",
+    onPage: n => {
+      needPage = n;
+      renderNeedTable();
+      document.querySelector("#needTableWrap > .table-scroll-y")?.scrollTo({ top: 0 });
+    },
+    onPageSize: n => {
+      needPageSize = n;
+      saveTablePageSize("needTable", n);
+      needPage = 1;
+      renderNeedTable();
+    },
+  });
 }
 
 function getSelectedNeedStyles() {
@@ -681,6 +836,7 @@ async function removeStyleFromShoot(id, style) {
 // ── Init ─────────────────────────────────────────────────────────────────────
 
 function initPhotoshoots() {
+  needPageSize = readTablePageSize("needTable");
   initColumnSort("needTable", needSort, NEED_SORT_COLUMNS, renderNeedTable);
   initColumnSort("shootsTable", shootSort, SHOOT_SORT_COLUMNS, renderShootsTable);
   initColumnFilter("needTable", "ihd", {
@@ -705,6 +861,8 @@ function initPhotoshoots() {
     btn.addEventListener("click", () => { needFilter = btn.dataset.filter; renderNeedTable(); });
   });
   document.querySelectorAll("#needReasonFilters .filter-btn").forEach(btn => {
+    // The same T-shirt / paint bucket / camera as the Shoot buttons.
+    if (btn.dataset.reason !== "all") btn.innerHTML = shootReasonIcon(btn.dataset.reason);
     btn.addEventListener("click", () => { needReasonFilter = btn.dataset.reason; renderNeedTable(); });
   });
   document.getElementById("needShowShot")?.addEventListener("change", e => { needShowShot = e.target.checked; renderNeedTable(); });
@@ -721,7 +879,7 @@ function initPhotoshoots() {
       if (e.target.tagName !== "INPUT") e.target.closest("td").querySelector("input")?.click();
       return;
     }
-    if (e.target.closest('td[data-col="ihd"], .shoot-picker')) return;
+    if (e.target.closest('td[data-col="ihd"], td[data-col="notes"], .shoot-picker')) return;
     const tr = e.target.closest("tr[data-style-no]");
     if (tr) openStylePane(tr.dataset.styleNo, tr.dataset.color);
   });

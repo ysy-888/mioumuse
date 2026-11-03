@@ -121,10 +121,17 @@ function diffStyles(incoming) {
     if (!colorsByStyle.has(key)) colorsByStyle.set(key, []);
     colorsByStyle.get(key).push(s.color);
   });
+  // Deleted in the app: skipped, so they don't come back.
+  const deleted = new Set(getDeletedStyles().map(s => styleKey(s.styleNo, s.color)));
   const added = [];
   const changed = [];
   let unchanged = 0;
+  let deletedSkipped = 0;
   incoming.forEach(style => {
+    if (deleted.has(styleKey(style.styleNo, style.color))) {
+      deletedSkipped += 1;
+      return;
+    }
     const current = existing.get(styleKey(style.styleNo, style.color));
     if (!current) {
       const existingColors = colorsByStyle.get(style.styleNo);
@@ -139,7 +146,7 @@ function diffStyles(incoming) {
     if (diffs.length) changed.push({ style, diffs });
     else unchanged += 1;
   });
-  return { added, changed, unchanged };
+  return { added, changed, unchanged, deletedSkipped };
 }
 
 // ── Changes view ─────────────────────────────────────────────────────────────
@@ -525,7 +532,8 @@ function renderStyleImportPreview() {
   document.getElementById("styleImportPick").hidden = true;
 
   const searchSlot = setStyleImportHead(
-    `${plan.fileName} · ${plan.total.toLocaleString()} styles in the file · ${plan.skipped.toLocaleString()} blank / size rows skipped`,
+    `${plan.fileName} · ${plan.total.toLocaleString()} styles in the file · ${plan.skipped.toLocaleString()} blank / size rows skipped`
+      + (plan.deletedSkipped ? ` · ${plan.deletedSkipped.toLocaleString()} deleted ${plan.deletedSkipped === 1 ? "style" : "styles"} skipped` : ""),
     plan,
   );
   preview.replaceChildren(createStyleChangesView(plan, { unchanged: plan.unchanged, searchSlot }));

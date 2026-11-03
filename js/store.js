@@ -216,8 +216,8 @@ async function loadAppData() {
   setShootList(shootRows);
   allPhotoshoots = (shootsRes.error ? [] : shootsRes.data).map(row => normalizePhotoshoot(photoshootRowToInput(row)));
 
-  // PO lines from the cost sheet — an add-on too.
-  allPoLines = await loadPoLines(client);
+  // PO lines from the cost sheet — an add-on too — and the months archived.
+  [allPoLines, poArchivedMonths] = await Promise.all([loadPoLines(client), loadPoArchivedMonths(client)]);
 }
 
 // ── PO lines (the cost sheet) ────────────────────────────────────────────────
@@ -272,6 +272,46 @@ async function loadPoLines(client) {
 
 function getAllPoLines() {
   return allPoLines;
+}
+
+// Archived months ("2026-07"): still listed on the POs page, but their Store
+// Ins no longer set IHDs. Kept apart from po_lines, which every import
+// replaces, so an archive survives re-reading the sheet.
+
+let poArchivedMonths = new Set();
+
+const PO_MONTH_ARCHIVE_SQL = `create table if not exists po_month_archive (
+  user_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
+  month text not null,
+  archived_at timestamptz not null default now(),
+  primary key (user_id, month)
+);
+alter table po_month_archive enable row level security;
+drop policy if exists "po_month_archive: own rows only" on po_month_archive;
+create policy "po_month_archive: own rows only" on po_month_archive
+  for all using (user_id = auth.uid()) with check (user_id = auth.uid());`;
+
+/** A missing table (SQL not run yet) reads as nothing archived. */
+async function loadPoArchivedMonths(client) {
+  const res = await client.from("po_month_archive").select("month");
+  return new Set(res.error ? [] : res.data.map(r => r.month));
+}
+
+function getPoArchivedMonths() {
+  return poArchivedMonths;
+}
+
+async function setPoMonthArchived(month, archived) {
+  const client = requireClient();
+  const res = archived
+    ? await client.from("po_month_archive").upsert({ month }, { onConflict: "user_id,month" })
+    : await client.from("po_month_archive").delete().eq("month", month);
+  if (res.error) {
+    throw /po_month_archive/.test(res.error.message ?? "")
+      ? new Error(`Create the po_month_archive table in Supabase first (SQL Editor):\n\n${PO_MONTH_ARCHIVE_SQL}`)
+      : res.error;
+  }
+  if (archived) poArchivedMonths.add(month); else poArchivedMonths.delete(month);
 }
 
 /** Replace every PO line with `lines` (from parseCostSheet). */
@@ -645,6 +685,11 @@ async function deleteCampaign(id) {
 // Style # + Color; importing again updates what changed and adds what's new.
 
 let allStyles = [];
+/**
+ * Deleted styles stay in the database (deleted_at set), so an import skips
+ * them instead of adding them back. They're left out of everything else.
+ */
+let deletedStyles = [];
 /** Style # (upper case) → its colours, for the banner lookups. */
 let stylesByNo = new Map();
 
@@ -663,7 +708,10 @@ function styleRowToStyle(row) {
     description: String(row.description ?? ""),
     // In-house date — entered in the app, not part of the ATS export.
     ihd: normalizeYmd(row.ihd),
+    // Also entered in the app; the import leaves it alone.
+    notes: String(row.notes ?? ""),
     updatedAt: String(row.updated_at ?? ""),
+    deletedAt: String(row.deleted_at ?? ""),
   };
 }
 
@@ -685,7 +733,9 @@ function styleToRow(style) {
 }
 
 function setAllStyles(rows) {
-  allStyles = rows.map(styleRowToStyle);
+  const styles = rows.map(styleRowToStyle);
+  allStyles = styles.filter(s => !s.deletedAt);
+  deletedStyles = styles.filter(s => s.deletedAt);
   indexStyles();
 }
 
@@ -700,6 +750,35 @@ function indexStyles() {
 
 function getAllStyles() {
   return allStyles;
+}
+
+function getDeletedStyles() {
+  return deletedStyles;
+}
+
+/**
+ * Delete styles (or, with `deleted` false, restore them). The rows stay,
+ * marked with deleted_at; the cache moves them across.
+ */
+async function setStylesDeleted(styles, deleted) {
+  const BATCH = 500;
+  const client = requireClient();
+  const at = deleted ? new Date().toISOString() : null;
+  for (let i = 0; i < styles.length; i += BATCH) {
+    const res = await client.from("styles")
+      .upsert(styles.slice(i, i + BATCH).map(s => ({ ...styleToRow(s), deleted_at: at })), { onConflict: "user_id,style_no,color" });
+    if (res.error && /deleted_at/.test(res.error.message ?? "")) {
+      throw new Error("Deleting styles needs the deleted_at column. Run the styles SQL in supabase-schema.sql first.");
+    }
+    throwIfError(res);
+  }
+  const keys = new Set(styles.map(s => styleKey(s.styleNo, s.color)));
+  const moving = [...allStyles, ...deletedStyles].filter(s => keys.has(styleKey(s.styleNo, s.color)));
+  moving.forEach(s => { s.deletedAt = at ?? ""; });
+  const byStyle = (a, b) => a.styleNo.localeCompare(b.styleNo) || a.color.localeCompare(b.color);
+  allStyles = [...allStyles.filter(s => !keys.has(styleKey(s.styleNo, s.color))), ...(deleted ? [] : moving)].sort(byStyle);
+  deletedStyles = [...deletedStyles.filter(s => !keys.has(styleKey(s.styleNo, s.color))), ...(deleted ? moving : [])].sort(byStyle);
+  indexStyles();
 }
 
 /** Every colour of a Style #, or [] when it isn't in the database. */
@@ -744,6 +823,22 @@ async function setStyleIhd(styleNo, color, ihd) {
   return style;
 }
 
+/** Set (or clear, with "") one style's notes. */
+async function setStyleNotes(styleNo, color, notes) {
+  const style = findStyle(styleNo, color);
+  if (!style) throw new Error(`${styleNo} ${color} isn't in the Styles database.`);
+  const value = String(notes ?? "").trim();
+  const res = await requireClient().from("styles")
+    .update({ notes: value })
+    .eq("style_no", style.styleNo).eq("color", style.color);
+  if (res.error && /notes/.test(res.error.message ?? "")) {
+    throw new Error("Notes need the notes column. Run the styles SQL in supabase-schema.sql first.");
+  }
+  throwIfError(res);
+  style.notes = value;
+  return style;
+}
+
 /** Distinct Style #s, for suggestions as you type. */
 function getStyleNumbers() {
   return [...new Set(allStyles.map(s => s.styleNo))];
@@ -768,7 +863,7 @@ async function saveStyles(styles, onProgress) {
   // Merged over what's cached, so fields the import doesn't carry (IHD) stay.
   styles.forEach(s => {
     const key = styleKey(s.styleNo, s.color);
-    byKey.set(key, { ihd: "", ...byKey.get(key), ...s, updatedAt: now });
+    byKey.set(key, { ihd: "", notes: "", ...byKey.get(key), ...s, updatedAt: now });
   });
   allStyles = [...byKey.values()].sort((a, b) => a.styleNo.localeCompare(b.styleNo) || a.color.localeCompare(b.color));
   indexStyles();

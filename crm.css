@@ -600,6 +600,7 @@ select.filter-select:focus { border-color: var(--accent); }
   padding: 7px 9px;
 }
 .filter-btn-icon svg { display: block; }
+.filter-btn-icon[hidden] { display: none; }
 .filter-btn:disabled { opacity: 0.45; cursor: default; }
 .filter-btn:disabled:hover { background: var(--bg); }
 
@@ -4791,6 +4792,10 @@ span.dash-event { cursor: pointer; /* clicking selects the day */ }
   font-family: var(--font);
 }
 
+/* The wordmark (logo.svg), in the left menu and on the sign-in card. */
+.app-logo { display: block; height: 14px; width: auto; }
+.app-logo--login { height: 17px; margin-bottom: 8px; }
+
 .login-title {
   font-size: 18px;
   font-weight: 700;
@@ -6919,12 +6924,6 @@ span.dash-event { cursor: pointer; /* clicking selects the day */ }
   max-width: 0;
 }
 
-.style-more-row td { padding: 12px; text-align: center; }
-
-.style-select-filters {
-  display: flex;
-  gap: 6px;
-}
 
 .style-filter-select {
   width: auto;
@@ -7315,6 +7314,13 @@ span.dash-event { cursor: pointer; /* clicking selects the day */ }
 }
 
 .style-thumb.is-empty { border-style: dashed; background: transparent; }
+/* No photos in the linked folder: a light fill with an X corner to corner. */
+.style-thumb.is-missing {
+  border-style: solid;
+  background:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100' preserveAspectRatio='none'%3E%3Cpath d='M0 0L100 100M100 0L0 100' stroke='%23e1e5ea' stroke-width='0.75' vector-effect='non-scaling-stroke'/%3E%3C/svg%3E") center / 100% 100% no-repeat,
+    #f1f3f6;
+}
 .style-thumb.has-image { cursor: zoom-in; }
 
 /* More than one photo: a small count in the corner. */
@@ -7505,6 +7511,9 @@ th.th-select { text-align: center; cursor: default; padding-left: 4px; padding-r
 .shoot-status[data-tone="needed"]    { background: #fdf0d5; color: #8a5a00; }
 .shoot-status[data-tone="scheduled"] { background: #e1ecfb; color: #1f56a5; }
 .shoot-status[data-tone="shot"]      { background: #e1f5ee; color: #0f6e56; }
+/* Scheduled: the shoot type's colours, as in the Photoshoots Type column. */
+.shoot-status[data-tone="scheduled"][data-shoot-type="studio"]    { background: #ece6fb; color: #5a3aa8; }
+.shoot-status[data-tone="scheduled"][data-shoot-type="editorial"] { background: #fbe3f3; color: #9b1f74; }
 .shoot-status[title] { cursor: help; }
 
 .shoot-type {
@@ -7519,7 +7528,7 @@ th.th-select { text-align: center; cursor: default; padding-left: 4px; padding-r
 .shoot-type[data-type="studio"]    { background: #ece6fb; color: #5a3aa8; }
 .shoot-type[data-type="editorial"] { background: #fbe3f3; color: #9b1f74; }
 
-.styles-table .col-shoot { width: 190px; min-width: 180px; }
+.styles-table .col-shoot { width: 230px; min-width: 210px; }
 .need-table .col-added { width: 110px; min-width: 100px; }
 
 /* POs: a style's row (Style #, description) across the table; its colours under it, with its PO lines down the PO column. */
@@ -7566,6 +7575,125 @@ th.th-select { text-align: center; cursor: default; padding-left: 4px; padding-r
 .po-table tr.po-gap-row td { height: 18px; padding: 0; background: var(--bg); border-left-color: transparent; border-right-color: transparent; }
 .po-table tr.po-gap-row:hover td { background: var(--bg); }
 .po-group-missing { color: var(--danger); font-size: 12px; }
+/* ── POs: the month list down the left, the table beside it ── */
+.po-layout { display: flex; min-height: 0; }
+.po-layout[hidden] { display: none; }
+.po-layout > .table-scroll-y { flex: 1; min-width: 0; }
+
+.po-months {
+  flex: 0 0 200px;
+  overflow-y: auto;
+  padding: 10px 8px;
+  border-right: 1px solid var(--border);
+  background: var(--surface);
+}
+
+/* A year: a folder that opens to its months. */
+.po-year {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  margin-top: 2px;
+  padding: 7px 8px 7px 4px;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  font-family: var(--font);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+.po-year:first-child { margin-top: 0; }
+.po-year:hover { background: var(--accent-heavy); }
+.po-year svg { flex: 0 0 auto; color: var(--text-muted); }
+.po-year-chevron { width: 10px; font-size: 10px; color: var(--text-muted); }
+.po-year-name { flex: 1; }
+/* Its count lines up with the months' counts, past the archive button's slot. */
+
+/* A month: the row is the button's background, so the archive button sits
+   inside it, in its own slot after the count. */
+.po-month {
+  display: flex;
+  align-items: center;
+  margin: 1px 0 1px 20px;
+  border-radius: 6px;
+}
+.po-month:hover { background: var(--accent-heavy); }
+/* Need to Shoot's Show all and No IHD: above the year folders, not in one. */
+.po-month--top { margin-left: 0; }
+.po-month--top + .po-year { margin-top: 8px; }
+
+.po-month-pick {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 4px 6px 10px;
+  border: none;
+  background: none;
+  font-family: var(--font);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-secondary, #4b5563);
+  text-align: left;
+  cursor: pointer;
+}
+.po-month:hover .po-month-pick { color: var(--text); }
+.po-month-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.po-month-count { font-size: 11.5px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+
+/* Picked: dark, like the main menu. */
+.po-month.is-active { background: var(--text); }
+.po-month.is-active .po-month-pick { color: #fff; font-weight: 600; }
+.po-month.is-active .po-month-count { color: rgba(255, 255, 255, 0.7); }
+
+/* Keeps its slot when hidden, so the counts don't shift on hover. */
+.po-month-archive {
+  flex: 0 0 auto;
+  display: inline-flex;
+  margin-right: 4px;
+  padding: 4px;
+  border: none;
+  border-radius: 4px;
+  background: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  visibility: hidden;
+}
+.po-month:hover .po-month-archive,
+.po-month-archive:focus-visible { visibility: visible; }
+.po-month-archive:hover { color: var(--text); background: rgba(0, 0, 0, 0.06); }
+.po-month.is-active .po-month-archive { color: rgba(255, 255, 255, 0.8); }
+.po-month.is-active .po-month-archive:hover { color: #fff; background: rgba(255, 255, 255, 0.15); }
+
+.po-month.is-archived .po-month-name { color: var(--text-muted); text-decoration: line-through; text-decoration-color: rgba(0, 0, 0, 0.25); }
+.po-month.is-archived.is-active .po-month-name { color: #fff; text-decoration-color: rgba(255, 255, 255, 0.5); }
+
+.po-months-archived-toggle {
+  display: block;
+  width: 100%;
+  margin-top: 10px;
+  padding: 8px 10px 6px;
+  border: none;
+  border-top: 1px solid var(--border);
+  background: none;
+  font-family: var(--font);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  text-align: left;
+  cursor: pointer;
+}
+.po-months-archived-toggle:hover { color: var(--text); }
+.po-months-empty { padding: 8px 10px; font-size: 12.5px; color: var(--text-muted); }
+
 /* Under the POs toolbar, on a line of its own. */
 .po-notice {
   flex-basis: 100%;
@@ -7778,10 +7906,42 @@ th.th-select { text-align: center; cursor: default; padding-left: 4px; padding-r
 .cell-date.is-saving { opacity: 0.6; }
 .cell-date.is-saved { background: #e1f5ee; }
 
+/* ── Notes (Styles table and style pane) ── */
+.styles-table .col-notes { width: 220px; min-width: 160px; }
+.styles-table td[data-col="notes"] { padding: 2px 4px; cursor: default; }
+
+/* Plain text until hovered or focused, like the date cell. */
+.cell-notes-input {
+  width: 100%;
+  padding: 4px 6px;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  background: transparent;
+  font-family: var(--font);
+  font-size: 12px;
+  color: var(--text);
+  text-overflow: ellipsis;
+  transition: background 120ms ease;
+}
+.cell-notes-input:hover,
+.cell-notes-input:focus { border-color: var(--border-strong); background: var(--surface); outline: none; }
+/* In the pane it's always a box: there's room, and it's the only big field. */
+.cell-notes-input--pane {
+  border-color: var(--border-strong);
+  background: var(--surface);
+  padding: 7px 10px;
+  font-size: 13px;
+  line-height: 1.4;
+  min-height: 60px;
+  resize: vertical;
+}
+.cell-notes-input.is-saving { opacity: 0.6; }
+.cell-notes-input.is-saved { background: #e1f5ee; }
+
 /* ── IHD in Photoshoots ── */
 .need-table .col-ihd { width: 150px; min-width: 140px; }
 .need-table td[data-col="ihd"] { padding: 2px 4px; cursor: default; }
-.need-table .col-shoot { width: 190px; }
+.need-table .col-shoot { width: 230px; }
 .shoots-table .col-latest-ihd { width: 130px; }
 
 /* Goods arrive after the shoot date. */
@@ -7825,47 +7985,54 @@ th.th-select { text-align: center; cursor: default; padding-left: 4px; padding-r
 .shoot-style-row { flex-wrap: wrap; }
 .shoot-style-row.is-late { border-color: #f3c4c4; }
 
-/* Shoot cell: the New Style / New Color / Reshoot buttons, and under them a
-   scheduled or shot date when there is one — both centered in the column. */
+/* Shoot cell: the New Style / New Color / Reshoot buttons, and beside them a
+   scheduled or shot date when there is one. In a table the cell splits in
+   two halves, buttons centered in the left and the date in the right, so the
+   buttons line up down the column whether or not a date follows. */
 .style-shoot-cell {
   display: inline-flex;
-  flex-direction: column;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
+}
+td > .style-shoot-cell {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  justify-items: center;
+  width: 100%;
 }
 
-/* New Style / New Color / Reshoot: one segmented control. The solid one is
-   why it's on Need to Shoot; a pale fill is the suggestion. */
+/* New Style (T-shirt) / New Color (paint bucket) / Reshoot (camera): three
+   icon buttons in one soft slate blue. The solid one is why it's on Need to
+   Shoot; a pale tint with a dashed edge is the suggestion. */
 .shoot-picker {
+  --c: #9bb3c9;
+  --tint: #eef2f6;
   display: inline-flex;
-  border: 1px solid var(--border-strong);
-  border-radius: 6px;
-  overflow: hidden;
+  gap: 4px;
+  padding: 2px;
+  border-radius: 8px;
 }
 /* On Need to Shoot from before reasons: no button lit yet, so the box says it. */
-.shoot-picker.is-waiting { border-color: #d39a2c; box-shadow: 0 0 0 1px #d39a2c; }
+.shoot-picker.is-waiting { background: var(--tint); box-shadow: inset 0 0 0 1px var(--c); }
 .shoot-pick {
-  padding: 3px 7px;
-  border: none;
-  border-left: 1px solid var(--border);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 26px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 6px;
   background: #fff;
-  color: var(--text-muted);
-  font-family: var(--font);
-  font-size: 11px;
-  font-weight: 600;
-  white-space: nowrap;
+  color: #9aa3af;
   cursor: pointer;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
 }
-.shoot-pick:first-child { border-left: none; }
-.shoot-pick:hover:not(:disabled) { color: var(--text); background: var(--row-hover); }
+.shoot-pick:hover:not(:disabled) { color: var(--c); border-color: var(--c); background: var(--tint); }
 .shoot-pick:disabled { opacity: 0.5; cursor: default; }
-.shoot-pick.is-suggested[data-reason="newStyle"] { background: #fdf0d5; color: #8a5a00; }
-.shoot-pick.is-suggested[data-reason="newColor"] { background: #efe7fb; color: #6232b5; }
+.shoot-pick.is-suggested { color: var(--c); background: var(--tint); border: 1px dashed var(--c); }
 .shoot-pick[aria-pressed="true"],
-.shoot-pick[aria-pressed="true"]:hover:not(:disabled) { color: #fff; }
-.shoot-pick[data-reason="newStyle"][aria-pressed="true"] { background: #b7791f; }
-.shoot-pick[data-reason="newColor"][aria-pressed="true"] { background: #6232b5; }
-.shoot-pick[data-reason="reshoot"][aria-pressed="true"]  { background: #1f56a5; }
+.shoot-pick[aria-pressed="true"]:hover:not(:disabled) { color: #fff; background: var(--c); border-color: var(--c); }
 .selection-label { font-size: 12px; font-weight: 600; color: var(--text-muted); }
 
 /* Columns that don't sort: no hover arrow, no pointer. */
@@ -8651,8 +8818,17 @@ th.th-select { text-align: center; cursor: default; padding-left: 4px; padding-r
    ============================================================ */
 
 .style-pane .item-pane-summary { align-items: center; }
-.style-pane .style-shoot-cell { align-items: flex-start; }
+.style-pane .style-shoot-cell { justify-content: flex-start; }
 .style-pane .cell-date { width: 136px; }
+.style-pane-pos-summary {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text);
+  cursor: pointer;
+  user-select: none;
+}
+.style-pane-pos-summary:hover { color: var(--text-muted); }
+.style-pane-pos-box[open] .style-pane-pos-summary { margin-bottom: 6px; }
 .style-pane-pos { display: flex; flex-direction: column; gap: 4px; }
 .style-pane-po { display: flex; align-items: center; gap: 8px; font-size: 12px; }
 .style-pane-po-month { font-weight: 600; }
