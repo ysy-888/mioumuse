@@ -168,7 +168,8 @@ const NEED_SORT_COLUMNS = {
   category: r => r.category,
   season: r => r.season,
   n41: r => r.n41,
-  ihd: r => findStyle(r.styleNo, r.color)?.ihd ?? "",
+  // An old 0026-11-16 shows as 11/16/26, so it sorts as 2026 too.
+  ihd: r => fixTwoDigitYear(findStyle(r.styleNo, r.color)?.ihd ?? ""),
   // To shoot, then scheduled by date, then shot.
   shoot: r => (r.status?.tone === "needed" ? `0${r.reason}` : r.status?.tone === "scheduled" ? `1${r.nextDate}` : "2"),
   added: r => r.addedAt,
@@ -298,9 +299,8 @@ function renderNeedTable() {
     if (!q) return true;
     return `${r.styleNo} ${r.color} ${r.description} ${r.category} ${r.season}`.toLowerCase().includes(q);
   });
-  // Unscheduled first (that's the work to plan), then by shoot date, then style.
-  const rank = r => (r.status?.tone === "needed" ? 0 : r.status?.tone === "scheduled" ? 1 : 2);
-  filteredNeedRows.sort((a, b) => rank(a) - rank(b) || a.nextDate.localeCompare(b.nextDate) ||
+  // Default order: IHD, soonest first (no IHD last), then style.
+  filteredNeedRows.sort((a, b) => compareSortValues(NEED_SORT_COLUMNS.ihd(a), NEED_SORT_COLUMNS.ihd(b), 1) ||
     a.styleNo.localeCompare(b.styleNo, undefined, { numeric: true }) || a.color.localeCompare(b.color));
   applyColumnSort(filteredNeedRows, needSort, NEED_SORT_COLUMNS);
 

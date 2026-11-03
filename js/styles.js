@@ -33,7 +33,7 @@ const STYLE_COLUMNS = {
   season: { value: s => s.season },
   status: { value: s => s.status },
   // "YYYY-MM-DD" sorts as a date; blanks sort last either way.
-  ihd: { value: s => s.ihd },
+  ihd: { value: s => fixTwoDigitYear(s.ihd) }, // an old 0026-… sorts as 2026, as it shows
 };
 
 /** Distinct values of a field, most common first — for the filter controls. */

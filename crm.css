@@ -7566,6 +7566,22 @@ th.th-select { text-align: center; cursor: default; padding-left: 4px; padding-r
 .po-table tr.po-gap-row td { height: 18px; padding: 0; background: var(--bg); border-left-color: transparent; border-right-color: transparent; }
 .po-table tr.po-gap-row:hover td { background: var(--bg); }
 .po-group-missing { color: var(--danger); font-size: 12px; }
+/* Under the POs toolbar, on a line of its own. */
+.po-notice {
+  flex-basis: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border: 1px solid #e8c27a;
+  border-radius: 6px;
+  background: #fdf6e7;
+  color: #8a5a00;
+  font-size: 13px;
+  font-weight: 500;
+}
+.po-notice[hidden] { display: none; }
+.po-notice .btn { padding-top: 3px; padding-bottom: 3px; }
 
 .shoots-table { min-width: 860px; }
 .shoots-table .col-date   { width: 130px; }

@@ -70,7 +70,7 @@ function renderStylePanePhotos(style) {
     wrap.replaceChildren(div);
   };
   const entries = getStyleImageEntries(style.styleNo, style.color);
-  count.textContent = styleImageState === "ready" ? String(entries.length) : "";
+  count.textContent = arePhotosKnown() ? String(entries.length) : "";
   if (styleImageState === "needs-permission") return note("Reconnect the image folder (Styles → menu ⋮) to see photos.");
   if (styleImageState !== "ready" && styleImageState !== "scanning") return note("Link the image folder (Styles → menu ⋮) to see photos.");
   if (!entries.length) return note(`No photos named "${style.styleNo} ${style.color.replace(/\//g, ".")} …" in the folder.`);

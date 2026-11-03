@@ -316,12 +316,13 @@ function formatPoMonth(month) {
 
 /**
  * Only a colour with no photos is suggested: New Style on a new PO, New Color
- * on a recut. Not one that's already waiting, or never shot. Photos are only
+ * on a recut. Not one that's already waiting, never shot, or CANCEL in N41. Photos are only
  * known with the image folder linked, so without it nothing is suggested.
  */
 function suggestPoReason(group, style) {
-  if (styleImageState !== "ready" || hasStyleImages(style.styleNo, style.color)) return "";
+  if (!arePhotosKnown() || hasStyleImages(style.styleNo, style.color)) return "";
   if (isNoShootStyle(style.styleNo, style.color)) return "";
+  if (String(style.status ?? "").trim().toUpperCase() === "CANCEL") return "";
   const entry = getShootListEntry(style.styleNo, style.color);
   if (entry && !entry.shotShootId) return "";
   return group.lines.some(l => l.dept === "S") ? "newStyle" : "newColor";
@@ -337,8 +338,8 @@ function buildPoGroups() {
     groups.get(line.styleNo).lines.push(line);
   });
   // Photos: keep the colours that match; a style with none left goes.
-  const photos = styleImageState === "ready" ? poPhotoFilter : "all";
-  const suggestedOnly = poSuggestedOnly && styleImageState === "ready";
+  const photos = arePhotosKnown() ? poPhotoFilter : "all";
+  const suggestedOnly = poSuggestedOnly && arePhotosKnown();
   groups.forEach(g => {
     if (photos !== "all") g.colors = g.colors.filter(s => hasStyleImages(s.styleNo, s.color) === (photos === "with"));
     if (suggestedOnly) g.colors = g.colors.filter(s => suggestPoReason(g, s));
@@ -458,7 +459,7 @@ function renderPoView() {
     btn.classList.toggle("active", btn.dataset.type === poTypeFilter);
   });
   // Photo counts come from the linked image folder; without it there's nothing to filter on.
-  const photosKnown = styleImageState === "ready";
+  const photosKnown = arePhotosKnown();
   document.querySelectorAll("#poPhotoFilters .filter-btn").forEach(btn => {
     btn.classList.toggle("active", btn.dataset.photos === (photosKnown ? poPhotoFilter : "all"));
     btn.disabled = !photosKnown && btn.dataset.photos !== "all";
@@ -471,7 +472,9 @@ function renderPoView() {
     suggested.title = photosKnown ? "Show only the colours Add suggested would add" : "Suggestions need the image folder linked (Styles → menu ⋮)";
   }
   const add = document.getElementById("poAddSuggestedBtn");
-  if (add) add.disabled = !photosKnown;
+  // Adding is the next step after checking the list, so it shows with Suggested.
+  if (add) add.hidden = !(photosKnown && poSuggestedOnly);
+  renderPoNotice();
 
   const tbody = document.getElementById("poTableBody");
   if (!tbody) return;
@@ -502,6 +505,54 @@ function renderPoView() {
   });
   tbody.replaceChildren(...rows);
   syncStylePaneRows();
+}
+
+/**
+ * The month's colours with no photos that aren't on Need to Shoot — the
+ * suggestions, counted across the whole month whatever the filters.
+ */
+function countPoUnshot() {
+  const groups = new Map();
+  getAllPoLines().filter(l => l.month === poMonth).forEach(line => {
+    if (!groups.has(line.styleNo)) groups.set(line.styleNo, { styleNo: line.styleNo, lines: [], colors: getPoStyleColors(line.styleNo) });
+    groups.get(line.styleNo).lines.push(line);
+  });
+  let colors = 0;
+  let styles = 0;
+  groups.forEach(group => {
+    const n = group.colors.filter(s => suggestPoReason(group, s)).length;
+    colors += n;
+    if (n) styles += 1;
+  });
+  return { colors, styles };
+}
+
+/** The line under the POs toolbar: how many still need adding, and Show them. */
+function renderPoNotice() {
+  const notice = document.getElementById("poNotice");
+  if (!notice) return;
+  const { colors, styles } = poMonth && arePhotosKnown() ? countPoUnshot() : { colors: 0, styles: 0 };
+  notice.hidden = !colors;
+  if (!colors) return;
+  const text = document.createElement("span");
+  text.textContent = `${colors.toLocaleString()} ${colors === 1 ? "color" : "colors"} (${styles.toLocaleString()} ${styles === 1 ? "style" : "styles"}) in ${formatPoMonth(poMonth)} ${colors === 1 ? "has" : "have"} no photos and ${colors === 1 ? "isn't" : "aren't"} on Need to Shoot.`;
+  notice.replaceChildren(text);
+  if (!poSuggestedOnly) {
+    const show = document.createElement("button");
+    show.type = "button";
+    show.className = "btn";
+    show.textContent = "Show them";
+    show.addEventListener("click", () => {
+      // Every one of them: clear the filters that could hide some.
+      poSuggestedOnly = true;
+      poTypeFilter = "all";
+      poPhotoFilter = "all";
+      const search = document.getElementById("poSearchInput");
+      if (search) search.value = "";
+      renderPoView();
+    });
+    notice.appendChild(show);
+  }
 }
 
 /** Put every suggested colour of the month (as filtered) on Need to Shoot. */

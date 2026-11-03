@@ -66,6 +66,14 @@ function parseStyleImageName(fileName) {
   };
 }
 
+/**
+ * Whether photos can be checked: the folder is read, or being re-read with
+ * the last scan's list in hand (a network folder can take minutes).
+ */
+function arePhotosKnown() {
+  return styleImageState === "ready" || (styleImageState === "scanning" && styleImageIndex.size > 0);
+}
+
 function hasStyleImages(styleNo, color) {
   return styleImageState === "ready" || styleImageState === "scanning"
     ? (styleImageIndex.get(styleImageKey(styleNo, color))?.length ?? 0) > 0

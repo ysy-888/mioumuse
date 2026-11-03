@@ -574,9 +574,10 @@ have passed.
 
 Suggestions (a pale fill on the button) are only for colours with no photos:
 **New Style** on a new PO (S), **New Color** on a recut (SR). Colours already
-waiting aren't suggested, and nothing is without the image folder linked.
-**Suggested** filters the page to just those, to check before **Add
-suggested to Need to Shoot** adds every suggestion on the page as filtered. Reshoot is
+waiting or with N41 status CANCEL aren't suggested, and nothing is without the image folder linked.
+A note under the toolbar counts the month's colours with no photos that aren't
+on Need to Shoot; **Show them** (or **Suggested**) filters the page to just
+those, and then **Add suggested to Need to Shoot** appears to add them all. Reshoot is
 always chosen by hand.
 
 A cost-sheet style is matched to the Styles database by its base Style #
@@ -615,6 +616,7 @@ all) to remove the filter.
 
 Need to Shoot and Shoots sort by clicking a column header: ascending, then
 descending, then back to the default order. Blank values always sort last.
+Need to Shoot's default order is IHD, soonest first.
 
 ### Exports
 
