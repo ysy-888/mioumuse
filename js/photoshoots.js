@@ -15,6 +15,7 @@
  */
 
 let needFilter = "all";         // "all" | "unscheduled" | "scheduled"
+let needReasonFilter = "all";   // "all" | a SHOOT_REASONS key
 let needShowShot = false;
 let shootFilter = "planned";    // "planned" | "complete" | "all"
 let needSelectedKeys = new Set();
@@ -36,7 +37,8 @@ function describeShootStatus(styleNo, color) {
   if (!entry) return null;
   if (entry.shotShootId) {
     const shoot = getPhotoshootById(entry.shotShootId);
-    return { tone: "shot", label: `Shot · ${shoot ? formatShootDate(shoot.date) : formatLongDate(entry.shotAt.slice(0, 10))}`, shoots: shoot ? [shoot] : [] };
+    const date = shoot ? formatShootDate(shoot.date) : formatLongDate(entry.shotAt.slice(0, 10));
+    return { tone: "shot", label: `Shot · ${date}`, short: `Shot ${date}`, shoots: shoot ? [shoot] : [] };
   }
   const planned = getPlannedShootsFor(styleNo, color);
   if (planned.length) {
@@ -44,10 +46,54 @@ function describeShootStatus(styleNo, color) {
     return {
       tone: "scheduled",
       label: `Scheduled · ${formatShootDate(next.date)}${planned.length > 1 ? ` +${planned.length - 1}` : ""}`,
+      short: `${formatShootDate(next.date)}${planned.length > 1 ? ` +${planned.length - 1}` : ""}`,
       shoots: planned,
     };
   }
-  return { tone: "needed", label: "To shoot", shoots: [] };
+  return { tone: "needed", label: getShootReasonLabel(entry.reason) || "To shoot", shoots: [] };
+}
+
+/**
+ * New Style / New Color / Reshoot: why a style needs pictures, and with any
+ * of them it's on Need to Shoot. The lit one is the reason it's waiting —
+ * click it again to take it off the list; click another to change the
+ * reason. `suggested` (a reason key) is outlined as the likely one.
+ * `onDone` redraws after a change.
+ */
+function createShootPicker(styleNo, color, onDone, { suggested = "" } = {}) {
+  const entry = getShootListEntry(styleNo, color);
+  const waiting = entry && !entry.shotShootId ? entry.reason || "any" : "";
+  const wrap = document.createElement("span");
+  wrap.className = "shoot-picker";
+  SHOOT_REASONS.forEach(({ key, label, short }) => {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "shoot-pick";
+    btn.dataset.reason = key;
+    btn.textContent = short;
+    const on = waiting === key;
+    btn.setAttribute("aria-pressed", String(on));
+    if (!waiting && suggested === key) btn.classList.add("is-suggested");
+    btn.title = on ? `${label} — on Need to Shoot. Click to take it off`
+      : waiting ? `Change to ${label}` : `${label} — add to Need to Shoot${suggested === key ? " (suggested)" : ""}`;
+    btn.setAttribute("aria-label", `${btn.title}: ${styleNo} ${color}`);
+    btn.addEventListener("click", async () => {
+      const style = { styleNo, color };
+      if (on && getPlannedShootsFor(styleNo, color).length
+        && !confirm(`${styleNo} ${color} is in a planned shoot. Take it off Need to Shoot anyway? It stays in the shoot.`)) return;
+      wrap.querySelectorAll("button").forEach(b => { b.disabled = true; });
+      try {
+        if (on) await removeFromShootList([style]);
+        else await addToShootList([style], key);
+        showIndicator(on ? `${styleNo} ${color} taken off Need to Shoot` : `${styleNo} ${color}: ${label}`, "success");
+      } catch (err) {
+        showIndicator(err.message || "Couldn't save.", "error");
+      }
+      onDone();
+    });
+    wrap.appendChild(btn);
+  });
+  return wrap;
 }
 
 /**
@@ -67,7 +113,8 @@ function createIhdWarning(ihd) {
   return warn;
 }
 
-function createShootStatusBadge(styleNo, color) {
+/** `compact`: the short label (the Shoot column, beside the camera / AI buttons). */
+function createShootStatusBadge(styleNo, color, { compact = false } = {}) {
   const status = describeShootStatus(styleNo, color);
   const el = document.createElement("span");
   if (!status) {
@@ -76,9 +123,10 @@ function createShootStatusBadge(styleNo, color) {
   }
   el.className = "shoot-status";
   el.dataset.tone = status.tone;
-  el.textContent = status.label;
+  el.textContent = compact ? status.short ?? status.label : status.label;
+  if (compact) el.title = status.label;
   if (status.shoots.length) {
-    el.title = status.shoots.map(s => `${getPhotoshootTitle(s)} · ${getPhotoshootTypeLabel(s.type)} · ${formatShootDate(s.date)}${s.model ? ` · ${s.model}` : ""}`).join("\n");
+    el.title = (compact ? `${status.label}\n` : "") + status.shoots.map(s => `${getPhotoshootTitle(s)} · ${getPhotoshootTypeLabel(s.type)} · ${formatShootDate(s.date)}${s.model ? ` · ${s.model}` : ""}`).join("\n");
   }
   // Scheduled before the goods are in: say so beside the date.
   if (status.tone === "scheduled" && isIhdAfterShoot(styleNo, color, status.shoots[0].date)) {
@@ -117,7 +165,7 @@ const NEED_SORT_COLUMNS = {
   n41: r => r.n41,
   ihd: r => findStyle(r.styleNo, r.color)?.ihd ?? "",
   // To shoot, then scheduled by date, then shot.
-  shoot: r => (r.status?.tone === "needed" ? "0" : r.status?.tone === "scheduled" ? `1${r.nextDate}` : "2"),
+  shoot: r => (r.status?.tone === "needed" ? `0${r.reason}` : r.status?.tone === "scheduled" ? `1${r.nextDate}` : "2"),
   added: r => r.addedAt,
 };
 
@@ -196,6 +244,7 @@ function renderPhotoshootsView() {
 function refreshPhotoshootViews() {
   if (isPhotoshootView()) renderPhotoshootsView();
   if (getCurrentAppView() === "styles" && typeof renderStylesTable === "function") renderStylesTable();
+  if (getCurrentAppView() === "pos" && typeof renderPoView === "function") renderPoView();
   // Shoots sit on the Home calendar too.
   refreshCalendarIfActive();
   if (paneShootId) {
@@ -221,6 +270,7 @@ function buildNeedRows() {
         season: style?.season ?? "",
         n41: style?.status ?? "",
         addedAt: e.addedAt,
+        reason: e.reason,
         status,
         nextDate: status?.tone === "scheduled" ? status.shoots[0].date : "",
       };
@@ -234,7 +284,9 @@ function renderNeedTable() {
   filteredNeedRows = buildNeedRows().filter(r => {
     if (needFilter === "unscheduled" && r.status?.tone !== "needed") return false;
     if (needFilter === "scheduled" && r.status?.tone !== "scheduled") return false;
+    if (needReasonFilter !== "all" && r.reason !== needReasonFilter) return false;
     if (!columnFilterPasses("needTable", "ihd", monthFilterKey(findStyle(r.styleNo, r.color)?.ihd))) return false;
+    if (!columnFilterPasses("needTable", "n41", statusFilterKey(r.n41))) return false;
     if (!q) return true;
     return `${r.styleNo} ${r.color} ${r.description} ${r.category} ${r.season}`.toLowerCase().includes(q);
   });
@@ -245,6 +297,7 @@ function renderNeedTable() {
   applyColumnSort(filteredNeedRows, needSort, NEED_SORT_COLUMNS);
 
   document.querySelectorAll("#needFilters .filter-btn").forEach(btn => btn.classList.toggle("active", btn.dataset.filter === needFilter));
+  document.querySelectorAll("#needReasonFilters .filter-btn").forEach(btn => btn.classList.toggle("active", btn.dataset.reason === needReasonFilter));
   const showShot = document.getElementById("needShowShot");
   if (showShot) showShot.checked = needShowShot;
   const counter = document.getElementById("needRowCounter");
@@ -285,7 +338,7 @@ function renderNeedTable() {
           break;
         }
         case "image": td.appendChild(createStyleThumb(r.styleNo, r.color)); break;
-        case "shoot": td.appendChild(createShootStatusBadge(r.styleNo, r.color)); break;
+        case "shoot": td.appendChild(createStyleShootCell(findStyle(r.styleNo, r.color) ?? { styleNo: r.styleNo, color: r.color, status: r.n41 })); break;
         case "n41": td.appendChild(createStyleStatusPill(r.n41)); break;
         case "ihd": {
           // Editable here too; saving re-checks the "IHD after shoot" warnings.
@@ -623,15 +676,26 @@ function initPhotoshoots() {
   initColumnFilter("needTable", "ihd", {
     options: () => monthFilterOptions(buildNeedRows().map(r => findStyle(r.styleNo, r.color)?.ihd ?? "")),
     onChange: renderNeedTable,
+    sortable: true,
+  });
+  initColumnFilter("needTable", "n41", {
+    options: () => statusFilterOptions(buildNeedRows().map(r => r.n41)),
+    onChange: renderNeedTable,
+    hideByDefault: isStatusHiddenByDefault,
+    sortable: true,
   });
   initColumnFilter("shootsTable", "latestIhd", {
     options: () => monthFilterOptions(getAllPhotoshoots().map(getShootLatestIhd)),
     onChange: renderShootsTable,
+    sortable: true,
   });
 
   // Need to Shoot controls.
   document.querySelectorAll("#needFilters .filter-btn").forEach(btn => {
     btn.addEventListener("click", () => { needFilter = btn.dataset.filter; renderNeedTable(); });
+  });
+  document.querySelectorAll("#needReasonFilters .filter-btn").forEach(btn => {
+    btn.addEventListener("click", () => { needReasonFilter = btn.dataset.reason; renderNeedTable(); });
   });
   document.getElementById("needShowShot")?.addEventListener("change", e => { needShowShot = e.target.checked; renderNeedTable(); });
   document.getElementById("needSearchInput")?.addEventListener("input", renderNeedTable);
@@ -647,7 +711,7 @@ function initPhotoshoots() {
       if (e.target.tagName !== "INPUT") e.target.closest("td").querySelector("input")?.click();
       return;
     }
-    if (e.target.closest('td[data-col="ihd"]')) return;
+    if (e.target.closest('td[data-col="ihd"], .shoot-picker')) return;
     const tr = e.target.closest("tr[data-style-no]");
     if (tr) openStyleGallery(tr.dataset.styleNo, tr.dataset.color);
   });

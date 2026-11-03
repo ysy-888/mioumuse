@@ -63,6 +63,7 @@ reference in index.html so the URLs change on every deploy.
 | `js/style-import.js` | Import Excel — reads the N41 ATS export in the browser, lists every change under Update / New Styles / New Colors tabs, saves, and records it for Update history |
 | `js/style-images.js` | Style photos from a linked network folder — matched by file name, thumbnails, gallery |
 | `js/photoshoots.js` | The Photoshoots and Need to Shoot pages — the shoots list, the Need to Shoot list, the shoot side pane, shoot status badges |
+| `js/purchase-orders.js` | The POs page — reading the cost sheet, setting IHDs from Store In, PO lines by month with each colour and its shoot buttons |
 | `js/photoshoot-form.js` | Create / edit photoshoot modal |
 | `js/magento-sales.js` | Magento → Orders and Customers (read-only): lists with Status / Group filters, date quick filters, search, sort, paging; the order / customer pane |
 | `js/magento-n41.js` | Magento → Orders against N41: Import N41 Sales Orders, N41 Status, the Closed on N41 filter, tick orders and cancel them on Magento |
@@ -93,7 +94,7 @@ held. Space on a button reached with Tab still presses it.
 ## Header menus
 
 **Home**, then three menus that open on hover: **Marketing** (Campaigns, Trade
-Shows, Platforms), **Photoshoots** (Photoshoots, Need to Shoot, Styles) and **Magento**
+Shows, Platforms), **Photoshoots** (Styles, Need to Shoot, POs, Photoshoots) and **Magento**
 (Products, Categories). The page you're on is ticked and its menu
 underlined.
 
@@ -491,7 +492,7 @@ Confirming saves only new and changed styles. Styles missing from a newer file a
 Each import that saves anything is recorded in full. **Update History**
 (header menu ⋮, on the Styles tab) lists them newest first — when, which
 file, and how many updated / new / unchanged — and opening one shows its
-Update, New Styles and New Colors tabs again — click a row for the style's detail window. Each row has the Styles table's **+ Need to Shoot**, and the two New tabs have **Add all to Need to Shoot** (everything on the tab, as searched; ones already waiting are skipped). Records live in the `style_imports` table (see
+Update, New Styles and New Colors tabs again — click a row for the style's detail window. Each row has the Styles table's shoot buttons, and the two New tabs have **Add all to Need to Shoot** (as New Style or New Color) (everything on the tab, as searched; ones already waiting are skipped). Records live in the `style_imports` table (see
 `supabase-schema.sql`); imports made before it was added aren't recorded.
 
 **IHD** (in-house date) is edited right in the Styles table. It shows as
@@ -533,10 +534,47 @@ each visit. Only computers that can reach the server see the photos.
 
 ## Photoshoots
 
-**Need to Shoot** is a flag on a Style # + Color. Tick styles in the Styles
-tab (the header box ticks everything in the current view) and use **Add to
-Need to Shoot**, or add one style at a time with the **+ Need to Shoot**
-button in its Shoot cell (**+ Shoot again** for one that's been shot).
+**Need to Shoot** is a flag on a Style # + Color, with a reason: **New
+Style**, **New Color** or **Reshoot**. Any of the three puts the style on the
+list. In the Shoot cell (Styles, Need to Shoot, POs) the lit button is the
+reason it's waiting: click it again to take the style off, or another to
+change the reason. A dashed outline is the suggested reason. To flag many,
+tick styles in the Styles tab and use the **Need to Shoot: New Style / New
+Color / Reshoot** buttons. Need to Shoot also filters by reason.
+
+### POs
+
+The **POs** page (under Photoshoots) shows the cost sheet a month at a time.
+Each style has its PO lines across the top (**New** or **RE#**, P.O#, Store
+In), and every colour from the Styles database under it, with photos, N41
+status, photo count, IHD and the shoot buttons. Filter by **New** / **Recut**
+or search; click a colour for its photos.
+
+Menu ⋮ → **Link Cost Sheet** and pick the workbook (`COST SHEET(MEICON).xlsx`,
+the real file, not a shortcut). Like the image folder, the link is kept in
+this browser (Chrome or Edge). Each time the app opens, and when you come back
+to its tab, the file is checked and read again only if it changed. The POs
+toolbar says when it was last read. After a browser restart it may need
+**Reconnect** (in the toolbar or the menu); choose "Allow on every visit" to
+skip that. **Update from Cost Sheet** re-reads it now; **Unlink Cost Sheet**
+forgets it. Other browsers get **Import Cost Sheet** instead, to pick the file
+each time.
+
+Reading it takes every tab named like `11.2026`, the header row with **STYLE
+#**, and lines with dept **S** (new) or **SR** (recut). Company (**C**) lines
+are skipped. Each read replaces the saved PO lines and sets each style's IHD
+(every colour) from Store In: the next one from today, or the latest if all
+have passed.
+
+Suggestions: a new style (S) suggests **New Style** for every colour; a
+recut's colour with no photos suggests **New Color** (only when the image
+folder is linked). **Add suggested to Need to Shoot** adds every suggestion
+on the page as filtered; styles already waiting are skipped. Reshoot is
+always chosen by hand.
+
+A cost-sheet style is matched to the Styles database by its base Style #
+(`T6941-RE4` → `T6941`, `J5937(B)` → `J5937`, and `P5674ST` falls back to
+`P5674`). One that doesn't match shows **Not in the Styles database**.
 
 Styles with N41 status **COMPANY** never need a shoot (`NO_SHOOT_STATUSES`
 in `js/config.js`). They show "No shoot needed", every add skips them, and
@@ -546,7 +584,8 @@ The Photoshoots tab lists them with where each stands:
 
 | Status | Meaning |
 |---|---|
-| To shoot | On the list, not in any planned shoot |
+| New Style / New Color / Reshoot | On the list, not in any planned shoot |
+
 | Scheduled · date | In a planned shoot — the earliest one's (tentative) date |
 | Shot · date | In a shoot that was marked complete — off the list (shown with **Show shot**) |
 
@@ -588,6 +627,7 @@ descending, then back to the default order. Blank values always sort last.
   - Campaigns, Trade Shows: **Export CSV**, that page's records and tasks.
   - Platforms: **Export PDF**.
   - Need to Shoot: **Export CSV**, the list.
+  - POs: **Link Cost Sheet** (then Reconnect / Update from Cost Sheet) and **Unlink Cost Sheet**.
   - Styles: **Import CSV**, **Export CSV** (the filtered styles), **Update
     History**, and the image folder's Link / Reconnect / Rescan and Unlink.
   - Magento → Products, Orders, Customers: **Export CSV**. Products: every
@@ -595,5 +635,5 @@ descending, then back to the default order. Blank values always sort last.
     Magento 200 at a time), with color, each Grouped item's simple-item
     count and SKUs, category paths, prices, stock and image URLs.
 
-Data: `shoot_list` (the flag, plus which shoot it was shot in) and
-`photoshoots` (see `supabase-schema.sql`).
+Data: `shoot_list` (the flag and its reason, plus which shoot it was shot in),
+`photoshoots` and `po_lines` (see `supabase-schema.sql`).

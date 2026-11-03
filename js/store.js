@@ -215,6 +215,99 @@ async function loadAppData() {
   ]);
   setShootList(shootRows);
   allPhotoshoots = (shootsRes.error ? [] : shootsRes.data).map(row => normalizePhotoshoot(photoshootRowToInput(row)));
+
+  // PO lines from the cost sheet — an add-on too.
+  allPoLines = await loadPoLines(client);
+}
+
+// ── PO lines (the cost sheet) ────────────────────────────────────────────────
+//
+// One row per style line of a month's tab: Style # as written (T6941-RE4),
+// its base Style # (T6941), the recut number, P.O#, dept (S new, SR recut)
+// and Store In. Company (C) lines aren't kept. Each import replaces them all.
+
+let allPoLines = [];
+let poLinesTableReady = true;
+
+const PO_LINES_SQL = `create table if not exists po_lines (
+  user_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
+  month text not null, row_no int not null, po_style text not null default '',
+  style_no text not null default '', recut int not null default 0, po_no text not null default '',
+  dept text not null default '', store_in date,
+  primary key (user_id, month, row_no)
+);
+alter table po_lines enable row level security;
+drop policy if exists "po_lines: own rows only" on po_lines;
+create policy "po_lines: own rows only" on po_lines
+  for all using (user_id = auth.uid()) with check (user_id = auth.uid());`;
+
+function poLineRowToLine(row) {
+  return {
+    month: row.month,
+    rowNo: row.row_no,
+    poStyle: row.po_style,
+    styleNo: row.style_no,
+    recut: row.recut ?? 0,
+    poNo: row.po_no,
+    dept: row.dept,
+    storeIn: row.store_in ?? "",
+  };
+}
+
+async function loadPoLines(client) {
+  const PAGE = 1000;
+  const rows = [];
+  for (let from = 0; ; from += PAGE) {
+    const res = await client.from("po_lines").select("*")
+      .order("month").order("row_no")
+      .range(from, from + PAGE - 1);
+    if (res.error) {
+      poLinesTableReady = false;
+      return rows.map(poLineRowToLine);
+    }
+    rows.push(...res.data);
+    if (res.data.length < PAGE) return rows.map(poLineRowToLine);
+  }
+}
+
+function getAllPoLines() {
+  return allPoLines;
+}
+
+/** Replace every PO line with `lines` (from parseCostSheet). */
+async function replacePoLines(lines) {
+  const client = requireClient();
+  const tableError = err => /po_lines/.test(err.message ?? "")
+    ? new Error(`Create the po_lines table in Supabase first (SQL Editor):\n\n${PO_LINES_SQL}`)
+    : err;
+  const del = await client.from("po_lines").delete().neq("month", "");
+  if (del.error) throw tableError(del.error);
+  const BATCH = 500;
+  for (let i = 0; i < lines.length; i += BATCH) {
+    const res = await client.from("po_lines").insert(lines.slice(i, i + BATCH).map(l => ({
+      month: l.month,
+      row_no: l.rowNo,
+      po_style: l.poStyle,
+      style_no: l.styleNo,
+      recut: l.recut,
+      po_no: l.poNo,
+      dept: l.dept,
+      store_in: l.storeIn || null,
+    })));
+    if (res.error) throw tableError(res.error);
+  }
+  allPoLines = lines;
+  poLinesTableReady = true;
+}
+
+/** Set every colour of a Style # to one IHD — the cost sheet's date is per style. */
+async function setStyleNoIhd(styleNo, ihd) {
+  const colors = getStyleColors(styleNo);
+  if (!colors.length) return;
+  throwIfError(await requireClient().from("styles")
+    .update({ ihd: ihd || null })
+    .eq("style_no", colors[0].styleNo));
+  colors.forEach(style => { style.ihd = ihd; });
 }
 
 /**
@@ -737,7 +830,9 @@ async function loadStyleImportChanges(id) {
 // A flag on a Style # + Color. It stays on the list — scheduled or not —
 // until a photoshoot with it is marked complete; then it's recorded as shot
 // (shotShootId / shotAt) and drops off. Reopening that shoot clears the
-// record, so the style needs shooting again.
+// record, so the style needs shooting again. Each one says why it's needed
+// (reason, SHOOT_REASONS: New Style / New Color / Reshoot); entries from
+// before reasons have none.
 
 /** styleKey → ShootListEntry. */
 let shootList = new Map();
@@ -749,6 +844,7 @@ function setShootList(rows) {
       styleNo: String(row.style_no ?? ""),
       color: String(row.color ?? ""),
       addedAt: String(row.added_at ?? ""),
+      reason: SHOOT_REASON_KEYS.includes(row.reason) ? row.reason : "",
       shotShootId: row.shot_shoot_id ? String(row.shot_shoot_id) : "",
       shotAt: String(row.shot_at ?? ""),
     };
@@ -783,27 +879,39 @@ function shootListRow(entry) {
     style_no: entry.styleNo,
     color: entry.color,
     added_at: entry.addedAt,
+    reason: entry.reason || null,
     shot_shoot_id: entry.shotShootId || null,
     shot_at: entry.shotAt || null,
   };
 }
 
+const SHOOT_REASON_SQL = "alter table shoot_list add column if not exists reason text;";
+
 async function saveShootListEntries(entries) {
   const BATCH = 500;
   const client = requireClient();
+  const anyReason = entries.some(e => e.reason);
   for (let i = 0; i < entries.length; i += BATCH) {
-    throwIfError(await client.from("shoot_list")
-      .upsert(entries.slice(i, i + BATCH).map(shootListRow), { onConflict: "user_id,style_no,color" }));
+    let rows = entries.slice(i, i + BATCH).map(shootListRow);
+    let res = await client.from("shoot_list").upsert(rows, { onConflict: "user_id,style_no,color" });
+    // Before the reason column is added, entries without one still save.
+    if (res.error && /reason/i.test(res.error.message ?? "")) {
+      if (anyReason) throw new Error(`New Style / New Color / Reshoot need one line run in Supabase → SQL Editor first: ${SHOOT_REASON_SQL}`);
+      rows = rows.map(({ reason, ...rest }) => rest);
+      res = await client.from("shoot_list").upsert(rows, { onConflict: "user_id,style_no,color" });
+    }
+    throwIfError(res);
   }
   entries.forEach(e => shootList.set(styleKey(e.styleNo, e.color), e));
 }
 
 /**
- * Flag styles as needing a shoot. Ones already waiting are left as they
- * are; ones that were shot before go back on the list.
- * Returns how many were newly flagged.
+ * Flag styles as needing a shoot, for `reason` (New Style / New Color /
+ * Reshoot). Ones already waiting for that reason are left as they are, ones
+ * waiting for another switch over; ones that were shot before go back on
+ * the list. Returns how many were newly flagged or switched.
  */
-async function addToShootList(styles) {
+async function addToShootList(styles, reason = "") {
   const now = new Date().toISOString();
   const changed = [];
   const seen = new Set();
@@ -813,8 +921,11 @@ async function addToShootList(styles) {
     seen.add(key);
     if (isNoShootStyle(styleNo, color)) return;
     const current = shootList.get(key);
-    if (current && !current.shotShootId) return;
-    changed.push({ styleNo, color, addedAt: now, shotShootId: "", shotAt: "" });
+    if (current && !current.shotShootId) {
+      if (reason && current.reason !== reason) changed.push({ ...current, reason });
+      return;
+    }
+    changed.push({ styleNo, color, addedAt: now, reason, shotShootId: "", shotAt: "" });
   });
   await saveShootListEntries(changed);
   return changed.length;

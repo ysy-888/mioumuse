@@ -1,8 +1,8 @@
 /**
  * Styles — the style database imported from the N41 ATS export.
  *
- * A table of every Style # + Color, filtered by N41 status from the toolbar
- * and by season and category from the two selects, with search across all
+ * A table of every Style # + Color, filtered by N41 status from its column
+ * header and by season and category from the two selects, with search across all
  * of it. Thousands of rows, so the table draws a page at a time and grows
  * with "Show more".
  *
@@ -13,7 +13,6 @@
 const STYLE_PAGE = 300;
 
 let filteredStyles = [];
-let styleStatusFilter = "";
 let styleSeasonFilter = "";
 let styleCategoryFilter = "";
 let styleSortCol = null;
@@ -44,6 +43,28 @@ function countStyleValues(field) {
   return [...counts.entries()].sort((a, b) => b[1] - a[1]);
 }
 
+/** N41 Status header filter: a key per status, blank as (Blank). */
+function statusFilterKey(status) {
+  return String(status ?? "").trim() || BLANK_FILTER_LABEL;
+}
+
+function statusFilterOptions(statuses) {
+  const counts = new Map();
+  statuses.forEach(s => {
+    const key = statusFilterKey(s);
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  });
+  return [...counts.keys()]
+    .sort((a, b) => (a === BLANK_FILTER_LABEL) - (b === BLANK_FILTER_LABEL) || a.localeCompare(b))
+    .map(key => ({ key, label: key, count: counts.get(key) }));
+}
+
+/** COMPANY and CANCEL (or CANCELLED…) start unticked. */
+function isStatusHiddenByDefault(key) {
+  const upper = key.toUpperCase();
+  return STATUS_HIDDEN_BY_DEFAULT.some(s => upper === s || upper.startsWith(s));
+}
+
 function compareStyles(a, b) {
   if (styleSortCol) {
     // compareSortValues (js/photoshoots.js) keeps blanks last in both directions.
@@ -58,7 +79,7 @@ function applyStyleFilters({ keepShown = false } = {}) {
   setActiveSearchQuery(q);
 
   filteredStyles = getAllStyles().filter(s => {
-    if (styleStatusFilter && s.status !== styleStatusFilter) return false;
+    if (!columnFilterPasses("stylesTable", "status", statusFilterKey(s.status))) return false;
     if (styleSeasonFilter && s.season !== styleSeasonFilter) return false;
     if (styleCategoryFilter && s.category !== styleCategoryFilter) return false;
     if (!columnFilterPasses("stylesTable", "ihd", monthFilterKey(s.ihd))) return false;
@@ -79,26 +100,8 @@ function applyStyleFilters({ keepShown = false } = {}) {
 
 // ── Filters ──────────────────────────────────────────────────────────────────
 
-/** Status buttons and the season / category selects, rebuilt from the data. */
+/** The season / category selects, rebuilt from the data. */
 function renderStyleFilters() {
-  const group = document.getElementById("styleStatusFilters");
-  if (group) {
-    const statuses = countStyleValues("status").filter(([v]) => v);
-    group.replaceChildren(...[["", null], ...statuses].map(([value, n]) => {
-      const btn = document.createElement("button");
-      btn.type = "button";
-      btn.className = "filter-btn" + (value === styleStatusFilter ? " active" : "");
-      btn.dataset.status = value;
-      btn.textContent = value || "All";
-      if (n) btn.title = `${n.toLocaleString()} styles`;
-      btn.addEventListener("click", () => {
-        styleStatusFilter = value;
-        applyStyleFilters();
-      });
-      return btn;
-    }));
-  }
-
   const fillSelect = (id, field, current, label) => {
     const select = document.getElementById(id);
     if (!select) return;
@@ -127,7 +130,7 @@ function createStyleStatusPill(status) {
  * The Shoot cell: where the style stands, plus an "Add to Need to Shoot"
  * button when it isn't waiting to be shot (never listed, or already shot).
  */
-function createStyleShootCell(style) {
+function createStyleShootCell(style, { suggested = "" } = {}) {
   const wrap = document.createElement("span");
   wrap.className = "style-shoot-cell";
   const fill = () => {
@@ -139,30 +142,13 @@ function createStyleShootCell(style) {
       wrap.replaceChildren(none);
       return;
     }
-    const onList = needsShoot(style.styleNo, style.color);
-    const shot = describeShootStatus(style.styleNo, style.color)?.tone === "shot";
-    wrap.replaceChildren();
-    if (onList || shot) wrap.appendChild(createShootStatusBadge(style.styleNo, style.color));
-    if (onList) return;
-
-    const btn = document.createElement("button");
-    btn.type = "button";
-    btn.className = "btn style-add-shoot-btn";
-    btn.textContent = shot ? "+ Shoot again" : "+ Need to Shoot";
-    btn.title = shot ? "Add to Need to Shoot again" : "Add to Need to Shoot";
-    btn.addEventListener("click", async () => {
-      btn.disabled = true;
-      try {
-        await addToShootList([style]);
-        fill();
-        refreshPhotoshootViews();
-        showIndicator(`${style.styleNo} ${style.color} added to Need to Shoot`, "success");
-      } catch (err) {
-        btn.disabled = false;
-        showIndicator(err.message || "Couldn't add to Need to Shoot.", "error");
-      }
-    });
-    wrap.appendChild(btn);
+    // The lit icon says "waiting"; only a date (scheduled / shot) needs words.
+    const tone = describeShootStatus(style.styleNo, style.color)?.tone;
+    wrap.replaceChildren(createShootPicker(style.styleNo, style.color, () => {
+      fill();
+      refreshPhotoshootViews();
+    }, { suggested }));
+    if (tone === "scheduled" || tone === "shot" || (tone === "needed" && !getShootListEntry(style.styleNo, style.color)?.reason)) wrap.appendChild(createShootStatusBadge(style.styleNo, style.color, { compact: true }));
   };
   fill();
   return wrap;
@@ -394,11 +380,12 @@ function clearStyleSelection() {
   renderStylesTable();
 }
 
-async function addSelectedToShootList() {
+async function addSelectedToShootList(reason) {
+  const listName = `Need to Shoot (${getShootReasonLabel(reason)})`;
   const styles = getSelectedStyles();
   if (!styles.length) return;
   try {
-    const added = await addToShootList(styles);
+    const added = await addToShootList(styles, reason);
     const skipped = styles.filter(s => isNoShootStyle(s.styleNo, s.color)).length;
     const already = styles.length - added - skipped;
     clearStyleSelection();
@@ -408,11 +395,11 @@ async function addSelectedToShootList() {
       skipped ? `${skipped.toLocaleString()} COMPANY skipped — no shoot needed` : "",
     ].filter(Boolean).join(", ");
     showIndicator(added
-      ? `${added.toLocaleString()} added to Need to Shoot${notes ? ` (${notes})` : ""}`
+      ? `${added.toLocaleString()} added to ${listName}${notes ? ` (${notes})` : ""}`
       : skipped === styles.length ? "COMPANY styles don't need a photoshoot" : `Nothing added${notes ? ` (${notes})` : ""}`,
     added ? "success" : "");
   } catch (err) {
-    showIndicator(err.message || "Couldn't add to Need to Shoot.", "error");
+    showIndicator(err.message || `Couldn't add to ${listName}.`, "error");
   }
 }
 
@@ -443,6 +430,13 @@ function initStylesView() {
   initColumnFilter("stylesTable", "ihd", {
     options: () => monthFilterOptions(getAllStyles().map(s => s.ihd)),
     onChange: () => applyStyleFilters(),
+    sortable: true,
+  });
+  initColumnFilter("stylesTable", "status", {
+    options: () => statusFilterOptions(getAllStyles().map(s => s.status)),
+    onChange: () => applyStyleFilters(),
+    hideByDefault: isStatusHiddenByDefault,
+    sortable: true,
   });
   document.getElementById("styleSearchInput")?.addEventListener("input", () => applyStyleFilters());
   document.getElementById("stylesTableBody")?.addEventListener("click", e => {
@@ -453,7 +447,7 @@ function initStylesView() {
       if (e.target.tagName !== "INPUT") e.target.closest("td").querySelector("input")?.click();
       return;
     }
-    if (e.target.closest('td[data-col="ihd"], .style-add-shoot-btn')) return;
+    if (e.target.closest('td[data-col="ihd"], .shoot-picker')) return;
     const tr = e.target.closest("tr[data-style-no]");
     if (tr) openStyleGallery(tr.dataset.styleNo, tr.dataset.color);
   });
@@ -466,7 +460,9 @@ function initStylesView() {
     });
     renderStylesTable();
   });
-  document.getElementById("styleAddToShootBtn")?.addEventListener("click", addSelectedToShootList);
+  document.querySelectorAll("#styleSelectionBar [data-shoot-reason]").forEach(btn => {
+    btn.addEventListener("click", () => addSelectedToShootList(btn.dataset.shootReason));
+  });
   document.getElementById("styleClearSelectionBtn")?.addEventListener("click", clearStyleSelection);
   document.getElementById("styleSeasonFilter")?.addEventListener("change", e => {
     styleSeasonFilter = e.target.value;

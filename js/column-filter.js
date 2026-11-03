@@ -22,20 +22,27 @@ function columnFilterId(tableId, col) {
   return `${tableId}:${col}`;
 }
 
-/** null selection = everything shown. */
+/**
+ * null selection = everything shown — unless the column hides some values
+ * by default (hideByDefault) and nothing has been picked yet.
+ */
 function columnFilterPasses(tableId, col, key) {
   const entry = columnFilters.get(columnFilterId(tableId, col));
-  return !entry?.selected || entry.selected.has(key);
+  if (entry?.selected) return entry.selected.has(key);
+  return !(entry?.useDefault && entry.hideByDefault(key));
 }
 
 function isColumnFilterActive(tableId, col) {
-  return Boolean(columnFilters.get(columnFilterId(tableId, col))?.selected);
+  const entry = columnFilters.get(columnFilterId(tableId, col));
+  return Boolean(entry?.selected || entry?.useDefault);
 }
 
-/** The ticked keys, or null when the column isn't filtered. */
+/** The ticked keys (the default's, if nothing was picked), or null when the column isn't filtered. */
 function getColumnFilterSelection(tableId, col) {
-  const selected = columnFilters.get(columnFilterId(tableId, col))?.selected;
-  return selected ? [...selected] : null;
+  const entry = columnFilters.get(columnFilterId(tableId, col));
+  if (entry?.selected) return [...entry.selected];
+  if (entry?.useDefault) return entry.options().map(o => o.key).filter(k => !entry.hideByDefault(k));
+  return null;
 }
 
 /** Set a filter from code (null shows everything). Doesn't call onChange. */
@@ -43,22 +50,31 @@ function setColumnFilterSelection(tableId, col, keys) {
   const entry = columnFilters.get(columnFilterId(tableId, col));
   if (!entry) return;
   entry.selected = keys ? new Set(keys) : null;
+  entry.useDefault = false;
   entry.th.classList.toggle("filter-active", Boolean(entry.selected));
 }
 
 function clearColumnFilter(tableId, col) {
   const entry = columnFilters.get(columnFilterId(tableId, col));
-  if (!entry?.selected) return;
+  if (!entry?.selected && !entry?.useDefault) return;
   entry.selected = null;
+  entry.useDefault = false;
   entry.th.classList.remove("filter-active");
   entry.onChange();
 }
 
-/** `width` (px) widens the popover for long option lists, e.g. category paths. */
-function initColumnFilter(tableId, col, { options, onChange, width = null }) {
+/**
+ * `width` (px) widens the popover for long option lists, e.g. category paths.
+ * `hideByDefault(key)` leaves those values unticked until the filter is
+ * changed (N41 Status: COMPANY and CANCEL).
+ * `sortable`: the column sorts, so only the funnel opens the filter — the
+ * rest of the header sorts, like the columns beside it.
+ */
+function initColumnFilter(tableId, col, { options, onChange, width = null, hideByDefault = null, sortable = false }) {
   const th = document.querySelector(`#${tableId} thead th[data-col="${col}"]`);
   if (!th) return;
-  const entry = { selected: null, options, onChange, th, width };
+  const entry = { selected: null, options, onChange, th, width, hideByDefault, useDefault: Boolean(hideByDefault) };
+  if (entry.useDefault) th.classList.add("filter-active");
   columnFilters.set(columnFilterId(tableId, col), entry);
 
   th.classList.add("th-filterable");
@@ -79,7 +95,7 @@ function initColumnFilter(tableId, col, { options, onChange, width = null }) {
   // Capture phase, so a click outside the label opens the filter instead of
   // reaching the table's sort handler.
   th.addEventListener("click", e => {
-    if (e.target.closest(".th-label")) return;
+    if (sortable ? !e.target.closest(".th-filter-hit") : e.target.closest(".th-label")) return;
     e.stopImmediatePropagation();
     if (openColumnFilter === entry) closeColumnFilterPopover();
     else openColumnFilterPopover(entry);
@@ -94,7 +110,8 @@ function openColumnFilterPopover(entry) {
   openColumnFilter?.hit?.classList.remove("is-open");
   openColumnFilter = entry;
   const all = entry.options().map(o => o.key);
-  columnFilterDraft = new Set(entry.selected ? all.filter(k => entry.selected.has(k)) : all);
+  columnFilterDraft = new Set(entry.selected ? all.filter(k => entry.selected.has(k))
+    : entry.useDefault ? all.filter(k => !entry.hideByDefault(k)) : all);
   renderColumnFilterList();
   pop.style.width = entry.width ? `${entry.width}px` : "";
   pop.style.maxWidth = entry.width ? `min(${entry.width}px, calc(100vw - 16px))` : "";
@@ -160,6 +177,7 @@ function applyColumnFilterFromPopover() {
   const all = entry.options().map(o => o.key);
   // Everything ticked is the same as no filter.
   entry.selected = all.every(k => columnFilterDraft.has(k)) ? null : new Set(columnFilterDraft);
+  entry.useDefault = false;
   entry.th.classList.toggle("filter-active", Boolean(entry.selected));
   closeColumnFilterPopover();
   entry.onChange();

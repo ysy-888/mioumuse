@@ -117,6 +117,21 @@ const MAX_BANNER_FILE_BYTES = 10 * 1024 * 1024;
 /** N41 statuses that never need a photoshoot — kept off Need to Shoot and out of shoots. */
 const NO_SHOOT_STATUSES = ["COMPANY"];
 
+/** Why a style needs pictures — what puts it on Need to Shoot. */
+const SHOOT_REASONS = [
+  { key: "newStyle", label: "New Style", short: "Style" },
+  { key: "newColor", label: "New Color", short: "Color" },
+  { key: "reshoot", label: "Reshoot", short: "Reshoot" },
+];
+const SHOOT_REASON_KEYS = SHOOT_REASONS.map(r => r.key);
+
+function getShootReasonLabel(key) {
+  return SHOOT_REASONS.find(r => r.key === key)?.label ?? "";
+}
+
+/** N41 statuses the N41 Status filters (Styles, Need to Shoot) hide until changed. */
+const STATUS_HIDDEN_BY_DEFAULT = ["COMPANY", "CANCEL"];
+
 const PHOTOSHOOT_TYPES = [
   { key: "studio", label: "Studio" },
   { key: "editorial", label: "Editorial" },

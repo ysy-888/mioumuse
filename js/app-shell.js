@@ -3,13 +3,14 @@
  *
  * Views: "home" (calendar + upcoming tasks), "campaigns" and "tradeShows"
  * (lists), "platforms" (banners), "styles" (the style database),
- * "photoshoots" (the shoots), "needToShoot" (styles waiting for one), and "magento" (the store's
+ * "photoshoots" (the shoots), "needToShoot" (styles waiting for one), "pos"
+ * (the cost sheet's PO lines by month), and "magento" (the store's
  * products and categories, live). A record opens in a side pane over
  * whichever view is showing (js/item-pane.js, js/banners.js,
  * js/photoshoots.js, js/magento.js), not as a view of its own.
  */
 
-const APP_VIEWS = ["home", "campaigns", "tradeShows", "platforms", "styles", "photoshoots", "needToShoot", "magento"];
+const APP_VIEWS = ["home", "campaigns", "tradeShows", "platforms", "styles", "photoshoots", "needToShoot", "pos", "magento"];
 
 let currentAppView = "home";
 
@@ -68,6 +69,8 @@ function switchAppView(view) {
     stylesToolbar: view === "styles",
     stylesTableWrap: view === "styles",
     photoshootsToolbar: isPhotoshootView(view),
+    posToolbar: view === "pos",
+    posTableWrap: view === "pos",
     magentoToolbar: view === "magento",
     calendarWrap: view === "home",
   };
@@ -84,6 +87,7 @@ function switchAppView(view) {
   if (view === "platforms") applyBannerFilters();
   if (view === "styles") applyStyleFilters();
   if (isPhotoshootView(view)) renderPhotoshootsView();
+  if (view === "pos") renderPoView();
   if (view === "magento") enterMagentoView();
   // The photoshoot and Magento tables show and hide with their page, but
   // none of them belongs anywhere else.
@@ -101,48 +105,66 @@ function switchAppView(view) {
   updateAppBackButton();
 }
 
-// ── Header menus ─────────────────────────────────────────────────────────────
+// ── Left menu, page title, breadcrumbs ──────────────────────────────────────
 //
-// Home, then three menus — Marketing (Campaigns, Trade Shows, Platforms),
-// Photoshoots (Photoshoots, Need to Shoot, Styles), Magento (Products, Categories). Each
-// opens on hover or focus; the page you're on is ticked, and its menu is
-// underlined.
+// Home, then three groups — Marketing (Campaigns, Trade Shows, Platforms),
+// Photoshoots (Styles, Need to Shoot, POs, Photoshoots), Magento (Products,
+// Categories, Orders, Customers). The page you're on is filled in the menu,
+// named in the header, with Home › group above it.
 
-/** Tick the page you're on, and underline its menu. */
-function syncAppNav() {
-  const home = document.getElementById("navLogoHome");
-  if (home) {
-    home.classList.toggle("is-active", currentAppView === "home");
-    home.setAttribute("aria-selected", currentAppView === "home" ? "true" : "false");
+/** The page you're on: its group (none for Home) and title. */
+function getAppPageInfo() {
+  const item = document.querySelector(".app-sidenav-item.active");
+  const title = item?.textContent.trim() || "Home";
+  let group = "";
+  for (let el = item?.previousElementSibling; el; el = el.previousElementSibling) {
+    if (el.classList.contains("app-sidenav-group")) { group = el.textContent.trim(); break; }
   }
-  document.querySelectorAll(".app-title-tab-dropdown-item[data-view]").forEach(item => {
+  return { group, title };
+}
+
+/** Fill the page you're on in the menu; set the title and breadcrumbs. */
+function syncAppNav() {
+  document.querySelectorAll(".app-sidenav-item[data-view]").forEach(item => {
     const active = item.dataset.view === currentAppView
       && (!item.dataset.subview || item.dataset.subview === mgSubview);
     item.classList.toggle("active", active);
     if (active) item.setAttribute("aria-current", "page");
     else item.removeAttribute("aria-current");
   });
-  document.querySelectorAll(".app-title-tab-dropdown-wrap").forEach(wrap => {
-    const active = Boolean(wrap.querySelector(".app-title-tab-dropdown-item.active"));
-    wrap.querySelector(".app-title-tab--dropdown-trigger")?.classList.toggle("is-active", active);
-  });
+
+  const { group, title } = getAppPageInfo();
+  const heading = document.getElementById("appPageTitle");
+  if (heading) heading.textContent = title;
+  document.title = currentAppView === "home" ? "MIOU MUSE" : `${title} · MIOU MUSE`;
+  const crumbs = document.getElementById("appBreadcrumbs");
+  if (crumbs) {
+    crumbs.hidden = currentAppView === "home";
+    const home = document.createElement("button");
+    home.type = "button";
+    home.className = "app-breadcrumb-link";
+    home.textContent = "Home";
+    home.addEventListener("click", () => switchAppView("home"));
+    const sep = () => Object.assign(document.createElement("span"), { className: "app-breadcrumb-sep", textContent: "›" });
+    crumbs.replaceChildren(home, ...(group ? [sep(), group] : []), sep(), title);
+  }
+}
+
+function setAppNavOpen(open) {
+  document.body.classList.toggle("is-nav-open", open);
 }
 
 function initNavMenus() {
-  document.querySelectorAll(".app-title-tab-dropdown-wrap").forEach(wrap => {
-    // After a choice the menu stays shut until the pointer leaves it.
-    wrap.addEventListener("mouseleave", () => wrap.classList.remove("is-dropdown-closed"));
-    wrap.querySelectorAll(".app-title-tab-dropdown-item[data-view]").forEach(item => {
-      item.addEventListener("click", () => {
-        wrap.classList.add("is-dropdown-closed");
-        item.blur();
-        if (item.dataset.subview) showMagentoSubview(item.dataset.subview);
-        else switchAppView(item.dataset.view);
-      });
+  document.querySelectorAll(".app-sidenav-item[data-view]").forEach(item => {
+    item.addEventListener("click", () => {
+      setAppNavOpen(false);
+      if (item.dataset.subview) showMagentoSubview(item.dataset.subview);
+      else switchAppView(item.dataset.view);
     });
-    // Focusing the menu again (keyboard, a tap) reopens it.
-    wrap.querySelector(".app-title-tab--dropdown-trigger")?.addEventListener("focus", () => wrap.classList.remove("is-dropdown-closed"));
   });
+  // Narrow screens: the menu button slides it in; a click outside shuts it.
+  document.getElementById("appNavToggle")?.addEventListener("click", () => setAppNavOpen(!document.body.classList.contains("is-nav-open")));
+  document.getElementById("appSidebarBackdrop")?.addEventListener("click", () => setAppNavOpen(false));
 }
 
 // ── Header menu ──────────────────────────────────────────────────────────────
@@ -180,6 +202,15 @@ function syncHeaderMenu() {
     folder.hidden = !label;
     if (label) folder.querySelector("span").textContent = label;
     unlink.hidden = !canUnlink;
+  }
+  // Same for the linked cost sheet (js/purchase-orders.js).
+  const sheet = document.getElementById("headerMenuCostSheet");
+  const sheetUnlink = document.getElementById("headerMenuCostSheetUnlink");
+  if (page === "pos" && sheet && sheetUnlink) {
+    const { label, canUnlink } = getCostSheetMenuState();
+    sheet.hidden = !label;
+    if (label) sheet.querySelector("span").textContent = label;
+    sheetUnlink.hidden = !canUnlink;
   }
 
   // Sign Out's divider only when something sits above it.
@@ -281,7 +312,6 @@ function exportScheduleCsv(type) {
 
 function initAppNav() {
   initNavMenus();
-  document.getElementById("navLogoHome")?.addEventListener("click", () => switchAppView("home"));
   document.getElementById("appBackBtn")?.addEventListener("click", () => goBackAppView("home"));
 
   document.getElementById("refreshBtn")?.addEventListener("click", async () => {

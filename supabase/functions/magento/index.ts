@@ -89,7 +89,7 @@ import { AsyncLocalStorage } from "node:async_hooks";
  * copy running in Supabase is older than the app expects. Bump it (and
  * MG_HELPER_VERSION in js/magento.js) whenever this file changes.
  */
-const HELPER_VERSION = "2026-11-02.1";
+const HELPER_VERSION = "2026-11-02.2";
 
 /**
  * Where a request's time went: each Magento call is counted and timed, per
@@ -680,22 +680,56 @@ async function findSaleStockId() {
 }
 
 /**
+ * Every stock a website sells from — as the admin's Salable Quantity column
+ * lists each stock. Failing that, the one the website resolves to.
+ */
+let saleStockIds: Promise<number[]> | null = null;
+
+function findSaleStockIds() {
+  saleStockIds ??= (async () => {
+    try {
+      // deno-lint-ignore no-explicit-any
+      const stocks: any[] = (await mg("/inventory/stocks?searchCriteria[pageSize]=100"))?.items ?? [];
+      const ids = stocks
+        // deno-lint-ignore no-explicit-any
+        .filter((s: any) => (s.extension_attributes?.sales_channels ?? []).length)
+        // deno-lint-ignore no-explicit-any
+        .map((s: any) => Number(s.stock_id))
+        .filter(id => id > 0);
+      if (ids.length) return ids;
+    } catch {
+      /* the website's own stock below */
+    }
+    return [await findSaleStockId()];
+  })().catch(() => {
+    saleStockIds = null;
+    return [1];
+  });
+  return saleStockIds;
+}
+
+/**
  * Salable Quantity, sku → number (null when Magento has none): Quantity less
- * what open orders have reserved. It's one call per SKU, so a few at a time;
- * problem says why when none came back.
+ * what open orders have reserved. It's one call per SKU and stock, so a few
+ * at a time; with more than one stock, the highest counts. problem says why
+ * when none came back.
  */
 async function salableQuantities(skus: string[]) {
-  const stockId = await findSaleStockId();
+  const stockIds = await findSaleStockIds();
   const quantities: Record<string, number | null> = {};
   let problem = "";
   await eachLimited(skus, 8, async sku => {
-    try {
-      const value = await mg(`/inventory/get-product-salable-quantity/${encodeURIComponent(sku)}/${stockId}`);
-      quantities[sku] = value === null ? null : Number(value);
-    } catch (err) {
-      quantities[sku] = null;
-      problem ||= err instanceof Error ? err.message : String(err);
+    let best: number | null = null;
+    for (const stockId of stockIds) {
+      try {
+        const value = await mg(`/inventory/get-product-salable-quantity/${encodeURIComponent(sku)}/${stockId}`);
+        if (value !== null && (best === null || Number(value) > best)) best = Number(value);
+      } catch (err) {
+        // Not in this stock — another may have it.
+        problem ||= err instanceof Error ? err.message : String(err);
+      }
     }
+    quantities[sku] = best;
   });
   return { quantities, problem: Object.values(quantities).some(v => v !== null) ? "" : problem };
 }

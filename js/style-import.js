@@ -231,7 +231,7 @@ function createStyleChangesView({ added, changed }, { unchanged = 0, shootAction
     // The Shoot cell's button does its own thing — then the "Add all" count
     // catches up once it's saved.
     if (e.target.closest(".style-shoot-cell")) {
-      if (e.target.closest(".style-add-shoot-btn")) setTimeout(() => lastSync && syncAddAll(...lastSync), 1200);
+      if (e.target.closest(".shoot-pick")) setTimeout(() => lastSync && syncAddAll(...lastSync), 1200);
       return;
     }
     const tr = e.target.closest("tr.style-change-row");
@@ -272,7 +272,7 @@ function createStyleChangesView({ added, changed }, { unchanged = 0, shootAction
       if (!confirm(`Add ${toAdd.length.toLocaleString()} ${current.noun}${query ? " (matching the search)" : ""} to Need to Shoot?`)) return;
       addAll.disabled = true;
       try {
-        const n = await addToShootList(toAdd.map(({ styleNo, color }) => ({ styleNo, color })));
+        const n = await addToShootList(toAdd.map(({ styleNo, color }) => ({ styleNo, color })), current.key === "colors" ? "newColor" : "newStyle");
         refreshPhotoshootViews();
         showIndicator(`${n.toLocaleString()} added to Need to Shoot`, "success");
       } catch (err) {

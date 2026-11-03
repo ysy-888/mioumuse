@@ -86,162 +86,142 @@ body {
   z-index: 100;
 }
 
-.app-title-nav {
-  display: flex;
-  align-items: stretch;
-  align-self: stretch;
-  gap: 16px;
-  flex-shrink: 0;
-}
+/* ── Left menu ── */
+:root { --sidebar-width: 216px; }
 
-.app-logo-text {
-  display: flex;
-  align-items: center;
-  color: var(--text);
-  font-family: var(--font);
-  font-size: 21px;
-  font-weight: 700;
-  letter-spacing: -0.03em;
-  margin-right: 4px;
-  white-space: nowrap;
-}
+body { padding-left: var(--sidebar-width); }
 
-.app-title-tab[hidden] {
-  display: none !important;
-}
-
-.app-title-tab {
-  display: flex;
-  align-items: center;
-  position: relative;
-  padding: 0 4px;
-  border: none;
-  background: transparent;
-  font-family: var(--font);
-  font-size: 15px;
-  font-weight: 600;
-  letter-spacing: -0.02em;
-  color: #e2e5ea;
-  cursor: pointer;
-}
-
-.app-title-tab:hover:not(.is-active) {
-  color: var(--text-muted);
-}
-
-.app-title-tab.is-active {
-  color: var(--text);
-  cursor: default;
-}
-
-.app-title-tab.is-active::after {
-  content: "";
-  position: absolute;
-  left: 0;
-  right: 0;
+.app-sidebar {
+  position: fixed;
+  top: 0;
   bottom: 0;
-  height: 2px;
-  background: var(--text);
-  border-radius: 2px 2px 0 0;
-}
-
-.app-title-tab-dropdown-wrap {
-  position: relative;
+  left: 0;
+  z-index: 150;
+  width: var(--sidebar-width);
   display: flex;
-  align-items: stretch;
-}
-
-.app-title-tab-dropdown-wrap .app-title-tab {
-  gap: 4px;
-}
-
-.app-title-tab--dropdown-trigger:not(.is-active) {
-  cursor: default;
-}
-
-.app-title-tab--dropdown-trigger:not(.is-active):hover {
-  color: #e2e5ea;
-}
-
-.app-title-tab-chevron {
-  flex-shrink: 0;
-  opacity: 0.55;
-  transition: opacity 0.15s;
-}
-
-.app-title-tab-dropdown-wrap:hover .app-title-tab-chevron,
-.app-title-tab-dropdown-wrap:focus-within .app-title-tab-chevron {
-  opacity: 0.9;
-}
-
-.app-title-tab-dropdown {
-  display: none;
-  position: absolute;
-  top: 100%;
-  left: 0;
-  min-width: 148px;
-  margin-top: 4px;
+  flex-direction: column;
   background: var(--surface);
-  border: 1px solid var(--border-strong);
-  border-radius: 8px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
-  padding: 4px 0;
-  z-index: 120;
+  border-right: 1px solid var(--border);
+  overflow-y: auto;
 }
 
-.app-title-tab-dropdown::before {
-  content: "";
-  position: absolute;
-  top: -8px;
-  left: 0;
-  right: 0;
-  height: 8px;
-}
-
-.app-title-tab-dropdown-wrap:hover:not(.is-dropdown-closed) .app-title-tab-dropdown,
-.app-title-tab-dropdown-wrap:focus-within:not(.is-dropdown-closed) .app-title-tab-dropdown {
-  display: block;
-}
-
-.app-title-tab-dropdown-wrap:hover:not(.is-dropdown-closed) .app-title-tab--dropdown-trigger,
-.app-title-tab-dropdown-wrap:focus-within:not(.is-dropdown-closed) .app-title-tab--dropdown-trigger {
-  color: var(--text-muted);
-}
-
-.app-title-tab-dropdown-item {
+.app-sidebar-brand {
   display: flex;
   align-items: center;
-  gap: 8px;
-  width: 100%;
-  padding: 8px 12px;
-  border: none;
-  background: transparent;
-  font-family: var(--font);
-  font-size: 13px;
-  font-weight: 500;
+  flex-shrink: 0;
+  height: 56px;
+  padding: 0 20px;
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
   color: var(--text);
-  text-align: left;
-  cursor: pointer;
   white-space: nowrap;
 }
 
-.app-title-tab-dropdown-item:hover {
-  background: var(--row-hover);
+.app-sidenav {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 4px 10px 16px;
 }
 
-.app-title-tab-dropdown-check {
-  width: 14px;
-  flex-shrink: 0;
-  color: var(--accent);
-  font-size: 14px;
+.app-sidenav-group {
+  padding: 16px 10px 6px;
+  font-size: 10.5px;
   font-weight: 700;
-  line-height: 1;
-  visibility: hidden;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
 }
 
-.app-title-tab-dropdown-item.active .app-title-tab-dropdown-check {
-  visibility: visible;
+.app-sidenav-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 7px 10px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  font-family: var(--font);
+  font-size: 13.5px;
+  font-weight: 500;
+  color: var(--text-secondary, #4b5563);
+  text-align: left;
+  white-space: nowrap;
+  cursor: pointer;
 }
+
+.app-sidenav-item svg { flex-shrink: 0; opacity: 0.75; }
+.app-sidenav-item:hover { background: var(--row-hover); color: var(--text); }
+.app-sidenav-item.active { background: var(--text); color: #fff; font-weight: 600; }
+.app-sidenav-item.active svg { opacity: 1; }
+.app-sidenav-item[hidden] { display: none; }
+
+/* Page title, with where it sits above it. */
+.app-page-heading {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-width: 0;
+}
+
+.app-breadcrumbs {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11.5px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.app-breadcrumbs[hidden] { display: none; }
+.app-breadcrumb-sep { opacity: 0.6; }
+
+.app-breadcrumb-link {
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+
+.app-breadcrumb-link:hover { color: var(--text); text-decoration: underline; }
+
+.app-page-title {
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.25;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Narrow screens: the menu slides in from the left. */
+.app-header .app-nav-toggle { display: none; }
+.app-sidebar-backdrop { display: none; }
+
+@media (max-width: 900px) {
+  body { padding-left: 0; }
+  .app-sidebar {
+    transform: translateX(-100%);
+    transition: transform 0.18s ease;
+    box-shadow: 0 0 24px rgba(0, 0, 0, 0.12);
+  }
+  body.is-nav-open .app-sidebar { transform: none; }
+  body.is-nav-open .app-sidebar-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 140;
+    background: rgba(0, 0, 0, 0.25);
+  }
+  .app-header .app-nav-toggle { display: inline-flex; }
+}
+
 
 .header-right {
   margin-left: auto;
@@ -3135,16 +3115,6 @@ select.form-input {
    ============================================================ */
 
 /* ── Dashboard ── */
-button.app-logo-text {
-  border: none;
-  background: transparent;
-  padding: 0;
-  cursor: pointer;
-}
-
-button.app-logo-text:hover { opacity: 0.72; }
-
-button.app-logo-text.is-active { cursor: default; opacity: 1; }
 
 .dashboard-wrap {
   flex: 1;
@@ -6916,6 +6886,11 @@ span.dash-event { cursor: pointer; /* clicking selects the day */ }
 .styles-table .col-category    { width: 180px; min-width: 140px; }
 .styles-table .col-season      { width: 90px;  min-width: 80px; }
 .styles-table .col-status      { width: 110px; min-width: 100px; }
+/* Styles and Need to Shoot: only as wide as their columns, centered. */
+#stylesTable,
+#needTable { width: max-content; margin: 0 auto; }
+#stylesTable .col-description,
+#needTable .col-description { width: 300px; }
 
 .styles-table td[data-col="styleNo"] { text-align: left; font-weight: 600; }
 .styles-table td[data-col="color"],
@@ -7349,6 +7324,8 @@ span.dash-event { cursor: pointer; /* clicking selects the day */ }
 
 .styles-table .col-image { width: 64px; min-width: 64px; }
 .styles-table td[data-col="image"] { padding-top: 4px; padding-bottom: 4px; }
+/* The thumbnail fills the cell — no "…" for the sliver that doesn't fit. */
+.record-table td[data-col="image"] { padding-left: 8px; padding-right: 8px; text-overflow: clip; }
 .styles-table th[data-col="image"] { cursor: default; }
 .styles-table tbody tr.clickable-row { cursor: pointer; }
 
@@ -7530,8 +7507,41 @@ th.th-select { text-align: center; cursor: default; padding-left: 4px; padding-r
 .shoot-type[data-type="studio"]    { background: #ece6fb; color: #5a3aa8; }
 .shoot-type[data-type="editorial"] { background: #fbe3f3; color: #9b1f74; }
 
-.styles-table .col-shoot { width: 230px; min-width: 200px; }
+.styles-table .col-shoot { width: 190px; min-width: 180px; }
 .need-table .col-added { width: 110px; min-width: 100px; }
+
+/* POs: a style's PO lines across the top, its colours underneath. */
+#poTable { width: max-content; margin: 0 auto; }
+.po-table .col-color  { width: 200px; }
+.po-table .col-photos { width: 80px; }
+.po-table .col-ihd    { width: 100px; }
+.po-group-row td {
+  padding-top: 14px;
+  background: var(--surface-muted, #f7f7f8);
+  text-align: left;
+  white-space: normal;
+}
+/* width 0 + min-width 100%: the header wraps to the table rather than widening it. */
+.po-group-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  width: 0;
+  min-width: 100%;
+}
+.po-group-style { font-weight: 700; font-size: 14px; }
+.po-group-desc { color: var(--text-muted); font-size: 12px; }
+.po-line {
+  padding: 2px 8px;
+  border-radius: 10px;
+  background: #e1ecfb;
+  color: #1f56a5;
+  font-size: 11px;
+  white-space: nowrap;
+}
+.po-line[data-dept="S"] { background: #fdf0d5; color: #8a5a00; }
+.po-group-missing { color: var(--danger); font-size: 12px; }
 
 .shoots-table { min-width: 860px; }
 .shoots-table .col-date   { width: 130px; }
@@ -7669,7 +7679,7 @@ th.th-select { text-align: center; cursor: default; padding-left: 4px; padding-r
   cursor: pointer;
 }
 
-.cell-date-input { cursor: text; font-variant-numeric: tabular-nums; }
+.cell-date-input { cursor: text; font-variant-numeric: tabular-nums; text-align: center; }
 .cell-date-input::placeholder { color: var(--empty-display); }
 .cell-date-input.is-invalid,
 .cell-date-input.is-invalid:focus { border-color: var(--danger); background: var(--danger-tint); }
@@ -7719,7 +7729,8 @@ th.th-select { text-align: center; cursor: default; padding-left: 4px; padding-r
   visibility: hidden;
 }
 
-.cell-date-clear[hidden] { display: none; }
+/* Holds its place when there's nothing to clear, so the calendar lines up. */
+.cell-date-clear[hidden] { display: inline-block; visibility: hidden !important; pointer-events: none; }
 .cell-date:hover .cell-date-clear { visibility: visible; }
 .cell-date-clear:hover { color: var(--danger); }
 
@@ -7730,7 +7741,7 @@ th.th-select { text-align: center; cursor: default; padding-left: 4px; padding-r
 /* ── IHD in Photoshoots ── */
 .need-table .col-ihd { width: 150px; min-width: 140px; }
 .need-table td[data-col="ihd"] { padding: 2px 4px; cursor: default; }
-.need-table .col-shoot { width: 260px; }
+.need-table .col-shoot { width: 190px; }
 .shoots-table .col-latest-ihd { width: 130px; }
 
 /* Goods arrive after the shoot date. */
@@ -7782,12 +7793,34 @@ th.th-select { text-align: center; cursor: default; padding-left: 4px; padding-r
   flex-wrap: wrap;
 }
 
-.style-add-shoot-btn {
-  padding: 2px 8px;
-  font-size: 11.5px;
-  line-height: 1.5;
-  white-space: nowrap;
+/* New Style / New Color / Reshoot: one segmented control; the lit one is
+   why it's on Need to Shoot, a dashed one is the suggestion. */
+.shoot-picker {
+  display: inline-flex;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  overflow: hidden;
 }
+.shoot-pick {
+  padding: 3px 7px;
+  border: none;
+  border-left: 1px solid var(--border);
+  background: #fff;
+  color: var(--text-muted);
+  font-family: var(--font);
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.shoot-pick:first-child { border-left: none; }
+.shoot-pick:hover:not(:disabled) { color: var(--text); background: var(--row-hover); }
+.shoot-pick:disabled { opacity: 0.5; cursor: default; }
+.shoot-pick.is-suggested { color: var(--text); box-shadow: inset 0 0 0 1px var(--text-muted); border-radius: 5px; }
+.shoot-pick[data-reason="newStyle"][aria-pressed="true"] { background: #fdf0d5; color: #8a5a00; }
+.shoot-pick[data-reason="newColor"][aria-pressed="true"] { background: #efe7fb; color: #6232b5; }
+.shoot-pick[data-reason="reshoot"][aria-pressed="true"]  { background: #e1ecfb; color: #1f56a5; }
+.selection-label { font-size: 12px; font-weight: 600; color: var(--text-muted); }
 
 /* Columns that don't sort: no hover arrow, no pointer. */
 .record-table thead th.th-no-sort { cursor: default; }
@@ -8544,7 +8577,6 @@ th.th-select { text-align: center; cursor: default; padding-left: 4px; padding-r
 .mg-event-delete[hidden] { display: none; }
 .mg-events-table .mg-row-disabled td[data-col="title"] { color: var(--text-muted); }
 .mg-events-table td[data-col="title"], .mg-events-table td[data-col="tradeShow"] { text-align: left; }
-.app-title-tab-dropdown-item[hidden] { display: none; }
 
 /* ============================================================
    Trade shows → Import CSV (js/trade-show-import.js)

@@ -20,6 +20,7 @@ async function loadAndShowApp() {
     // Mailchimp catches up in the background; the app doesn't wait on it.
     syncMailchimp();
     restoreStyleImageFolder();
+    restoreCostSheet(); // re-reads it if it changed since last time
     switchAppView("home");
   } catch (err) {
     showIndicator(err.message || "Failed to load data.", "error");
@@ -51,6 +52,7 @@ async function bootApp() {
   initStyleImages();
   initPhotoshoots();
   initPhotoshootForm();
+  initPurchaseOrders();
   initExports();
   initCopyMenu();
   initShortcuts();

@@ -220,6 +220,9 @@ create table if not exists shoot_list (
   primary key (user_id, style_no, color)
 );
 
+-- Why it needs pictures (added later; safe to run again).
+alter table shoot_list add column if not exists reason text;  -- newStyle | newColor | reshoot
+
 create table if not exists photoshoots (
   id text primary key,
   user_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
@@ -310,4 +313,30 @@ alter table table_views enable row level security;
 
 drop policy if exists "table_views: own rows only" on table_views;
 create policy "table_views: own rows only" on table_views
+  for all using (user_id = auth.uid()) with check (user_id = auth.uid());
+
+-- ── PO lines (POs page → menu → Import Cost Sheet) ──────────────────────────
+--
+-- One row per style line of the cost sheet's month tabs ("11.2026"):
+-- Style # as written (T6941-RE4), its base Style # (T6941), the recut
+-- number, P.O#, dept (S new, SR recut) and Store In. Company (C) lines
+-- aren't kept. Each import replaces every row.
+
+create table if not exists po_lines (
+  user_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
+  month text not null,                        -- 2026-11, from the tab name
+  row_no int not null,                        -- the sheet's row number
+  po_style text not null default '',
+  style_no text not null default '',
+  recut int not null default 0,               -- 0 = new; RE alone = 1
+  po_no text not null default '',
+  dept text not null default '',
+  store_in date,
+  primary key (user_id, month, row_no)
+);
+
+alter table po_lines enable row level security;
+
+drop policy if exists "po_lines: own rows only" on po_lines;
+create policy "po_lines: own rows only" on po_lines
   for all using (user_id = auth.uid()) with check (user_id = auth.uid());
