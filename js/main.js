@@ -53,6 +53,7 @@ async function bootApp() {
   initPhotoshoots();
   initPhotoshootForm();
   initPurchaseOrders();
+  initStylePane();
   initExports();
   initCopyMenu();
   initShortcuts();

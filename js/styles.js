@@ -148,7 +148,7 @@ function createStyleShootCell(style, { suggested = "" } = {}) {
       fill();
       refreshPhotoshootViews();
     }, { suggested }));
-    if (tone === "scheduled" || tone === "shot" || (tone === "needed" && !getShootListEntry(style.styleNo, style.color)?.reason)) wrap.appendChild(createShootStatusBadge(style.styleNo, style.color, { compact: true }));
+    if (tone === "scheduled" || tone === "shot") wrap.appendChild(createShootStatusBadge(style.styleNo, style.color, { compact: true }));
   };
   fill();
   return wrap;
@@ -208,6 +208,7 @@ function renderStylesTable() {
   }
   tbody.replaceChildren(...rows);
   syncStyleSelectionUi();
+  syncStylePaneRows();
 }
 
 // ── IHD (in-house date) ──────────────────────────────────────────────────────
@@ -449,7 +450,7 @@ function initStylesView() {
     }
     if (e.target.closest('td[data-col="ihd"], .shoot-picker')) return;
     const tr = e.target.closest("tr[data-style-no]");
-    if (tr) openStyleGallery(tr.dataset.styleNo, tr.dataset.color);
+    if (tr) openStylePane(tr.dataset.styleNo, tr.dataset.color);
   });
 
   // Header box: every row in the current view, not just the ones drawn.

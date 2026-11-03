@@ -57,7 +57,7 @@ function describeShootStatus(styleNo, color) {
  * New Style / New Color / Reshoot: why a style needs pictures, and with any
  * of them it's on Need to Shoot. The lit one is the reason it's waiting —
  * click it again to take it off the list; click another to change the
- * reason. `suggested` (a reason key) is outlined as the likely one.
+ * reason. `suggested` (a reason key) is filled in pale as the likely one.
  * `onDone` redraws after a change.
  */
 function createShootPicker(styleNo, color, onDone, { suggested = "" } = {}) {
@@ -65,6 +65,11 @@ function createShootPicker(styleNo, color, onDone, { suggested = "" } = {}) {
   const waiting = entry && !entry.shotShootId ? entry.reason || "any" : "";
   const wrap = document.createElement("span");
   wrap.className = "shoot-picker";
+  // Put on the list before there were reasons: nothing to light, so outline the box.
+  if (waiting === "any") {
+    wrap.classList.add("is-waiting");
+    wrap.title = "On Need to Shoot — pick a reason";
+  }
   SHOOT_REASONS.forEach(({ key, label, short }) => {
     const btn = document.createElement("button");
     btn.type = "button";
@@ -242,6 +247,9 @@ function renderPhotoshootsView() {
 
 /** After any change: redraw whatever shows shoot status. */
 function refreshPhotoshootViews() {
+  // The style pane's details (shoot buttons, IHD) follow changes made in a table.
+  const paneStyleNow = paneStyle && findStyle(paneStyle.styleNo, paneStyle.color);
+  if (paneStyleNow) renderStylePaneSummary(paneStyleNow);
   if (isPhotoshootView()) renderPhotoshootsView();
   if (getCurrentAppView() === "styles" && typeof renderStylesTable === "function") renderStylesTable();
   if (getCurrentAppView() === "pos" && typeof renderPoView === "function") renderPoView();
@@ -357,6 +365,7 @@ function renderNeedTable() {
     return tr;
   }));
   syncNeedSelectionUi();
+  syncStylePaneRows();
 }
 
 function getSelectedNeedStyles() {
@@ -619,6 +628,7 @@ function openShootPane(id) {
   if (!shoot || !pane) return;
   // One pane at a time — on Home it can be opened over a campaign's.
   closeItemPane();
+  closeStylePane();
   paneShootId = shoot.id;
   renderShootPane(shoot);
   closeShootPaneMenu();
@@ -713,7 +723,7 @@ function initPhotoshoots() {
     }
     if (e.target.closest('td[data-col="ihd"], .shoot-picker')) return;
     const tr = e.target.closest("tr[data-style-no]");
-    if (tr) openStyleGallery(tr.dataset.styleNo, tr.dataset.color);
+    if (tr) openStylePane(tr.dataset.styleNo, tr.dataset.color);
   });
   document.getElementById("needCreateShootBtn")?.addEventListener("click", () => openPhotoshootForm(null, getSelectedNeedStyles()));
   document.getElementById("needAddToShootSelect")?.addEventListener("change", e => addNeedSelectionToShoot(e.target.value));

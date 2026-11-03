@@ -62,6 +62,7 @@ reference in index.html so the URLs change on every deploy.
 | `js/styles.js` | Styles tab — the style database table, status / season / category filters, search |
 | `js/style-import.js` | Import Excel — reads the N41 ATS export in the browser, lists every change under Update / New Styles / New Colors tabs, saves, and records it for Update history |
 | `js/style-images.js` | Style photos from a linked network folder — matched by file name, thumbnails, gallery |
+| `js/style-pane.js` | The style pane — a style's details, POs and photos, opened from Styles, Need to Shoot and POs |
 | `js/photoshoots.js` | The Photoshoots and Need to Shoot pages — the shoots list, the Need to Shoot list, the shoot side pane, shoot status badges |
 | `js/purchase-orders.js` | The POs page — reading the cost sheet, setting IHDs from Store In, PO lines by month with each colour and its shoot buttons |
 | `js/photoshoot-form.js` | Create / edit photoshoot modal |
@@ -524,8 +525,7 @@ is `WHITE/BROWN`); colours can contain spaces; the number is optional and
 orders a style's photos. jpg, jpeg, png, webp and gif are read; anything
 else is ignored.
 
-Photos show as thumbnails in the Styles table (click a row for all of
-them), beside each Style # in the banner form, and in the banner pane. The
+Photos show as thumbnails in the Styles, Need to Shoot and POs tables, beside each Style # in the banner form, and in the banner pane. The
 folder and its list of file names are remembered in the browser; after a
 restart the browser may ask for permission again (**Reconnect image
 folder** in the header menu, one click — or choose "Allow on every visit"). **Rescan image folder** picks up
@@ -542,13 +542,19 @@ change the reason. A dashed outline is the suggested reason. To flag many,
 tick styles in the Styles tab and use the **Need to Shoot: New Style / New
 Color / Reshoot** buttons. Need to Shoot also filters by reason.
 
+**Style pane**: click a style on Styles, Need to Shoot or POs and it opens on
+the right — description, category, season, N41 status, IHD (editable), the
+shoot buttons and its POs from the cost sheet, then every photo of it, one under
+the other (click one for full size). Esc or ✕ closes it.
+
 ### POs
 
 The **POs** page (under Photoshoots) shows the cost sheet a month at a time.
-Each style has its PO lines across the top (**New** or **RE#**, P.O#, Store
-In), and every colour from the Styles database under it, with photos, N41
-status, photo count, IHD and the shoot buttons. Filter by **New** / **Recut**
-or search; click a colour for its photos.
+Each style has a row with its Style # and description, then every colour from
+the Styles database under it (photo, N41 status, IHD and the shoot
+buttons), with its PO lines down the first column (**New** or **RE#** and P.O#;
+hover for Store In). Filter by **New** / **Recut**, by **Has photos** / **No photos** (needs the image folder linked),
+or search.
 
 Menu ⋮ → **Link Cost Sheet** and pick the workbook (`COST SHEET(MEICON).xlsx`,
 the real file, not a shortcut). Like the image folder, the link is kept in
@@ -566,10 +572,11 @@ are skipped. Each read replaces the saved PO lines and sets each style's IHD
 (every colour) from Store In: the next one from today, or the latest if all
 have passed.
 
-Suggestions: a new style (S) suggests **New Style** for every colour; a
-recut's colour with no photos suggests **New Color** (only when the image
-folder is linked). **Add suggested to Need to Shoot** adds every suggestion
-on the page as filtered; styles already waiting are skipped. Reshoot is
+Suggestions (a pale fill on the button) are only for colours with no photos:
+**New Style** on a new PO (S), **New Color** on a recut (SR). Colours already
+waiting aren't suggested, and nothing is without the image folder linked.
+**Suggested** filters the page to just those, to check before **Add
+suggested to Need to Shoot** adds every suggestion on the page as filtered. Reshoot is
 always chosen by hand.
 
 A cost-sheet style is matched to the Styles database by its base Style #

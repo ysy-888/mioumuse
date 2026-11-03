@@ -56,6 +56,7 @@ function switchAppView(view) {
     closeBannerPane();
     closeShootPane();
     closeMgSalesPane();
+    closeStylePane();
   }
   currentAppView = view;
 

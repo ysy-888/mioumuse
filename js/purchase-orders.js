@@ -9,12 +9,14 @@
  *
  * Each style shows with its PO lines, and under it every colour in the
  * Styles database with photos and the New Style / New Color / Reshoot
- * picker. The suggestion: a new style (S) is New Style; a recut's colour
- * with no photos is New Color.
+ * picker. Only colours with no photos are suggested: New Style on a new PO
+ * (S), New Color on a recut (SR).
  */
 
 let poMonth = "";
 let poTypeFilter = "all"; // "all" | "new" | "recut"
+let poPhotoFilter = "all"; // "all" | "with" | "without" — needs the image folder
+let poSuggestedOnly = false; // just the colours Add suggested would add
 
 // ── Reading the cost sheet ───────────────────────────────────────────────────
 
@@ -312,10 +314,17 @@ function formatPoMonth(month) {
   return new Date(y, m - 1, 1).toLocaleString(undefined, { month: "long", year: "numeric" });
 }
 
-/** New Style for a new style; New Color for a recut's colour with no photos. */
+/**
+ * Only a colour with no photos is suggested: New Style on a new PO, New Color
+ * on a recut. Not one that's already waiting, or never shot. Photos are only
+ * known with the image folder linked, so without it nothing is suggested.
+ */
 function suggestPoReason(group, style) {
-  if (group.lines.some(l => l.dept === "S")) return "newStyle";
-  return styleImageState === "ready" && !hasStyleImages(style.styleNo, style.color) ? "newColor" : "";
+  if (styleImageState !== "ready" || hasStyleImages(style.styleNo, style.color)) return "";
+  if (isNoShootStyle(style.styleNo, style.color)) return "";
+  const entry = getShootListEntry(style.styleNo, style.color);
+  if (entry && !entry.shotShootId) return "";
+  return group.lines.some(l => l.dept === "S") ? "newStyle" : "newColor";
 }
 
 /** The month's lines, one group per style, in sheet order. */
@@ -327,7 +336,15 @@ function buildPoGroups() {
     if (!groups.has(line.styleNo)) groups.set(line.styleNo, { styleNo: line.styleNo, lines: [], colors: getPoStyleColors(line.styleNo) });
     groups.get(line.styleNo).lines.push(line);
   });
+  // Photos: keep the colours that match; a style with none left goes.
+  const photos = styleImageState === "ready" ? poPhotoFilter : "all";
+  const suggestedOnly = poSuggestedOnly && styleImageState === "ready";
+  groups.forEach(g => {
+    if (photos !== "all") g.colors = g.colors.filter(s => hasStyleImages(s.styleNo, s.color) === (photos === "with"));
+    if (suggestedOnly) g.colors = g.colors.filter(s => suggestPoReason(g, s));
+  });
   return [...groups.values()].filter(g => {
+    if ((photos !== "all" || suggestedOnly) && !g.colors.length) return false;
     const isNew = g.lines.some(l => l.dept === "S");
     if (poTypeFilter === "new" && !isNew) return false;
     if (poTypeFilter === "recut" && isNew) return false;
@@ -338,19 +355,21 @@ function buildPoGroups() {
   });
 }
 
-function createPoGroupRow(group, colCount) {
+/**
+ * A style's row: Style # and description across the whole table. Its PO
+ * lines go down the PO column of the rows under it, one per row.
+ */
+function createPoGroupRow(group, cols) {
   const tr = document.createElement("tr");
   tr.className = "po-group-row";
   const td = document.createElement("td");
-  td.colSpan = colCount;
+  td.colSpan = cols.length;
   const head = document.createElement("div");
   head.className = "po-group-head";
-
   const title = document.createElement("span");
   title.className = "po-group-style";
   mountSearchHighlightedText(title, group.styleNo);
   head.appendChild(title);
-
   const desc = group.colors[0]?.description;
   if (desc) {
     const d = document.createElement("span");
@@ -358,17 +377,6 @@ function createPoGroupRow(group, colCount) {
     d.textContent = desc;
     head.appendChild(d);
   }
-
-  group.lines.forEach(line => {
-    const chip = document.createElement("span");
-    chip.className = "po-line";
-    chip.dataset.dept = line.dept;
-    const kind = line.dept === "S" ? "New" : `RE${line.recut}`;
-    chip.innerHTML = `<b>${escapeHtml(kind)}</b> PO ${buildSearchHighlightedHtml(line.poNo || EMPTY_DISPLAY, getActiveSearchQuery())} · Store In ${escapeHtml(line.storeIn ? formatMdy(line.storeIn) : EMPTY_DISPLAY)}`;
-    chip.title = `${line.poStyle} · row ${line.rowNo}`;
-    head.appendChild(chip);
-  });
-
   if (!group.colors.length) {
     const none = document.createElement("span");
     none.className = "po-group-missing";
@@ -380,19 +388,42 @@ function createPoGroupRow(group, colCount) {
   return tr;
 }
 
-function createPoColorRow(group, style, cols) {
+/** One PO line: New or RE#, and the PO number. Store In is in the tooltip. */
+function createPoLineChip(line) {
+  const chip = document.createElement("span");
+  chip.className = "po-line";
+  chip.dataset.dept = line.dept;
+  const kind = line.dept === "S" ? "New" : `RE${line.recut}`;
+  chip.innerHTML = `<b>${escapeHtml(kind)}</b> PO ${buildSearchHighlightedHtml(line.poNo || EMPTY_DISPLAY, getActiveSearchQuery())}`;
+  chip.title = `${line.poStyle} · Store In ${line.storeIn ? formatMdy(line.storeIn) : EMPTY_DISPLAY} · row ${line.rowNo}`;
+  return chip;
+}
+
+/** A row with only a PO line — when a style has more POs than colours. */
+function createPoLineOnlyRow(line, cols) {
+  const tr = document.createElement("tr");
+  tr.className = "po-line-row";
+  cols.forEach(col => {
+    const td = document.createElement("td");
+    td.dataset.col = col;
+    if (col === "po") td.appendChild(createPoLineChip(line));
+    tr.appendChild(td);
+  });
+  return tr;
+}
+
+function createPoColorRow(group, style, cols, line) {
   const tr = document.createElement("tr");
   tr.className = "clickable-row po-color-row";
   tr.dataset.styleNo = style.styleNo;
   tr.dataset.color = style.color;
-  const photos = getStyleImageEntries(style.styleNo, style.color).length;
   cols.forEach(col => {
     const td = document.createElement("td");
     td.dataset.col = col;
-    if (col === "image") td.appendChild(createStyleThumb(style.styleNo, style.color));
+    if (col === "po") { if (line) td.appendChild(createPoLineChip(line)); }
+    else     if (col === "image") td.appendChild(createStyleThumb(style.styleNo, style.color));
     else if (col === "color") mountSearchHighlightedText(td, style.color);
     else if (col === "status") td.appendChild(createStyleStatusPill(style.status));
-    else if (col === "photos") setDisplayText(td, styleImageState === "ready" ? String(photos) : EMPTY_DISPLAY);
     else if (col === "ihd") setDisplayText(td, style.ihd ? formatMdy(style.ihd) : EMPTY_DISPLAY);
     else if (col === "shoot") td.appendChild(createStyleShootCell(style, { suggested: suggestPoReason(group, style) }));
     tr.appendChild(td);
@@ -412,6 +443,21 @@ function renderPoView() {
   document.querySelectorAll("#poTypeFilters .filter-btn").forEach(btn => {
     btn.classList.toggle("active", btn.dataset.type === poTypeFilter);
   });
+  // Photo counts come from the linked image folder; without it there's nothing to filter on.
+  const photosKnown = styleImageState === "ready";
+  document.querySelectorAll("#poPhotoFilters .filter-btn").forEach(btn => {
+    btn.classList.toggle("active", btn.dataset.photos === (photosKnown ? poPhotoFilter : "all"));
+    btn.disabled = !photosKnown && btn.dataset.photos !== "all";
+    btn.title = btn.getAttribute("aria-label") + (btn.disabled ? " — link the image folder (Styles → menu ⋮) to filter by photos" : "");
+  });
+  const suggested = document.getElementById("poSuggestedBtn");
+  if (suggested) {
+    suggested.classList.toggle("active", photosKnown && poSuggestedOnly);
+    suggested.disabled = !photosKnown;
+    suggested.title = photosKnown ? "Show only the colours Add suggested would add" : "Suggestions need the image folder linked (Styles → menu ⋮)";
+  }
+  const add = document.getElementById("poAddSuggestedBtn");
+  if (add) add.disabled = !photosKnown;
 
   const tbody = document.getElementById("poTableBody");
   if (!tbody) return;
@@ -428,20 +474,26 @@ function renderPoView() {
     return;
   }
   const rows = [];
-  groups.forEach(group => {
-    rows.push(createPoGroupRow(group, cols.length));
-    group.colors.forEach(style => rows.push(createPoColorRow(group, style, cols)));
+  groups.forEach((group, i) => {
+    // A gap before each style after the first, so its colours read as its own.
+    if (i) {
+      const gap = document.createElement("tr");
+      gap.className = "po-gap-row";
+      gap.innerHTML = `<td colspan="${cols.length}"></td>`;
+      rows.push(gap);
+    }
+    rows.push(createPoGroupRow(group, cols));
+    group.colors.forEach((style, n) => rows.push(createPoColorRow(group, style, cols, group.lines[n])));
+    group.lines.slice(group.colors.length).forEach(line => rows.push(createPoLineOnlyRow(line, cols)));
   });
   tbody.replaceChildren(...rows);
+  syncStylePaneRows();
 }
 
 /** Put every suggested colour of the month (as filtered) on Need to Shoot. */
 async function addPoSuggested() {
   const byReason = new Map();
   buildPoGroups().forEach(group => group.colors.forEach(style => {
-    if (isNoShootStyle(style.styleNo, style.color)) return;
-    const entry = getShootListEntry(style.styleNo, style.color);
-    if (entry && !entry.shotShootId) return; // already waiting
     const reason = suggestPoReason(group, style);
     if (!reason) return;
     if (!byReason.has(reason)) byReason.set(reason, []);
@@ -489,11 +541,21 @@ function initPurchaseOrders() {
       renderPoView();
     });
   });
+  document.querySelectorAll("#poPhotoFilters .filter-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      poPhotoFilter = btn.dataset.photos;
+      renderPoView();
+    });
+  });
   document.getElementById("poSearchInput")?.addEventListener("input", renderPoView);
+  document.getElementById("poSuggestedBtn")?.addEventListener("click", () => {
+    poSuggestedOnly = !poSuggestedOnly;
+    renderPoView();
+  });
   document.getElementById("poAddSuggestedBtn")?.addEventListener("click", addPoSuggested);
   document.getElementById("poTableBody")?.addEventListener("click", e => {
     const tr = e.target.closest("tr.po-color-row");
     if (!tr || e.target.closest(".shoot-picker, button, a, input")) return;
-    openStyleGallery(tr.dataset.styleNo, tr.dataset.color);
+    openStylePane(tr.dataset.styleNo, tr.dataset.color);
   });
 }

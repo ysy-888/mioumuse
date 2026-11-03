@@ -592,6 +592,17 @@ select.filter-select:focus { border-color: var(--accent); }
   background: var(--surface);
 }
 
+/* An icon in place of a label (the label is in aria-label and the tooltip). */
+.filter-btn-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 7px 9px;
+}
+.filter-btn-icon svg { display: block; }
+.filter-btn:disabled { opacity: 0.45; cursor: default; }
+.filter-btn:disabled:hover { background: var(--bg); }
+
 .filter-btn.active {
   background: var(--accent);
   color: #fff;
@@ -7466,6 +7477,7 @@ th.th-select { text-align: center; cursor: default; padding-left: 4px; padding-r
    Photoshoots
    ============================================================ */
 
+/* Need to Shoot and POs: filters and actions in one row. */
 .shoot-controls {
   display: flex;
   align-items: center;
@@ -7510,37 +7522,44 @@ th.th-select { text-align: center; cursor: default; padding-left: 4px; padding-r
 .styles-table .col-shoot { width: 190px; min-width: 180px; }
 .need-table .col-added { width: 110px; min-width: 100px; }
 
-/* POs: a style's PO lines across the top, its colours underneath. */
+/* POs: a style's row (Style #, description) across the table; its colours under it, with its PO lines down the PO column. */
 #poTable { width: max-content; margin: 0 auto; }
 .po-table .col-color  { width: 200px; }
-.po-table .col-photos { width: 80px; }
+.po-table .col-po     { width: 130px; }
 .po-table .col-ihd    { width: 100px; }
 .po-group-row td {
-  padding-top: 14px;
-  background: var(--surface-muted, #f7f7f8);
+  padding-top: 10px;
+  padding-bottom: 10px;
+  background: #e4e8ef;
   text-align: left;
   white-space: normal;
 }
-/* width 0 + min-width 100%: the header wraps to the table rather than widening it. */
+/* width 0 + min-width 100%: a long description wraps to the table rather than widening it. */
 .po-group-head {
   display: flex;
   flex-wrap: wrap;
-  align-items: center;
-  gap: 6px 10px;
+  align-items: baseline;
+  gap: 4px 10px;
   width: 0;
   min-width: 100%;
 }
 .po-group-style { font-weight: 700; font-size: 14px; }
 .po-group-desc { color: var(--text-muted); font-size: 12px; }
+.po-table th[data-col="po"],
+.po-table td[data-col="po"] { text-align: left; }
 .po-line {
   padding: 2px 8px;
   border-radius: 10px;
-  background: #e1ecfb;
+  background: #fff;
   color: #1f56a5;
+  box-shadow: inset 0 0 0 1px #b9cdee;
   font-size: 11px;
   white-space: nowrap;
 }
-.po-line[data-dept="S"] { background: #fdf0d5; color: #8a5a00; }
+.po-line[data-dept="S"] { background: #1f56a5; color: #fff; box-shadow: none; }
+/* Space between one style's colours and the next style. */
+.po-table tr.po-gap-row td { height: 18px; padding: 0; background: var(--bg); border-left-color: transparent; border-right-color: transparent; }
+.po-table tr.po-gap-row:hover td { background: var(--bg); }
 .po-group-missing { color: var(--danger); font-size: 12px; }
 
 .shoots-table { min-width: 860px; }
@@ -7785,22 +7804,25 @@ th.th-select { text-align: center; cursor: default; padding-left: 4px; padding-r
 .shoot-style-row { flex-wrap: wrap; }
 .shoot-style-row.is-late { border-color: #f3c4c4; }
 
-/* Styles table: Shoot cell — status, plus a per-row Add to Need to Shoot. */
+/* Shoot cell: the New Style / New Color / Reshoot buttons, and under them a
+   scheduled or shot date when there is one — both centered in the column. */
 .style-shoot-cell {
   display: inline-flex;
+  flex-direction: column;
   align-items: center;
-  gap: 6px;
-  flex-wrap: wrap;
+  gap: 4px;
 }
 
-/* New Style / New Color / Reshoot: one segmented control; the lit one is
-   why it's on Need to Shoot, a dashed one is the suggestion. */
+/* New Style / New Color / Reshoot: one segmented control. The solid one is
+   why it's on Need to Shoot; a pale fill is the suggestion. */
 .shoot-picker {
   display: inline-flex;
   border: 1px solid var(--border-strong);
   border-radius: 6px;
   overflow: hidden;
 }
+/* On Need to Shoot from before reasons: no button lit yet, so the box says it. */
+.shoot-picker.is-waiting { border-color: #d39a2c; box-shadow: 0 0 0 1px #d39a2c; }
 .shoot-pick {
   padding: 3px 7px;
   border: none;
@@ -7816,10 +7838,13 @@ th.th-select { text-align: center; cursor: default; padding-left: 4px; padding-r
 .shoot-pick:first-child { border-left: none; }
 .shoot-pick:hover:not(:disabled) { color: var(--text); background: var(--row-hover); }
 .shoot-pick:disabled { opacity: 0.5; cursor: default; }
-.shoot-pick.is-suggested { color: var(--text); box-shadow: inset 0 0 0 1px var(--text-muted); border-radius: 5px; }
-.shoot-pick[data-reason="newStyle"][aria-pressed="true"] { background: #fdf0d5; color: #8a5a00; }
-.shoot-pick[data-reason="newColor"][aria-pressed="true"] { background: #efe7fb; color: #6232b5; }
-.shoot-pick[data-reason="reshoot"][aria-pressed="true"]  { background: #e1ecfb; color: #1f56a5; }
+.shoot-pick.is-suggested[data-reason="newStyle"] { background: #fdf0d5; color: #8a5a00; }
+.shoot-pick.is-suggested[data-reason="newColor"] { background: #efe7fb; color: #6232b5; }
+.shoot-pick[aria-pressed="true"],
+.shoot-pick[aria-pressed="true"]:hover:not(:disabled) { color: #fff; }
+.shoot-pick[data-reason="newStyle"][aria-pressed="true"] { background: #b7791f; }
+.shoot-pick[data-reason="newColor"][aria-pressed="true"] { background: #6232b5; }
+.shoot-pick[data-reason="reshoot"][aria-pressed="true"]  { background: #1f56a5; }
 .selection-label { font-size: 12px; font-weight: 600; color: var(--text-muted); }
 
 /* Columns that don't sort: no hover arrow, no pointer. */
@@ -8599,3 +8624,36 @@ th.th-select { text-align: center; cursor: default; padding-left: 4px; padding-r
 .ts-import-result[data-kind="update"]  { background: #e1ecfb; color: #1f56a5; }
 .ts-import-result[data-kind="same"],
 .ts-import-result[data-kind="skip"]    { background: #eef0f3; color: #6b7280; }
+
+/* ============================================================
+   Style pane (js/style-pane.js) — details, then photos one under another
+   ============================================================ */
+
+.style-pane .item-pane-summary { align-items: center; }
+.style-pane .style-shoot-cell { align-items: flex-start; }
+.style-pane .cell-date { width: 136px; }
+.style-pane-pos { display: flex; flex-direction: column; gap: 4px; }
+.style-pane-po { display: flex; align-items: center; gap: 8px; font-size: 12px; }
+.style-pane-po-month { font-weight: 600; }
+.style-pane-po-store { color: var(--text-muted); }
+.style-pane-photos { display: flex; flex-direction: column; gap: 14px; }
+.style-pane-photo { margin: 0; }
+.style-pane-photo img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: #f4f4f5;
+}
+.style-pane-photo figcaption {
+  margin-top: 4px;
+  font-size: 11px;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.style-pane-photo.is-error figcaption::before { content: "Couldn't open · "; color: var(--danger); }
+/* The row whose style is open in the pane. */
+.record-table tr.is-pane-open td { background: var(--row-selected-hover); }

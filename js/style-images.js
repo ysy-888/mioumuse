@@ -447,6 +447,7 @@ function runStyleImageMenuAction() {
 function refreshStyleImageViews() {
   if (getCurrentAppView() === "styles" && typeof applyStyleFilters === "function") applyStyleFilters({ keepShown: true });
   if (getCurrentAppView() === "pos" && typeof renderPoView === "function") renderPoView();
+  if (typeof refreshStylePane === "function") refreshStylePane();
   if (typeof refreshBannerViews === "function") refreshBannerViews();
   document.querySelectorAll("#bannerFormStyles .banner-style-row").forEach(row => {
     if (typeof updateBannerStyleMatch === "function") updateBannerStyleMatch(row);
