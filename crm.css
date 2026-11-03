@@ -7547,6 +7547,11 @@ th.th-select { text-align: center; cursor: default; padding-left: 4px; padding-r
 .po-group-desc { color: var(--text-muted); font-size: 12px; }
 .po-table th[data-col="po"],
 .po-table td[data-col="po"] { text-align: left; }
+/* One cell per style, spanning its colour rows: POs stacked at the top, and it
+   doesn't light up with the colour row under the mouse. */
+.po-table td[data-col="po"] { vertical-align: top; padding-top: 8px; }
+.po-table tr:hover td[data-col="po"] { background: var(--surface); }
+.po-lines { display: flex; flex-direction: column; align-items: flex-start; gap: 3px; }
 .po-line {
   padding: 2px 8px;
   border-radius: 10px;

@@ -357,7 +357,7 @@ function buildPoGroups() {
 
 /**
  * A style's row: Style # and description across the whole table. Its PO
- * lines go down the PO column of the rows under it, one per row.
+ * lines sit in one PO cell beside its colours (createPoLinesCell).
  */
 function createPoGroupRow(group, cols) {
   const tr = document.createElement("tr");
@@ -399,29 +399,43 @@ function createPoLineChip(line) {
   return chip;
 }
 
-/** A row with only a PO line — when a style has more POs than colours. */
-function createPoLineOnlyRow(line, cols) {
+/** All of a style's PO lines, stacked, for the one PO cell beside its colours. */
+function createPoLinesCell(group, rowSpan) {
+  const td = document.createElement("td");
+  td.dataset.col = "po";
+  td.rowSpan = rowSpan;
+  const list = document.createElement("div");
+  list.className = "po-lines";
+  list.append(...group.lines.map(createPoLineChip));
+  td.appendChild(list);
+  return td;
+}
+
+/** A style with no colours in the Styles database: its POs, and nothing else. */
+function createPoLinesOnlyRow(group, cols) {
   const tr = document.createElement("tr");
   tr.className = "po-line-row";
-  cols.forEach(col => {
-    const td = document.createElement("td");
-    td.dataset.col = col;
-    if (col === "po") td.appendChild(createPoLineChip(line));
-    tr.appendChild(td);
-  });
+  tr.appendChild(createPoLinesCell(group, 1));
+  const rest = document.createElement("td");
+  rest.colSpan = cols.length - 1;
+  tr.appendChild(rest);
   return tr;
 }
 
-function createPoColorRow(group, style, cols, line) {
+/** `first`: the style's first colour row, which carries the PO cell for all of them. */
+function createPoColorRow(group, style, cols, first) {
   const tr = document.createElement("tr");
   tr.className = "clickable-row po-color-row";
   tr.dataset.styleNo = style.styleNo;
   tr.dataset.color = style.color;
   cols.forEach(col => {
+    if (col === "po") {
+      if (first) tr.appendChild(createPoLinesCell(group, group.colors.length));
+      return;
+    }
     const td = document.createElement("td");
     td.dataset.col = col;
-    if (col === "po") { if (line) td.appendChild(createPoLineChip(line)); }
-    else     if (col === "image") td.appendChild(createStyleThumb(style.styleNo, style.color));
+    if (col === "image") td.appendChild(createStyleThumb(style.styleNo, style.color));
     else if (col === "color") mountSearchHighlightedText(td, style.color);
     else if (col === "status") td.appendChild(createStyleStatusPill(style.status));
     else if (col === "ihd") setDisplayText(td, style.ihd ? formatMdy(style.ihd) : EMPTY_DISPLAY);
@@ -483,8 +497,8 @@ function renderPoView() {
       rows.push(gap);
     }
     rows.push(createPoGroupRow(group, cols));
-    group.colors.forEach((style, n) => rows.push(createPoColorRow(group, style, cols, group.lines[n])));
-    group.lines.slice(group.colors.length).forEach(line => rows.push(createPoLineOnlyRow(line, cols)));
+    if (group.colors.length) group.colors.forEach((style, n) => rows.push(createPoColorRow(group, style, cols, n === 0)));
+    else rows.push(createPoLinesOnlyRow(group, cols));
   });
   tbody.replaceChildren(...rows);
   syncStylePaneRows();
