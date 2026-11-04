@@ -139,9 +139,9 @@ function renderStylePane() {
 
 /** Mark the open style's rows in whichever table is showing. */
 function syncStylePaneRows() {
-  document.querySelectorAll("tr.is-pane-open").forEach(tr => tr.classList.remove("is-pane-open"));
+  document.querySelectorAll("tr.is-pane-open, .shoot-style-row.is-pane-open").forEach(tr => tr.classList.remove("is-pane-open"));
   if (!paneStyle) return;
-  document.querySelectorAll("#stylesTableBody tr, #needTableBody tr, #poTableBody tr").forEach(tr => {
+  document.querySelectorAll("#stylesTableBody tr, #needTableBody tr, #poTableBody tr, #shootPaneStyles .shoot-style-row").forEach(tr => {
     if (tr.dataset.styleNo === paneStyle.styleNo && tr.dataset.color === paneStyle.color) tr.classList.add("is-pane-open");
   });
 }
@@ -151,7 +151,8 @@ function openStylePane(styleNo, color) {
   if (!pane || !findStyle(styleNo, color)) return;
   // One pane at a time.
   closeItemPane();
-  closeShootPane();
+  // The Photoshoots page keeps its docked shoot open; the style pane sits over its right side.
+  if (!isShootPaneDocked()) closeShootPane();
   paneStyle = { styleNo, color };
   renderStylePane();
   pane.hidden = false;

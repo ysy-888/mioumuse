@@ -3,14 +3,15 @@
  *
  * Views: "home" (calendar + upcoming tasks), "campaigns" and "tradeShows"
  * (lists), "platforms" (banners), "styles" (the style database),
- * "photoshoots" (the shoots), "needToShoot" (styles waiting for one), "pos"
+ * "photoshoots" (the shoots), "needToShoot" (styles waiting for one), "complete"
+ * (styles shot or made in CG), "pos"
  * (the cost sheet's PO lines by month), and "magento" (the store's
  * products and categories, live). A record opens in a side pane over
  * whichever view is showing (js/item-pane.js, js/banners.js,
  * js/photoshoots.js, js/magento.js), not as a view of its own.
  */
 
-const APP_VIEWS = ["home", "campaigns", "tradeShows", "platforms", "styles", "photoshoots", "needToShoot", "pos", "magento"];
+const APP_VIEWS = ["home", "campaigns", "tradeShows", "platforms", "styles", "photoshoots", "needToShoot", "complete", "pos", "magento"];
 
 let currentAppView = "home";
 
@@ -71,6 +72,9 @@ function switchAppView(view) {
     stylesTableWrap: view === "styles",
     stylesPager: view === "styles", // in the app footer
     needPager: view === "needToShoot", // in the app footer
+    completeToolbar: view === "complete",
+    completeTableWrap: view === "complete",
+    completePager: view === "complete", // in the app footer
     photoshootsToolbar: isPhotoshootView(view),
     posToolbar: view === "pos",
     posTableWrap: view === "pos",
@@ -90,10 +94,12 @@ function switchAppView(view) {
   if (view === "platforms") applyBannerFilters();
   if (view === "styles") applyStyleFilters();
   if (isPhotoshootView(view)) renderPhotoshootsView();
+  if (view === "complete") renderCompleteView();
   if (view === "pos") renderPoView();
   if (view === "magento") enterMagentoView();
   // The photoshoot and Magento tables show and hide with their page, but
   // none of them belongs anywhere else.
+  if (view !== "photoshoots") leaveShootsPage();
   if (!isPhotoshootView(view)) {
     document.getElementById("needTableWrap").hidden = true;
     document.getElementById("shootsTableWrap").hidden = true;
@@ -111,7 +117,7 @@ function switchAppView(view) {
 // ── Left menu, page title, breadcrumbs ──────────────────────────────────────
 //
 // Home, then three groups — Marketing (Campaigns, Trade Shows, Platforms),
-// Photoshoots (Styles, Need to Shoot, POs, Photoshoots), Magento (Products,
+// Photoshoots (Styles, Need to Shoot, Complete, POs, Photoshoots), Magento (Products,
 // Categories, Orders, Customers). The page you're on is filled in the menu,
 // named in the header, with Home › group above it.
 

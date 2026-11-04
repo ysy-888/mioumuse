@@ -52,11 +52,13 @@ async function bootApp() {
   initStylesView();
   initStyleImages();
   initPhotoshoots();
+  initComplete();
   initPhotoshootForm();
   initPurchaseOrders();
   initStylePane();
   initExports();
   initCopyMenu();
+  initRowQuickSelect();
   initShortcuts();
   initCalendar();
   // Last: rearranges the headers every table above has set up.

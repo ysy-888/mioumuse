@@ -64,6 +64,7 @@ reference in index.html so the URLs change on every deploy.
 | `js/style-images.js` | Style photos from a linked network folder — matched by file name, thumbnails, gallery |
 | `js/style-pane.js` | The style pane — a style's details, POs and photos, opened from Styles, Need to Shoot and POs |
 | `js/photoshoots.js` | The Photoshoots and Need to Shoot pages — the shoots list, the Need to Shoot list, the shoot side pane, shoot status badges |
+| `js/complete.js` | The Complete page — the history of styles shot (photoshoot) or made in CG, filtered by how |
 | `js/purchase-orders.js` | The POs page — reading the cost sheet, setting IHDs from Store In, the month list (with archiving), PO lines by month with each colour and its shoot buttons |
 | `js/photoshoot-form.js` | Create / edit photoshoot modal |
 | `js/magento-sales.js` | Magento → Orders and Customers (read-only): lists with Status / Group filters, date quick filters, search, sort, paging; the order / customer pane |
@@ -73,10 +74,11 @@ reference in index.html so the URLs change on every deploy.
 | `supabase/functions/magento/` | Edge Function the app calls for Magento; holds the store address and token (secrets `MAGENTO_BASE_URL`, `MAGENTO_ACCESS_TOKEN`) |
 | `js/column-filter.js` | Header filters (the PO app's design): click a column's funnel to tick which values show — used for IHD by month and the Magento products table |
 | `js/shortcuts.js` | Keyboard shortcuts on table pages: ← / → turn pages, Space jumps to search |
+| `js/row-quick-select.js` | Quick select: click / Ctrl / Shift / drag to pick rows on tables with tick boxes, Space ticks them |
 | `js/copy-menu.js` | Right-click → Copy: style numbers (Styles, Need to Shoot, the shoot pane) and Magento product names |
 | `js/table-view.js` | Header menu → Table view: show / hide and reorder any table's columns, saved as that table's default to your account (`table_views`) |
 | `js/table-pager.js` | Paging for Styles and Need to Shoot: the footer's First / Prev / Next / Last and rows per page (remembered per table) |
-| `js/exports.js` | CSV downloads and printable (Save as PDF) reports — each photoshoot, the banners, and the header menu's Export CSV / PDF |
+| `js/exports.js` | CSV downloads and printable (Save as PDF) reports — each photoshoot, Need to Shoot, the banners, and the header menu's Export CSV / PDF |
 | `js/calendar.js` | Home calendar of every campaign, show, and task, with the upcoming rail |
 | `js/main.js` | Boot |
 
@@ -92,6 +94,24 @@ On the table pages (`js/shortcuts.js`):
 They stand aside while you're typing (a text box, dropdown or checkbox),
 while a window, filter or menu is open, and when Ctrl / Alt / Shift / Cmd is
 held. Space on a button reached with Tab still presses it.
+
+**Quick select** (`js/row-quick-select.js`, from the PO app) — on any table
+with tick boxes (Styles, Need to Shoot, Magento Products and Orders), pick
+rows like a spreadsheet, then press Space to tick them:
+
+| Do | Picks |
+|---|---|
+| Click | That row (it still opens the side pane) |
+| Ctrl-click (Cmd on a Mac) | Adds or takes out one row |
+| Shift-click | Every row from the last one clicked; Ctrl+Shift adds the range |
+| Drag over rows | The rows dragged over |
+| ↑ / ↓ | Moves a single picked row |
+| Space | Ticks the picked rows, or unticks them if they're all ticked (mixed: whichever most of them are) |
+| Esc, or a click outside the table | Drops the picks |
+
+Picked rows are light blue and ticked rows light green. While rows are
+picked, Space ticks instead of jumping to search. Ctrl-, Shift-clicks and
+drags don't open the side pane.
 
 ## Header menus
 
@@ -568,6 +588,19 @@ The IHD months down the left of Need to Shoot filter the list: **Show
 all**, **No IHD**, then each month some style on the list arrives in, in a
 folder per year (click a year to open or close it), with its style count.
 
+The **⋮** after the shoot buttons (Styles, Need to Shoot, POs, the style
+pane) has **Add to Photoshoot** — a planned shoot, or a new one — and **Mark
+as Complete**, for pictures made in Photoshop or with AI: the style is done
+and logged as CG today.
+
+**Complete** (Photoshoots → Complete) is the history of every style that got
+its pictures from now on: one row each time, newest first, with how —
+**Photoshoot** (when its shoot is marked complete; reopening the shoot takes
+those rows back out) or **CG** — the reason, the shoot and the date. Filter
+by Photoshoot or CG, search, sort by any column. A CG row has **Undo**, which
+puts the style back on Need to Shoot. Needs the `style_completions` SQL in
+`supabase-schema.sql`.
+
 **Style pane**: click a style on Styles, Need to Shoot or POs and it opens on
 the right — description, category, season, N41 status, IHD (editable), the
 shoot buttons and its POs from the cost sheet (folded to a count — click to
@@ -577,11 +610,23 @@ the other (click one for full size). Esc or ✕ closes it.
 ### POs
 
 The **POs** page (under Photoshoots) shows the cost sheet a month at a time.
-Each style has a row with its Style # and description, then every colour from
-the Styles database under it (photo, N41 status, IHD and the shoot
-buttons), with its PO lines down the first column (**New** or **RE#** and P.O#;
-hover for Store In). Filter by **New** / **Recut**, by **Has photos** / **No photos** (needs the image folder linked),
+Each style has a row with its Style # and description, then the colours on
+its POs under it (photo, N41 status, IHD and the shoot buttons), with its PO
+lines down the first column (**New** or **RE#** and P.O#; hover for Store In
+and the PO's colours). Filter by **New** / **Recut**, by **Has photos** / **No photos** (needs the image folder linked),
 or search.
+
+**Colours come from N41.** The cost sheet has none, so menu ⋮ → **Import N41
+PO Report** reads N41's Process (Quantity) Detail report (.xlsx): just P.O#,
+Style and Color, from the columns headed **PO #**, **Style** and **Color**.
+Quantities and receipts are ignored. A report covers a date range, so an
+import replaces the POs on it and keeps every other PO (`po_colors`). From
+the cost sheet only the P.O# and Store In are used. A style's colours are the
+ones in the Styles database that are on one of its POs, so suggestions only
+come from those. A colour on a PO that isn't in the database is listed in red
+by the Style #. A PO that isn't on any imported report has no colours, only its PO line,
+marked *No colours — not on an N41 PO report yet*. Run the report with open
+POs included so future months get colours too.
 
 Menu ⋮ → **Link Cost Sheet** and pick the workbook (`COST SHEET(MEICON).xlsx`,
 the real file, not a shortcut). Like the image folder, the link is kept in
@@ -636,50 +681,68 @@ The Photoshoots tab lists them with where each stands:
 | New Style / New Color / Reshoot | On the list, not in any planned shoot |
 
 | Scheduled · date | In a planned shoot — the earliest one's (tentative) date |
-| Shot · date | In a shoot that was marked complete — off the list (shown with **Show shot**) |
+| Shot · date | In a shoot that was marked complete — off the list, on **Complete** |
+| CG · date | Marked complete by hand (made in Photoshop or with AI) — off the list, on **Complete** |
 
 From the list, ticked styles can go into a **new photoshoot** (date, studio
 or editorial, model, optional name, notes), be **added to an existing**
-planned shoot, or be **removed from the list**. A shoot opens in a side
-pane, where styles that weren't shot can be taken out before **Mark shoot
-complete**, which records every style left in it as shot. **Reopen** undoes
-that and puts them back on the list; deleting a completed shoot does the
-same. Adding a shot style to the list again flags it to be shot again.
+planned shoot, or be **removed from the list**.
 
-IHD shows (and can be edited) on Need to Shoot and in the shoot pane, and
-the Shoots list shows each shoot's latest IHD. A style whose IHD is after its
-shoot date is flagged **IHD after shoot** — the goods won't be in yet.
+The **Photoshoots** page lists the shoots down the left (date as M/D, name,
+type and how many styles) under Planned / Complete / All and the search. The
+one picked fills the rest of the page; the first one listed is picked when
+you open the page. Its date, type, model, style count (and when it was
+completed) are on the line under its name, with its notes below. Its styles
+are numbered, in columns: photo, Style # (its Color beside it), the New
+Style / New Color / Reshoot buttons (as on Need to Shoot; fixed on a
+completed shoot), Description, Category and IHD. To change the order, drag
+a style by its grip (⋮⋮), or click the small ↑ / ↓ buttons beside its number
+to swap it with the one above or below. Clicking a style's row opens its
+style pane on the right (the shoot moves over to make room, dropping
+Description and Category, then IHD, when it gets narrow). The new order is saved with the shoot (the CSV and
+PDF follow it).
+Styles that weren't shot can be taken out before **Mark shoot complete** (in
+the shoot's ⋮ menu), which records every style left in it as shot. **Reopen
+shoot** (same menu) undoes that and
+puts them back on the list; deleting a completed shoot does the same. Adding
+a shot style to the list again flags it to be shot again. Opened from the
+Home calendar, a shoot still shows in a side pane.
 
-IHD (and Latest IHD on Shoots) also filters by month: click the funnel at
+IHD shows (and can be edited) on Need to Shoot and in the shoot's style list.
+
+IHD also filters by month: click the funnel at
 the right of the header and tick the months to show. **No IHD** covers
 styles without one. A filtered header turns dark; tick everything (Select
 all) to remove the filter. 
 
 Need to Shoot and Shoots sort by clicking a column header: ascending, then
 descending, then back to the default order. Blank values sort last — except
-IHD (and a shoot's Latest IHD): soonest first puts the ones with no IHD at
+IHD: soonest first puts the ones with no IHD at
 the top.
 Need to Shoot's default order is IHD, soonest first (no IHD on top).
 
 ### Exports
 
-- **Need to Shoot**: the header menu's **Export CSV** covers the list as it's
-  showing, with the filters and search applied.
+- **Need to Shoot**: the header menu's **Export CSV** or **Export PDF** covers
+  the list as it's showing, with the filters and search applied. The PDF
+  has each style's photo, shoot type, IHD and whether it's scheduled.
 - **Platforms**: the header menu's **Export PDF** lists the banners showing,
   with their images.
 - **A shoot's ⋯ menu**: **Export CSV** (every style in the shoot) or **PDF
   report**. The report has the shoot details and notes, plus a ☐ Shot
-  column to tick on set.
+  column to tick on set, the styles in the shoot's order.
 - PDF reports open the print window: choose **Save as PDF**. Style photos are
-  included when the image folder is linked, and late IHDs print in red.
+  included when the image folder is linked. The shoot
+  type prints as the three New Style / New Color / Reshoot icons, the
+  style's one lit, with a key above the table.
   Reports print on Letter paper (portrait) with dates as MM/DD/YY.
 - The header menu ⋮ follows the page you're on (Sign Out is always there,
   and pages with a table also get **Table View**):
   - Home, Photoshoots, Magento → Categories: nothing else.
   - Campaigns, Trade Shows: **Export CSV**, that page's records and tasks.
   - Platforms: **Export PDF**.
-  - Need to Shoot: **Export CSV**, the list.
-  - POs: **Link Cost Sheet** (then Reconnect / Update from Cost Sheet) and **Unlink Cost Sheet**.
+  - Need to Shoot: **Export CSV** and **Export PDF**, the list.
+  - POs: **Link Cost Sheet** (then Reconnect / Update from Cost Sheet), **Unlink Cost Sheet** and **Import N41 PO Report**.
   - Styles: **Import CSV**, **Export CSV** (the filtered styles), **Update
     History**, and the image folder's Link / Reconnect / Rescan and Unlink.
   - Magento → Products, Orders, Customers: **Export CSV**. Products: every

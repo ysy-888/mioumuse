@@ -364,3 +364,44 @@ alter table po_month_archive enable row level security;
 drop policy if exists "po_month_archive: own rows only" on po_month_archive;
 create policy "po_month_archive: own rows only" on po_month_archive
   for all using (user_id = auth.uid()) with check (user_id = auth.uid());
+
+-- style_completions: the Complete history — one row each time a style got its
+-- pictures. method "photoshoot" when a shoot with it is marked complete
+-- (reopening the shoot removes them), "cg" when marked complete by hand
+-- (Photoshop or AI). Reshoots add rows, so earlier ones stay as history.
+create table if not exists style_completions (
+  id text primary key,
+  user_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
+  style_no text not null,
+  color text not null,
+  method text not null,                       -- photoshoot | cg
+  shoot_id text,                              -- the photoshoot, for method photoshoot
+  reason text,                                -- newStyle | newColor | reshoot
+  completed_at timestamptz not null default now()
+);
+
+alter table style_completions enable row level security;
+
+drop policy if exists "style_completions: own rows only" on style_completions;
+create policy "style_completions: own rows only" on style_completions
+  for all using (user_id = auth.uid()) with check (user_id = auth.uid());
+
+-- ── PO colours (POs page → menu → Import N41 PO Report) ────────────────────
+--
+-- The cost sheet has no colours; N41's PO report does. One row per P.O# +
+-- Style (as N41 writes it) + Color. An import replaces the POs on that
+-- report and keeps every other PO, since a report covers a date range.
+create table if not exists po_colors (
+  user_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
+  po_no text not null,
+  style text not null default '',
+  color text not null default '',
+  imported_at timestamptz not null default now(),
+  primary key (user_id, po_no, style, color)
+);
+
+alter table po_colors enable row level security;
+
+drop policy if exists "po_colors: own rows only" on po_colors;
+create policy "po_colors: own rows only" on po_colors
+  for all using (user_id = auth.uid()) with check (user_id = auth.uid());

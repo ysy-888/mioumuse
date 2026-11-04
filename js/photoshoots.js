@@ -16,7 +16,6 @@
 
 let needFilter = "all";         // "all" | "unscheduled" | "scheduled"
 let needReasonFilter = "all";   // "all" | a SHOOT_REASONS key
-let needShowShot = false;
 let shootFilter = "planned";    // "planned" | "complete" | "all"
 let needSelectedKeys = new Set();
 let filteredNeedRows = [];
@@ -32,6 +31,12 @@ function formatShootDate(ymdValue) {
   return ymdValue ? formatTaskDate(ymdValue) : "No date";
 }
 
+/** M/D (11/20), for the Photoshoots list and a shoot's header. */
+function formatShootDateMd(ymdValue) {
+  const m = /^\d{4}-(\d{2})-(\d{2})/.exec(ymdValue ?? "");
+  return m ? `${Number(m[1])}/${Number(m[2])}` : "No date";
+}
+
 /** MM/DD, for the small date pill in a Shoot cell. */
 function formatShootDateShort(ymdValue) {
   const m = /^\d{4}-(\d{2})-(\d{2})/.exec(ymdValue ?? "");
@@ -45,6 +50,11 @@ function formatShootDateShort(ymdValue) {
 function describeShootStatus(styleNo, color) {
   const entry = getShootListEntry(styleNo, color);
   if (!entry) return null;
+  if (entry.shotShootId === CG_SHOOT_ID) {
+    // Marked complete by hand: made in Photoshop or with AI.
+    const date = formatLongDate(entry.shotAt.slice(0, 10));
+    return { tone: "shot", label: `Done (CG) · ${date}`, short: `CG ${formatShootDateShort(entry.shotAt)}`, shoots: [] };
+  }
   if (entry.shotShootId) {
     const shoot = getPhotoshootById(entry.shotShootId);
     const date = shoot ? formatShootDate(shoot.date) : formatLongDate(entry.shotAt.slice(0, 10));
@@ -82,8 +92,22 @@ function shootReasonIcon(key) {
  * reason. `suggested` (a reason key) is filled in pale as the likely one.
  * `onDone` redraws after a change.
  */
-function createShootPicker(styleNo, color, onDone, { suggested = "" } = {}) {
+function createShootPicker(styleNo, color, onDone, { suggested = "", menu = true, fixed = false } = {}) {
   const entry = getShootListEntry(styleNo, color);
+  // `fixed` (a completed shoot's styles): the reason it was shot for, lit, no clicking.
+  if (fixed) {
+    const wrap = document.createElement("span");
+    wrap.className = "shoot-picker is-fixed";
+    SHOOT_REASONS.forEach(({ key, label }) => {
+      const icon = document.createElement("span");
+      icon.className = "shoot-pick";
+      icon.innerHTML = shootReasonIcon(key);
+      icon.setAttribute("aria-pressed", String(entry?.reason === key));
+      icon.title = entry?.reason === key ? `Shot as ${label}` : label;
+      wrap.appendChild(icon);
+    });
+    return wrap;
+  }
   const waiting = entry && !entry.shotShootId ? entry.reason || "any" : "";
   const wrap = document.createElement("span");
   wrap.className = "shoot-picker";
@@ -120,24 +144,110 @@ function createShootPicker(styleNo, color, onDone, { suggested = "" } = {}) {
     });
     wrap.appendChild(btn);
   });
+  if (menu) wrap.appendChild(createShootMenuButton(styleNo, color, onDone));
   return wrap;
 }
 
-/**
- * IHD is when the goods arrive in-house. A style can't be shot before it
- * arrives, so an IHD after the shoot date is worth flagging.
- */
-function isIhdAfterShoot(styleNo, color, shootDate) {
-  const ihd = findStyle(styleNo, color)?.ihd;
-  return Boolean(ihd && shootDate && ihd > shootDate);
+// ── Shoot cell menu ──────────────────────────────────────────────────────────
+//
+// The ⋮ after the reason buttons: Add to Photoshoot (a planned one, or a new
+// one) and Mark as Complete — for pictures made in Photoshop or with AI,
+// logged as CG today on the Complete page.
+
+function closeShootMenu() {
+  document.getElementById("shootMenu")?.remove();
 }
 
-function createIhdWarning(ihd) {
-  const warn = document.createElement("span");
-  warn.className = "ihd-warning";
-  warn.textContent = "IHD after shoot";
-  warn.title = `In-house ${formatTaskDate(ihd)} — after the shoot date`;
-  return warn;
+function createShootMenuButton(styleNo, color, onDone) {
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "shoot-menu-btn";
+  btn.title = "More: add to a photoshoot, or mark as complete";
+  btn.setAttribute("aria-label", `More for ${styleNo} ${color}`);
+  btn.setAttribute("aria-haspopup", "menu");
+  btn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg>';
+  btn.addEventListener("click", e => {
+    e.stopPropagation();
+    const open = document.getElementById("shootMenu");
+    if (open?.dataset.for === styleKey(styleNo, color)) closeShootMenu();
+    else openShootMenu(btn, styleNo, color, onDone);
+  });
+  return btn;
+}
+
+function openShootMenu(anchor, styleNo, color, onDone) {
+  closeShootMenu();
+  const menu = document.createElement("div");
+  menu.id = "shootMenu";
+  menu.dataset.for = styleKey(styleNo, color);
+  menu.className = "header-menu-dropdown shoot-menu";
+  menu.setAttribute("role", "menu");
+  menu.addEventListener("click", e => e.stopPropagation());
+
+  const item = (label, onClick, { sub = false, disabled = false, title = "" } = {}) => {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "header-menu-item" + (sub ? " shoot-menu-sub" : "");
+    b.setAttribute("role", "menuitem");
+    b.textContent = label;
+    b.disabled = disabled;
+    if (title) b.title = title;
+    b.addEventListener("click", onClick);
+    return b;
+  };
+  const style = { styleNo, color };
+
+  const showShoots = () => {
+    const planned = getAllPhotoshoots().filter(s => s.status === "planned").sort((a, b) => a.date.localeCompare(b.date));
+    const inShoots = new Set(getPlannedShootsFor(styleNo, color).map(s => s.id));
+    menu.replaceChildren(
+      Object.assign(document.createElement("div"), { className: "shoot-menu-heading", textContent: "Add to Photoshoot" }),
+      ...planned.map(s => item(`${formatShootDateShort(s.date)} · ${getPhotoshootTitle(s)}`, async () => {
+        closeShootMenu();
+        try {
+          await addStylesToPhotoshoot(s.id, [style]);
+          showIndicator(`${styleNo} ${color} added to ${getPhotoshootTitle(s)} (${formatShootDate(s.date)})`, "success");
+        } catch (err) {
+          showIndicator(err.message || "Couldn't add to the shoot.", "error");
+        }
+        onDone();
+      }, { sub: true, disabled: inShoots.has(s.id), title: inShoots.has(s.id) ? "Already in this shoot" : "" })),
+      item("New photoshoot…", () => {
+        closeShootMenu();
+        openPhotoshootForm(null, [style]);
+      }, { sub: true }),
+    );
+    place();
+    menu.querySelector("button:not(:disabled)")?.focus();
+  };
+
+  const done = describeShootStatus(styleNo, color)?.tone === "shot";
+  menu.append(
+    item("Add to Photoshoot ›", showShoots),
+    item("Mark as Complete", async () => {
+      closeShootMenu();
+      try {
+        await markStylesCompleteCg([style]);
+        showIndicator(`${styleNo} ${color} marked complete (CG)`, "success");
+      } catch (err) {
+        showIndicator(err.message || "Couldn't mark it complete.", "error");
+      }
+      onDone();
+    }, { disabled: done, title: done ? "Already done" : "Made in Photoshop or with AI — logged as CG today" }),
+  );
+  document.body.appendChild(menu);
+
+  // Under the button, kept inside the window.
+  function place() {
+    const r = anchor.getBoundingClientRect();
+    const left = Math.min(r.left, window.innerWidth - menu.offsetWidth - 8);
+    const below = r.bottom + 4;
+    const top = below + menu.offsetHeight > window.innerHeight - 8 ? r.top - menu.offsetHeight - 4 : below;
+    menu.style.left = `${Math.max(8, left)}px`;
+    menu.style.top = `${Math.max(8, top)}px`;
+  }
+  place();
+  menu.querySelector("button")?.focus();
 }
 
 /** `compact`: the short label (the Shoot column, beside the camera / AI buttons). */
@@ -157,23 +267,7 @@ function createShootStatusBadge(styleNo, color, { compact = false } = {}) {
   if (status.shoots.length) {
     el.title = (compact ? `${status.label}\n` : "") + status.shoots.map(s => `${getPhotoshootTitle(s)} · ${getPhotoshootTypeLabel(s.type)} · ${formatShootDate(s.date)}${s.model ? ` · ${s.model}` : ""}`).join("\n");
   }
-  // Scheduled before the goods are in: say so beside the date.
-  if (status.tone === "scheduled" && isIhdAfterShoot(styleNo, color, status.shoots[0].date)) {
-    const wrap = document.createElement("span");
-    wrap.className = "shoot-status-wrap";
-    wrap.append(el, createIhdWarning(findStyle(styleNo, color).ihd));
-    return wrap;
-  }
   return el;
-}
-
-/** The last arrival among a shoot's styles — when everything is finally in. */
-function getShootLatestIhd(shoot) {
-  return shoot.styles
-    .map(s => findStyle(s.styleNo, s.color)?.ihd ?? "")
-    .filter(Boolean)
-    .sort()
-    .pop() ?? "";
 }
 
 
@@ -203,10 +297,7 @@ const SHOOT_SORT_COLUMNS = {
   date: s => s.date,
   name: s => getPhotoshootTitle(s),
   type: s => getPhotoshootTypeLabel(s.type),
-  model: s => s.model,
-  latestIhd: s => getShootLatestIhd(s),
   styles: s => String(s.styles.length).padStart(6, "0"),
-  status: s => s.status,
 };
 
 /**
@@ -221,7 +312,7 @@ function compareSortValues(a, b, dir, { blankFirstAscending = false } = {}) {
 }
 
 /** Date columns where soonest first puts the blanks on top. */
-const BLANK_FIRST_SORT_COLUMNS = new Set(["ihd", "latestIhd"]);
+const BLANK_FIRST_SORT_COLUMNS = new Set(["ihd"]);
 
 /** Re-sort `rows` in place by the clicked column; the existing order breaks ties. */
 function applyColumnSort(rows, sort, columns) {
@@ -273,7 +364,7 @@ function renderPhotoshootsView() {
   document.getElementById("needSearchInput").hidden = !need;
   document.getElementById("shootSearchInput").hidden = need;
   document.getElementById("newShootBtn").hidden = need;
-  if (need) closeShootPane();
+  if (need) leaveShootsPage();
 
   if (need) renderNeedTable(); else renderShootsTable();
 }
@@ -285,6 +376,7 @@ function refreshPhotoshootViews() {
   if (paneStyleNow) renderStylePaneSummary(paneStyleNow);
   if (isPhotoshootView()) renderPhotoshootsView();
   if (getCurrentAppView() === "styles" && typeof renderStylesTable === "function") renderStylesTable();
+  if (getCurrentAppView() === "complete") renderCompleteView();
   if (getCurrentAppView() === "pos" && typeof renderPoView === "function") renderPoView();
   // Shoots sit on the Home calendar too.
   refreshCalendarIfActive();
@@ -299,7 +391,8 @@ function refreshPhotoshootViews() {
 /** A list entry joined to its style record (when the database has it). */
 function buildNeedRows() {
   return getShootListEntries()
-    .filter(e => needShowShot || !e.shotShootId)
+    // Done ones (shot, or CG) are on the Complete page instead.
+    .filter(e => !e.shotShootId)
     .map(e => {
       const style = findStyle(e.styleNo, e.color);
       const status = describeShootStatus(e.styleNo, e.color);
@@ -427,14 +520,12 @@ function renderNeedTable() {
   filteredNeedRows.sort((a, b) => compareSortValues(NEED_SORT_COLUMNS.ihd(a), NEED_SORT_COLUMNS.ihd(b), 1, { blankFirstAscending: true }) ||
     a.styleNo.localeCompare(b.styleNo, undefined, { numeric: true }) || a.color.localeCompare(b.color));
   applyColumnSort(filteredNeedRows, needSort, NEED_SORT_COLUMNS);
-  const pagedFor = [needFilter, needReasonFilter, needShowShot, needIhdMonth, q].join("|");
+  const pagedFor = [needFilter, needReasonFilter, needIhdMonth, q].join("|");
   needPage = pagedFor === needPagedFor ? clampTablePage(needPage, filteredNeedRows.length, needPageSize) : 1;
   needPagedFor = pagedFor;
 
   document.querySelectorAll("#needFilters .filter-btn").forEach(btn => btn.classList.toggle("active", btn.dataset.filter === needFilter));
   document.querySelectorAll("#needReasonFilters .filter-btn").forEach(btn => btn.classList.toggle("active", btn.dataset.reason === needReasonFilter));
-  const showShot = document.getElementById("needShowShot");
-  if (showShot) showShot.checked = needShowShot;
   const counter = document.getElementById("needRowCounter");
   if (counter) counter.textContent = filteredNeedRows.length === 1 ? "1 style" : `${filteredNeedRows.length.toLocaleString()} styles`;
 
@@ -477,7 +568,7 @@ function renderNeedTable() {
         case "shoot": td.appendChild(createStyleShootCell(findStyle(r.styleNo, r.color) ?? { styleNo: r.styleNo, color: r.color, status: r.n41 })); break;
         case "n41": td.appendChild(createStyleStatusPill(r.n41)); break;
         case "ihd": {
-          // Editable here too; saving re-checks the "IHD after shoot" warnings.
+          // Editable here too.
           const style = findStyle(r.styleNo, r.color);
           if (style) td.appendChild(createIhdInput(style, { onSaved: refreshPhotoshootViews }));
           else setDisplayText(td, EMPTY_DISPLAY);
@@ -594,7 +685,6 @@ function renderShootsTable() {
   setActiveSearchQuery(q);
   const rows = getAllPhotoshoots().filter(s => {
     if (shootFilter !== "all" && s.status !== shootFilter) return false;
-    if (!columnFilterPasses("shootsTable", "latestIhd", monthFilterKey(getShootLatestIhd(s)))) return false;
     if (!q) return true;
     return `${getPhotoshootTitle(s)} ${s.model} ${getPhotoshootTypeLabel(s.type)} ${s.notes} ${s.styles.map(x => x.styleNo).join(" ")}`.toLowerCase().includes(q);
   });
@@ -608,6 +698,12 @@ function renderShootsTable() {
 
   const tbody = document.getElementById("shootsTableBody");
   const cols = [...document.querySelectorAll("#shootsTable thead th[data-col]")].map(th => th.dataset.col);
+  // The list picks what the rest of the page shows: keep the open shoot if
+  // it's still listed, else the first one (redraws from there).
+  if (getCurrentAppView() === "photoshoots" && !rows.some(s => s.id === paneShootId)) {
+    if (rows.length) return openShootPane(rows[0].id);
+    closeShootPane();
+  }
   if (rows.length === 0) {
     const msg = getAllPhotoshoots().length === 0
       ? "No shoots yet — tick styles on Need to Shoot and use Create photoshoot."
@@ -625,7 +721,7 @@ function renderShootsTable() {
       td.dataset.col = col;
       switch (col) {
         case "date": {
-          setDisplayText(td, formatShootDate(s.date));
+          setDisplayText(td, formatShootDateMd(s.date));
           if (s.status === "planned" && s.date && s.date < today) td.classList.add("is-overdue");
           break;
         }
@@ -638,23 +734,9 @@ function renderShootsTable() {
           td.appendChild(pill);
           break;
         }
-        case "model": mountSearchHighlightedText(td, s.model); break;
-        case "latestIhd": {
-          const latest = getShootLatestIhd(s);
-          setDisplayText(td, latest ? formatShootDate(latest) : EMPTY_DISPLAY);
-          if (latest && s.status === "planned" && s.date && latest > s.date) {
-            td.classList.add("is-overdue");
-            td.title = "Some styles arrive in-house after the shoot date";
-          }
-          break;
-        }
-        case "styles": td.appendChild(createShootStylesPreview(s)); break;
-        case "status": {
-          const pill = document.createElement("span");
-          pill.className = "shoot-status";
-          pill.dataset.tone = s.status === "complete" ? "shot" : "scheduled";
-          pill.textContent = s.status === "complete" ? "Complete" : "Planned";
-          td.appendChild(pill);
+        case "styles": {
+          td.textContent = String(s.styles.length);
+          td.title = s.styles.length === 1 ? "1 style" : `${s.styles.length} styles`;
           break;
         }
       }
@@ -664,105 +746,116 @@ function renderShootsTable() {
   }));
 }
 
-/** A few thumbnails and the count. */
-function createShootStylesPreview(shoot) {
-  const wrap = document.createElement("span");
-  wrap.className = "shoot-styles-preview";
-  shoot.styles.slice(0, 4).forEach(s => wrap.appendChild(createStyleThumb(s.styleNo, s.color, "shoot-mini-thumb")));
-  const count = document.createElement("span");
-  count.className = "shoot-styles-count";
-  count.textContent = shoot.styles.length === 1 ? "1 style" : `${shoot.styles.length} styles`;
-  wrap.appendChild(count);
-  return wrap;
-}
-
 // ── Shoot pane ───────────────────────────────────────────────────────────────
 
 function renderShootPane(shoot) {
   document.getElementById("shootPaneTitle").textContent = getPhotoshootTitle(shoot);
-  document.getElementById("shootPaneSubtitle").textContent =
-    [getPhotoshootTypeLabel(shoot.type), formatShootDate(shoot.date), shoot.model].filter(Boolean).join(" · ");
+  // Everything about the shoot on the line under its name.
+  const count = shoot.styles.length === 1 ? "1 style" : `${shoot.styles.length} styles`;
+  document.getElementById("shootPaneSubtitle").textContent = [
+    formatShootDateMd(shoot.date),
+    getPhotoshootTypeLabel(shoot.type),
+    shoot.model,
+    count,
+    shoot.status === "complete" && shoot.completedAt ? `Completed ${formatShootDateMd(shoot.completedAt)}` : "",
+  ].filter(Boolean).join(" · ");
+  const notes = document.getElementById("shootPaneNotes");
+  if (notes) {
+    notes.textContent = shoot.notes;
+    notes.hidden = !shoot.notes;
+  }
   const status = document.getElementById("shootPaneStatus");
   status.dataset.tone = shoot.status === "complete" ? "shot" : "scheduled";
   status.textContent = shoot.status === "complete" ? "Complete" : "Planned";
 
-  const fields = [
-    ["Date", formatShootDate(shoot.date)],
-    ["Type", getPhotoshootTypeLabel(shoot.type)],
-    ["Model", shoot.model || EMPTY_DISPLAY],
-    ["Styles", String(shoot.styles.length)],
-    shoot.status === "complete" && shoot.completedAt ? ["Completed", formatLongDate(shoot.completedAt.slice(0, 10))] : null,
-    shoot.notes ? ["Notes", shoot.notes] : null,
-  ].filter(Boolean);
-  document.getElementById("shootPaneSummary").replaceChildren(...fields.flatMap(([label, value]) => {
-    const l = document.createElement("span");
-    l.className = "item-pane-label";
-    l.textContent = label;
-    const v = document.createElement("span");
-    v.className = "item-pane-value";
-    v.textContent = value;
-    return [l, v];
-  }));
-
-  const action = document.getElementById("shootPaneAction");
-  action.replaceChildren();
-  const btn = document.createElement("button");
-  btn.type = "button";
-  if (shoot.status === "complete") {
-    btn.className = "btn";
-    btn.textContent = "Reopen shoot";
-    btn.addEventListener("click", () => setShootComplete(shoot.id, false));
-  } else {
-    btn.className = "btn btn-primary";
-    btn.textContent = "✓ Mark shoot complete";
-    btn.disabled = shoot.styles.length === 0;
-    btn.addEventListener("click", () => setShootComplete(shoot.id, true));
+  // Menu ⋮: Mark shoot complete, or Reopen once it is.
+  const complete = document.getElementById("shootMenuComplete");
+  if (complete) {
+    const done = shoot.status === "complete";
+    complete.querySelector("span").textContent = done ? "Reopen shoot" : "Mark shoot complete";
+    complete.title = done
+      ? "Its styles are recorded as shot. Reopening puts them back on Need to Shoot."
+      : "Marks every style in it as shot — they leave Need to Shoot. Remove any that weren't shot first.";
+    complete.disabled = !done && shoot.styles.length === 0;
   }
-  const hint = document.createElement("span");
-  hint.className = "form-hint";
-  hint.textContent = shoot.status === "complete"
-    ? "Its styles are recorded as shot. Reopening puts them back on Need to Shoot."
-    : "Marks every style below as shot — they leave Need to Shoot. Remove any that weren't shot first.";
-  action.append(btn, hint);
 
-  document.getElementById("shootPaneStylesCount").textContent = String(shoot.styles.length);
   const list = document.getElementById("shootPaneStyles");
+  document.getElementById("shootPaneStylesHead").hidden = shoot.styles.length === 0;
   if (shoot.styles.length === 0) {
     list.replaceChildren(Object.assign(document.createElement("div"), { className: "item-tasks-empty", textContent: "No styles yet — add them from Need to Shoot." }));
     return;
   }
-  list.replaceChildren(...shoot.styles.map(s => {
+  list.replaceChildren(...shoot.styles.map((s, i) => {
     const style = findStyle(s.styleNo, s.color);
     const row = document.createElement("div");
     row.className = "shoot-style-row";
     // Right-clicking the style copies its number (js/copy-menu.js).
     row.dataset.styleNo = s.styleNo;
+    row.dataset.index = String(i);
+    row.dataset.color = s.color;
+    if (paneStyle && paneStyle.styleNo === s.styleNo && paneStyle.color === s.color) row.classList.add("is-pane-open");
+    // The grip drags it to another place in the order; the number follows.
+    const grip = document.createElement("span");
+    grip.className = "shoot-style-grip";
+    grip.title = "Drag to reorder";
+    grip.setAttribute("aria-hidden", "true");
+    grip.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="16" fill="currentColor" viewBox="0 0 12 16"><circle cx="3" cy="3" r="1.4"/><circle cx="9" cy="3" r="1.4"/><circle cx="3" cy="8" r="1.4"/><circle cx="9" cy="8" r="1.4"/><circle cx="3" cy="13" r="1.4"/><circle cx="9" cy="13" r="1.4"/></svg>';
+    grip.addEventListener("pointerdown", () => { row.draggable = true; });
+    const num = document.createElement("span");
+    num.className = "shoot-style-num";
+    num.textContent = String(i + 1);
+    // ↑ / ↓: swap with the style above / below.
+    const move = document.createElement("span");
+    move.className = "shoot-style-move";
+    [["up", -1, "Move up", "M6 15l6-6 6 6"], ["down", 1, "Move down", "M6 9l6 6 6-6"]].forEach(([dir, delta, label, path]) => {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "shoot-move-btn";
+      b.dataset.dir = dir;
+      b.title = label;
+      b.setAttribute("aria-label", `${label}: ${s.styleNo} ${s.color}`);
+      b.disabled = delta < 0 ? i === 0 : i === shoot.styles.length - 1;
+      b.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true"><path d="${path}"/></svg>`;
+      b.addEventListener("click", () => stepShootStyle(shoot.id, i, delta));
+      move.appendChild(b);
+    });
+    row.append(grip, num, move);
     const thumb = createStyleThumb(s.styleNo, s.color);
     thumb.addEventListener("click", () => openStyleGallery(s.styleNo, s.color));
-    const text = document.createElement("span");
-    text.className = "shoot-style-text";
-    const top = document.createElement("strong");
-    top.textContent = `${s.styleNo} · ${s.color}`;
-    const sub = document.createElement("span");
-    sub.textContent = style ? [style.description, style.category].filter(Boolean).join(" · ") : "Not in the Styles database";
-    text.append(top, sub);
-    row.append(thumb, text);
+    const cell = (className, text = "") => {
+      const el = document.createElement("span");
+      el.className = className;
+      el.textContent = text;
+      if (text) el.title = text;
+      return el;
+    };
+    // Style # large, its Color beside it a little lighter.
+    const name = cell("shoot-style-name");
+    const no = document.createElement("strong");
+    no.textContent = s.styleNo;
+    const col = document.createElement("span");
+    col.textContent = s.color;
+    name.append(no, col);
+    name.title = `${s.styleNo} · ${s.color}`;
+    row.append(thumb, name);
 
-    // IHD, editable here, with a warning when it lands after this shoot.
-    if (style) {
-      const ihd = document.createElement("span");
-      ihd.className = "shoot-style-ihd";
-      const label = document.createElement("span");
-      label.className = "shoot-style-ihd-label";
-      label.textContent = "IHD";
-      ihd.append(label, createIhdInput(style, { onSaved: refreshPhotoshootViews }));
-      if (shoot.status === "planned" && isIhdAfterShoot(s.styleNo, s.color, shoot.date)) {
-        ihd.appendChild(createIhdWarning(style.ihd));
-        row.classList.add("is-late");
-      }
-      row.appendChild(ihd);
-    }
+    // New Style / New Color / Reshoot — the same three buttons as the tables.
+    const reasons = cell("shoot-style-reasons shoot-col-center");
+    reasons.appendChild(createShootPicker(s.styleNo, s.color, refreshPhotoshootViews, {
+      menu: false,
+      // Shot: the reason it was shot for, lit but fixed.
+      fixed: shoot.status === "complete",
+    }));
+    row.append(reasons,
+      cell("shoot-style-desc shoot-col-desc", style ? style.description : "Not in the Styles database"),
+      cell("shoot-style-cat shoot-col-cat", style?.category ?? ""));
 
+    // IHD, editable here.
+    const ihd = cell("shoot-style-ihd shoot-col-ihd");
+    if (style) ihd.appendChild(createIhdInput(style, { onSaved: refreshPhotoshootViews }));
+    row.appendChild(ihd);
+
+    const end = cell("shoot-style-end");
     if (shoot.status === "planned") {
       const remove = document.createElement("button");
       remove.type = "button";
@@ -771,10 +864,168 @@ function renderShootPane(shoot) {
       remove.title = "Remove from this shoot (stays on Need to Shoot)";
       remove.setAttribute("aria-label", `Remove ${s.styleNo} ${s.color} from this shoot`);
       remove.addEventListener("click", () => removeStyleFromShoot(shoot.id, s));
-      row.appendChild(remove);
+      end.appendChild(remove);
     }
+    row.appendChild(end);
     return row;
   }));
+}
+
+// ── Reordering a shoot's styles ──────────────────────────────────────────────
+//
+// Drag a row by its grip; a line shows where it will go. The order is the
+// shoot's own (its styles list), saved as soon as it's dropped.
+
+let shootDragFrom = -1;
+
+function clearShootDropMarks(list) {
+  list.querySelectorAll(".is-drop-before, .is-drop-after, .is-dragging").forEach(el => el.classList.remove("is-drop-before", "is-drop-after", "is-dragging"));
+}
+
+/** Where a drop at clientY lands: the index the dragged row ends up before. */
+function shootDropIndex(list, clientY) {
+  const rows = [...list.querySelectorAll(".shoot-style-row")];
+  const at = rows.findIndex(r => {
+    const box = r.getBoundingClientRect();
+    return clientY < box.top + box.height / 2;
+  });
+  return at < 0 ? rows.length : at;
+}
+
+/**
+ * The new order shows at once and is saved `delay` ms later — the arrow keys
+ * wait for a pause, so a run of presses is one save. A failed save puts back
+ * the order from before the first unsaved move.
+ */
+let shootOrderPending = null; // { id, before, timer }
+
+function setShootOrder(shoot, styles, delay = 0) {
+  if (shootOrderPending && shootOrderPending.id !== shoot.id) flushShootOrder();
+  if (!shootOrderPending) shootOrderPending = { id: shoot.id, before: shoot.styles, timer: 0 };
+  shoot.styles = styles;
+  renderShootPane(shoot);
+  clearTimeout(shootOrderPending.timer);
+  shootOrderPending.timer = setTimeout(flushShootOrder, delay);
+}
+
+async function flushShootOrder() {
+  const pending = shootOrderPending;
+  if (!pending) return;
+  shootOrderPending = null;
+  clearTimeout(pending.timer);
+  const shoot = getPhotoshootById(pending.id);
+  if (!shoot) return;
+  try {
+    await updatePhotoshoot(shoot.id, { styles: shoot.styles });
+  } catch (err) {
+    shoot.styles = pending.before;
+    if (paneShootId === shoot.id) renderShootPane(shoot);
+    showIndicator(err.message || "Couldn't save the new order.", "error");
+  }
+}
+
+function moveShootStyle(shootId, from, to) {
+  const shoot = getPhotoshootById(shootId);
+  if (!shoot || from < 0) return;
+  const styles = [...shoot.styles];
+  const [moved] = styles.splice(from, 1);
+  styles.splice(to > from ? to - 1 : to, 0, moved);
+  if (styles.every((s, i) => s === shoot.styles[i])) return;
+  setShootOrder(shoot, styles);
+}
+
+/** A row's ↑ / ↓ buttons: swap it with the style above / below. */
+function stepShootStyle(shootId, index, delta) {
+  const shoot = getPhotoshootById(shootId);
+  const j = index + delta;
+  if (!shoot || j < 0 || j >= shoot.styles.length) return;
+  const styles = [...shoot.styles];
+  [styles[index], styles[j]] = [styles[j], styles[index]];
+  setShootOrder(shoot, styles, 600);
+}
+
+function initShootStyleReorder() {
+  const list = document.getElementById("shootPaneStyles");
+  if (!list) return;
+  list.addEventListener("dragstart", e => {
+    const row = e.target.closest?.(".shoot-style-row");
+    if (!row?.draggable) { e.preventDefault(); return; }
+    shootDragFrom = Number(row.dataset.index);
+    e.dataTransfer.effectAllowed = "move";
+    e.dataTransfer.setData("text/plain", row.dataset.styleNo ?? "");
+    requestAnimationFrame(() => row.classList.add("is-dragging"));
+  });
+  list.addEventListener("dragover", e => {
+    if (shootDragFrom < 0) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    const rows = [...list.querySelectorAll(".shoot-style-row")];
+    const to = shootDropIndex(list, e.clientY);
+    rows.forEach(r => r.classList.remove("is-drop-before", "is-drop-after"));
+    if (to < rows.length) rows[to].classList.add("is-drop-before");
+    else rows[rows.length - 1]?.classList.add("is-drop-after");
+  });
+  list.addEventListener("drop", e => {
+    if (shootDragFrom < 0) return;
+    e.preventDefault();
+    const from = shootDragFrom;
+    const to = shootDropIndex(list, e.clientY);
+    shootDragFrom = -1;
+    clearShootDropMarks(list);
+    if (paneShootId) moveShootStyle(paneShootId, from, to);
+  });
+  list.addEventListener("dragend", e => {
+    shootDragFrom = -1;
+    clearShootDropMarks(list);
+    const row = e.target.closest?.(".shoot-style-row");
+    if (row) row.draggable = false;
+  });
+  // Click a row (not its buttons, photo or IHD): that style's pane on the right.
+  list.addEventListener("click", e => {
+    const row = e.target.closest(".shoot-style-row");
+    if (!row || e.target.closest("button, input, a, .style-thumb, .cell-date, .shoot-style-grip")) return;
+    openStylePane(row.dataset.styleNo, row.dataset.color);
+  });
+  // A grip pressed but not dragged: the row stops being draggable again.
+  document.addEventListener("pointerup", () => {
+    if (shootDragFrom < 0) list.querySelectorAll(".shoot-style-row[draggable='true']").forEach(r => { r.draggable = false; });
+  });
+}
+
+// ── Docking ──────────────────────────────────────────────────────────────────
+//
+// On the Photoshoots page the pane fills the page beside the shoots list
+// (#shootDock); anywhere else (Home) it floats over the page as before.
+
+let shootPaneHome = null; // { parent, next } — where it lives when floating
+
+function isShootPaneDocked() {
+  return Boolean(document.getElementById("shootPane")?.classList.contains("is-docked"));
+}
+
+function setShootPaneDocked(docked) {
+  const pane = document.getElementById("shootPane");
+  const dock = document.getElementById("shootDock");
+  if (!pane || !dock || isShootPaneDocked() === docked) return;
+  if (docked) {
+    shootPaneHome = { parent: pane.parentElement, next: pane.nextSibling };
+    dock.appendChild(pane);
+  } else if (shootPaneHome) {
+    shootPaneHome.parent.insertBefore(pane, shootPaneHome.next);
+  }
+  pane.classList.toggle("is-docked", docked);
+}
+
+function syncShootDockEmpty() {
+  const empty = document.getElementById("shootDockEmpty");
+  if (empty) empty.hidden = Boolean(paneShootId && isShootPaneDocked());
+}
+
+/** Leaving the Photoshoots page: the docked pane goes with it. */
+function leaveShootsPage() {
+  if (!isShootPaneDocked()) return;
+  closeShootPane();
+  setShootPaneDocked(false);
 }
 
 function openShootPane(id) {
@@ -784,11 +1035,17 @@ function openShootPane(id) {
   // One pane at a time — on Home it can be opened over a campaign's.
   closeItemPane();
   closeStylePane();
+  setShootPaneDocked(getCurrentAppView() === "photoshoots");
+  const changed = paneShootId !== shoot.id;
+  if (changed) {
+    flushShootOrder(); // a waiting ↑ / ↓ save for the shoot being left
+  }
   paneShootId = shoot.id;
   renderShootPane(shoot);
   closeShootPaneMenu();
   pane.hidden = false;
-  pane.querySelector(".item-pane-body")?.scrollTo({ top: 0 });
+  if (changed) pane.querySelector(".item-pane-body")?.scrollTo({ top: 0 });
+  syncShootDockEmpty();
   if (getCurrentAppView() === "photoshoots") renderShootsTable();
 }
 
@@ -798,6 +1055,7 @@ function closeShootPane() {
   closeShootPaneMenu();
   const pane = document.getElementById("shootPane");
   if (pane) pane.hidden = true;
+  syncShootDockEmpty();
   if (getCurrentAppView() === "photoshoots") renderShootsTable();
   // On Home, the card and calendar day lit up for this shoot go with it.
   if (typeof clearCalGroupSelection === "function") clearCalGroupSelection();
@@ -837,6 +1095,10 @@ async function removeStyleFromShoot(id, style) {
 
 function initPhotoshoots() {
   needPageSize = readTablePageSize("needTable");
+  // The Shoot cell menu closes on any click elsewhere, Esc, or a scroll.
+  document.addEventListener("click", closeShootMenu);
+  document.addEventListener("keydown", e => { if (e.key === "Escape") closeShootMenu(); });
+  document.addEventListener("scroll", e => { if (!e.target.closest?.("#shootMenu")) closeShootMenu(); }, true);
   initColumnSort("needTable", needSort, NEED_SORT_COLUMNS, renderNeedTable);
   initColumnSort("shootsTable", shootSort, SHOOT_SORT_COLUMNS, renderShootsTable);
   initColumnFilter("needTable", "ihd", {
@@ -850,11 +1112,6 @@ function initPhotoshoots() {
     hideByDefault: isStatusHiddenByDefault,
     sortable: true,
   });
-  initColumnFilter("shootsTable", "latestIhd", {
-    options: () => monthFilterOptions(getAllPhotoshoots().map(getShootLatestIhd)),
-    onChange: renderShootsTable,
-    sortable: true,
-  });
 
   // Need to Shoot controls.
   document.querySelectorAll("#needFilters .filter-btn").forEach(btn => {
@@ -865,7 +1122,6 @@ function initPhotoshoots() {
     if (btn.dataset.reason !== "all") btn.innerHTML = shootReasonIcon(btn.dataset.reason);
     btn.addEventListener("click", () => { needReasonFilter = btn.dataset.reason; renderNeedTable(); });
   });
-  document.getElementById("needShowShot")?.addEventListener("change", e => { needShowShot = e.target.checked; renderNeedTable(); });
   document.getElementById("needSearchInput")?.addEventListener("input", renderNeedTable);
   document.getElementById("needSelectAll")?.addEventListener("change", e => {
     filteredNeedRows.forEach(r => {
@@ -913,6 +1169,11 @@ function initPhotoshoots() {
     if (menu.contains(e.target) || menuBtn.contains(e.target)) return;
     closeShootPaneMenu();
   });
+  document.getElementById("shootMenuComplete")?.addEventListener("click", () => {
+    closeShootPaneMenu();
+    const shoot = getPhotoshootById(paneShootId);
+    if (shoot) setShootComplete(shoot.id, shoot.status !== "complete");
+  });
   document.getElementById("shootMenuEdit")?.addEventListener("click", () => {
     closeShootPaneMenu();
     if (paneShootId) openPhotoshootForm(paneShootId);
@@ -937,6 +1198,8 @@ function initPhotoshoots() {
     if (e.key !== "Escape" || !paneShootId) return;
     if (document.querySelector(".modal-backdrop.open")) return;
     if (menu && !menu.hidden) { closeShootPaneMenu(); return; }
-    closeShootPane();
+    // Docked, it's the page itself — Esc doesn't close it.
+    if (!isShootPaneDocked()) closeShootPane();
   });
+  initShootStyleReorder();
 }

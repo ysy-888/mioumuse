@@ -7,10 +7,13 @@
  * ones, then each style's IHD is set from Store In: the next one from today,
  * or the latest if all have passed.
  *
- * Each style shows with its PO lines, and under it every colour in the
- * Styles database with photos and the New Style / New Color / Reshoot
- * picker. Only colours with no photos are suggested: New Style on a new PO
- * (S), New Color on a recut (SR).
+ * The cost sheet has no colours: menu → Import N41 PO Report reads them from
+ * N41 (P.O#, Style, Color), and only the Store In comes from the cost sheet.
+ *
+ * Each style shows with its PO lines, and under it the colours on those POs
+ * (none until N41 has given them), with
+ * photos and the New Style / New Color / Reshoot picker. Only colours with
+ * no photos are suggested: New Style on a new PO (S), New Color on a recut (SR).
  */
 
 let poMonth = "";
@@ -197,6 +200,62 @@ async function importCostSheet(file) {
   } catch (err) {
     showIndicator(`Cost sheet: ${err.message || "couldn't read it."}`, "error");
     return false;
+  }
+}
+
+// ── N41's PO report (the colours) ────────────────────────────────────────────
+//
+// N41 → Process (Quantity) Detail, saved as .xlsx. Only P.O#, Style and
+// Color are read, from the columns under the "PO #", "Style" and "Color"
+// headers; quantities and receipts are ignored.
+
+/** One row per P.O# + Style + Color. */
+function parseN41PoReport(workbook) {
+  const seen = new Set();
+  const rows = [];
+  workbook.SheetNames.forEach(name => {
+    const sheetRows = XLSX.utils.sheet_to_json(workbook.Sheets[name], { header: "A", raw: false, defval: "" });
+    let cols = null;
+    sheetRows.forEach(r => {
+      const cell = col => String(r[col] ?? "").trim();
+      const find = label => Object.keys(r).find(k => cell(k).replace(/\s+/g, "").toUpperCase() === label);
+      const po = find("PO#"), style = find("STYLE"), color = find("COLOR");
+      // The header row (it may repeat on each page).
+      if (po && style && color) {
+        cols = { po, style, color };
+        return;
+      }
+      if (!cols) return;
+      const poNo = cell(cols.po);
+      const styleNo = cell(cols.style).toUpperCase();
+      const colorName = cell(cols.color).toUpperCase().replace(/\s+/g, " ");
+      if (!/^\d+$/.test(poNo) || !styleNo || !colorName) return;
+      const key = `${poNo}|${styleNo}|${colorName}`;
+      if (seen.has(key)) return; // split receipts repeat the line
+      seen.add(key);
+      rows.push({ poNo, style: styleNo, color: colorName });
+    });
+  });
+  return rows;
+}
+
+async function importN41PoReport(file) {
+  if (!file) return;
+  try {
+    showIndicator("Reading the N41 PO report…");
+    await loadSheetJs();
+    const workbook = XLSX.read(await file.arrayBuffer(), { type: "array" });
+    const rows = parseN41PoReport(workbook);
+    if (!rows.length) throw new Error("No PO # / Style / Color columns with PO lines were found.");
+    showIndicator("Saving PO colours…");
+    await mergePoColors(rows);
+    const pos = new Set(rows.map(r => r.poNo));
+    const onSheet = new Set(getAllPoLines().map(l => l.poNo));
+    const matched = [...pos].filter(p => onSheet.has(p)).length;
+    refreshPoDependentViews();
+    showIndicator(`N41 PO report — ${pos.size.toLocaleString()} POs, ${rows.length.toLocaleString()} colours; ${matched.toLocaleString()} POs are on the cost sheet`, "success");
+  } catch (err) {
+    showIndicator(`N41 PO report: ${err.message || "couldn't read it."}`, "error");
   }
 }
 
@@ -524,15 +583,35 @@ function suggestPoReason(group, style) {
   return group.lines.some(l => l.dept === "S") ? "newStyle" : "newColor";
 }
 
-/** The month's lines, one group per style, in sheet order. */
+/**
+ * The month's lines, one group per style, in sheet order, each with the
+ * colours on its POs. Those come from N41's PO report: just the database's
+ * colours that are on one of the style's POs (`missingColors` are on a PO but
+ * not in the database). A style whose POs N41 hasn't given colours for
+ * (`noPoColors`) has none — just its PO lines.
+ */
+function getPoMonthGroups() {
+  const groups = new Map();
+  getAllPoLines().filter(l => l.month === poMonth).forEach(line => {
+    if (!groups.has(line.styleNo)) groups.set(line.styleNo, { styleNo: line.styleNo, lines: [] });
+    groups.get(line.styleNo).lines.push(line);
+  });
+  groups.forEach(g => {
+    const all = getPoStyleColors(g.styleNo);
+    const onPo = new Set();
+    g.lines.forEach(l => getPoColors(l.poNo).forEach(c => onPo.add(c)));
+    g.noPoColors = !onPo.size;
+    g.colors = all.filter(s => onPo.has(s.color.trim().toUpperCase()));
+    const known = new Set(all.map(s => s.color.trim().toUpperCase()));
+    g.missingColors = [...onPo].filter(c => !known.has(c));
+  });
+  return groups;
+}
+
 function buildPoGroups() {
   const q = (document.getElementById("poSearchInput")?.value ?? "").trim().toLowerCase();
   setActiveSearchQuery(q);
-  const groups = new Map();
-  getAllPoLines().filter(l => l.month === poMonth).forEach(line => {
-    if (!groups.has(line.styleNo)) groups.set(line.styleNo, { styleNo: line.styleNo, lines: [], colors: getPoStyleColors(line.styleNo) });
-    groups.get(line.styleNo).lines.push(line);
-  });
+  const groups = getPoMonthGroups();
   // Photos: keep the colours that match; a style with none left goes.
   const photos = arePhotosKnown() ? poPhotoFilter : "all";
   const suggestedOnly = poSuggestedOnly && arePhotosKnown();
@@ -568,18 +647,30 @@ function createPoGroupRow(group, cols) {
   title.className = "po-group-style";
   mountSearchHighlightedText(title, group.styleNo);
   head.appendChild(title);
-  const desc = group.colors[0]?.description;
+  const desc = getPoStyleColors(group.styleNo)[0]?.description;
   if (desc) {
     const d = document.createElement("span");
     d.className = "po-group-desc";
     d.textContent = desc;
     head.appendChild(d);
   }
-  if (!group.colors.length) {
+  if (!getPoStyleColors(group.styleNo).length) {
     const none = document.createElement("span");
     none.className = "po-group-missing";
     none.textContent = "Not in the Styles database";
     head.appendChild(none);
+  } else if (group.missingColors.length) {
+    const none = document.createElement("span");
+    none.className = "po-group-missing";
+    none.textContent = `On the PO, not in the Styles database: ${group.missingColors.join(", ")}`;
+    head.appendChild(none);
+  }
+  if (group.noPoColors) {
+    const note = document.createElement("span");
+    note.className = "po-group-note";
+    note.textContent = "No colours — not on an N41 PO report yet";
+    note.title = "Colours come from N41's PO report. Import one that covers this PO (menu ⋮ → Import N41 PO Report).";
+    head.appendChild(note);
   }
   td.appendChild(head);
   tr.appendChild(td);
@@ -593,7 +684,9 @@ function createPoLineChip(line) {
   chip.dataset.dept = line.dept;
   const kind = line.dept === "S" ? "New" : `RE${line.recut}`;
   chip.innerHTML = `<b>${escapeHtml(kind)}</b> PO ${buildSearchHighlightedHtml(line.poNo || EMPTY_DISPLAY, getActiveSearchQuery())}`;
+  const colors = [...getPoColors(line.poNo)].join(", ");
   chip.title = `${line.poStyle} · Store In ${line.storeIn ? formatMdy(line.storeIn) : EMPTY_DISPLAY} · row ${line.rowNo}`;
+  if (colors) chip.title += `\nN41 colours: ${colors}`;
   return chip;
 }
 
@@ -706,11 +799,7 @@ function renderPoView() {
  * suggestions, counted across the whole month whatever the filters.
  */
 function countPoUnshot() {
-  const groups = new Map();
-  getAllPoLines().filter(l => l.month === poMonth).forEach(line => {
-    if (!groups.has(line.styleNo)) groups.set(line.styleNo, { styleNo: line.styleNo, lines: [], colors: getPoStyleColors(line.styleNo) });
-    groups.get(line.styleNo).lines.push(line);
-  });
+  const groups = getPoMonthGroups();
   let colors = 0;
   let styles = 0;
   groups.forEach(group => {
@@ -786,6 +875,14 @@ function initPurchaseOrders() {
     unlinkCostSheet();
   });
   document.getElementById("poImportFile")?.addEventListener("change", e => importCostSheet(e.target.files?.[0]));
+  document.getElementById("headerMenuImportPoColors")?.addEventListener("click", () => {
+    closeHeaderMenu();
+    const input = document.getElementById("poN41File");
+    if (!input) return;
+    input.value = "";
+    input.click();
+  });
+  document.getElementById("poN41File")?.addEventListener("change", e => importN41PoReport(e.target.files?.[0]));
   // Coming back to the app's tab: check the file again (at most once a minute).
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "visible" && costSheetState === "ready"

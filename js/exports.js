@@ -9,8 +9,9 @@
  * photos are included when the image folder is linked.
  *
  * What's exported:
- *   Need to Shoot   CSV: the list as it's showing (filters and search applied)
- *   a photoshoot    CSV or PDF: its details and every style in it
+ *   Need to Shoot   CSV or PDF: the list as it's showing (filters and search applied)
+ *   a photoshoot    CSV or PDF: its details and every style in it, in order
+ *   (PDFs show each style's shoot type as the three icons, its reason lit)
  *   Platforms       PDF: the banners showing, with their images
  *   header menu     Export CSV / PDF follow the page you're on
  */
@@ -80,6 +81,13 @@ const REPORT_CSS = `
   .pill.scheduled { background: #e1ecfb; color: #1f56a5; }
   .pill.shot { background: #e1f5ee; color: #0f6e56; }
   footer { margin-top: 10px; color: #8b929c; font-size: 9.5px; }
+  body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  td.reasons { width: 86px; white-space: nowrap; }
+  .reason { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 20px; margin-right: 3px; border: 1px solid #d4d9df; border-radius: 5px; color: #b4bac2; vertical-align: middle; }
+  .reason svg { width: 12px; height: 12px; }
+  .reason.on { background: #9bb3c9; border-color: #9bb3c9; color: #fff; }
+  .legend { display: flex; gap: 14px; margin: -2px 0 10px; color: #4b5563; font-size: 9.5px; }
+  .legend > span { display: inline-flex; align-items: center; gap: 2px; }
 `;
 
 function escapeReportHtml(value) {
@@ -88,13 +96,39 @@ function escapeReportHtml(value) {
 }
 
 /**
+ * Each row's thumbnail ("" when it has no photo). Every one means reading a
+ * full-size photo from the image folder and shrinking it, so a long list
+ * (Need to Shoot) takes a while: a few at a time, with a running count.
+ * Thumbnails already made for the tables are reused.
+ */
+async function loadReportThumbs(rows) {
+  const thumbs = new Array(rows.length).fill("");
+  const todo = rows.map((r, i) => i).filter(i => getStyleImageEntries(rows[i].styleNo, rows[i].color).length);
+  let next = 0;
+  let done = 0;
+  const worker = async () => {
+    while (next < todo.length) {
+      const i = todo[next++];
+      thumbs[i] = await getStyleThumbUrl(rows[i].styleNo, rows[i].color).catch(() => "");
+      done++;
+      if (todo.length > 12 && (done % 5 === 0 || done === todo.length)) {
+        showIndicator(`Loading photos ${done} / ${todo.length}…`);
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(6, todo.length) }, worker));
+  return thumbs;
+}
+
+/**
  * Lay out a report and open the print window for it.
  *
  * columns: [{ label, cell(row) → { text, html?, className? } }]
  * rows:    whatever `cell` reads; each needs styleNo / color for its photo
  * noun:    what a row is, for the count at the top
+ * legend:  HTML above the table (the shoot-type key)
  */
-async function printReport({ fileTitle, title, subtitle = "", meta = [], notes = "", columns, rows, photos, footnote = "", noun = "style" }) {
+async function printReport({ fileTitle, title, subtitle = "", meta = [], notes = "", columns, rows, photos, footnote = "", noun = "style", legend = "" }) {
   if (!rows.length) {
     showIndicator("Nothing to export", "error");
     return;
@@ -102,11 +136,7 @@ async function printReport({ fileTitle, title, subtitle = "", meta = [], notes =
   showIndicator(photos ? "Preparing the report (loading photos)…" : "Preparing the report…");
 
   // Photos come from the linked image folder, as small thumbnails.
-  const thumbs = photos
-    ? await Promise.all(rows.map(r => getStyleImageEntries(r.styleNo, r.color).length
-        ? getStyleThumbUrl(r.styleNo, r.color).catch(() => "")
-        : ""))
-    : [];
+  const thumbs = photos ? await loadReportThumbs(rows) : [];
 
   const head = (photos ? "<th></th>" : "") + columns.map(c => `<th>${escapeReportHtml(c.label)}</th>`).join("");
   const body = rows.map((row, i) => {
@@ -128,6 +158,7 @@ async function printReport({ fileTitle, title, subtitle = "", meta = [], notes =
     </header>
     ${meta.length ? `<div class="meta">${meta.map(([k, v]) => `<div><b>${escapeReportHtml(k)}</b><span>${escapeReportHtml(v)}</span></div>`).join("")}</div>` : ""}
     ${notes ? `<div class="notes">${escapeReportHtml(notes)}</div>` : ""}
+    ${legend}
     <table><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>
     ${footnote ? `<footer>${escapeReportHtml(footnote)}</footer>` : ""}
   </body></html>`;
@@ -193,6 +224,22 @@ function shootStatusText(styleNo, color) {
   return describeShootStatus(styleNo, color)?.label ?? "";
 }
 
+function shootReasonOf(styleNo, color) {
+  return getShootListEntry(styleNo, color)?.reason ?? "";
+}
+
+/** New Style / New Color / Reshoot as the three icons, the style's reason lit. */
+function reportReasonIcons(reason) {
+  return SHOOT_REASONS.map(({ key, label }) =>
+    `<span class="reason${key === reason ? " on" : ""}" title="${escapeReportHtml(label)}">${shootReasonIcon(key)}</span>`).join("");
+}
+
+/** The key above the table: which icon is which. */
+function reportReasonLegend() {
+  return `<div class="legend">${SHOOT_REASONS.map(({ key, label }) =>
+    `<span><span class="reason on">${shootReasonIcon(key)}</span>${escapeReportHtml(label)}</span>`).join("")}</div>`;
+}
+
 // ── Need to Shoot ────────────────────────────────────────────────────────────
 
 /** The rows the Need to Shoot table is showing right now. */
@@ -203,9 +250,9 @@ function getNeedExportRows() {
     const next = status?.tone === "scheduled" ? status.shoots[0] : null;
     return {
       ...styleExportFields(r.styleNo, r.color),
+      reason: shootReasonOf(r.styleNo, r.color),
       status,
       shoot: next,
-      ihdLate: next ? isIhdAfterShoot(r.styleNo, r.color, next.date) : false,
       addedAt: r.addedAt,
     };
   });
@@ -218,7 +265,7 @@ function exportNeedCsv() {
     return;
   }
   downloadCsv(`Need to Shoot ${todayYmd()}`,
-    ["Style #", "Color", "Description", "Category", "Season", "N41 Status", "IHD", "Shoot Status", "Shoot Date", "Shoot", "Shoot Type", "Model", "IHD After Shoot", "Added"],
+    ["Style #", "Color", "Description", "Category", "Season", "N41 Status", "IHD", "Shoot Status", "Shoot Date", "Shoot", "Shoot Type", "Model", "Added"],
     rows.map(r => [
       r.styleNo, r.color, r.description, r.category, r.season, r.n41, r.ihd,
       r.status?.label ?? "",
@@ -226,19 +273,51 @@ function exportNeedCsv() {
       r.shoot ? getPhotoshootTitle(r.shoot) : "",
       r.shoot ? getPhotoshootTypeLabel(r.shoot.type) : "",
       r.shoot?.model ?? "",
-      r.ihdLate ? "Yes" : "",
       r.addedAt ? r.addedAt.slice(0, 10) : "",
     ]));
   showIndicator(`Exported ${rows.length} ${rows.length === 1 ? "style" : "styles"}`, "success");
 }
 
+/** Need to Shoot as a printable list, laid out like a shoot's report. */
+function exportNeedPdf() {
+  const rows = getNeedExportRows();
+  const count = key => String(rows.filter(r => r.reason === key).length);
+  printReport({
+    fileTitle: `Need to Shoot ${todayYmd()}`,
+    title: "Need to Shoot",
+    meta: [
+      ...SHOOT_REASONS.map(({ key, label }) => [label, count(key)]),
+      ["Scheduled", String(rows.filter(r => r.status?.tone === "scheduled").length)],
+    ],
+    legend: reportReasonLegend(),
+    photos: reportHasPhotos(),
+    rows,
+    columns: [
+      { label: "Style #", cell: r => ({ text: r.styleNo, className: "strong" }) },
+      { label: "Color", cell: r => ({ text: r.color, className: "nowrap" }) },
+      { label: "Shoot", cell: r => ({ html: reportReasonIcons(r.reason), className: "reasons" }) },
+      { label: "Description", cell: r => ({ text: r.description }) },
+      { label: "Category", cell: r => ({ text: r.category }) },
+      { label: "N41", cell: r => ({ text: r.n41, className: "nowrap" }) },
+      { label: "IHD", cell: r => ({ text: r.ihd ? formatReportDate(r.ihd) : "", className: "nowrap" }) },
+      {
+        label: "Status",
+        cell: r => {
+          const tone = r.status?.tone ?? "needed";
+          const text = tone === "needed" ? "To shoot"
+            : tone === "scheduled" && r.shoot ? `${r.shoot.date ? formatReportDate(r.shoot.date) : "No date"} · ${getPhotoshootTitle(r.shoot)}`
+            : r.status?.label ?? "";
+          return { html: `<span class="pill ${tone}">${escapeReportHtml(text)}</span>` };
+        },
+      },
+    ],
+  });
+}
+
 // ── One photoshoot ───────────────────────────────────────────────────────────
 
 function getShootExportRows(shoot) {
-  return shoot.styles.map(s => ({
-    ...styleExportFields(s.styleNo, s.color),
-    ihdLate: shoot.status === "planned" && isIhdAfterShoot(s.styleNo, s.color, shoot.date),
-  }));
+  return shoot.styles.map(s => ({ ...styleExportFields(s.styleNo, s.color), reason: shootReasonOf(s.styleNo, s.color) }));
 }
 
 function shootFileBase(shoot) {
@@ -254,12 +333,11 @@ function exportShootCsv(id) {
     return;
   }
   downloadCsv(shootFileBase(shoot),
-    ["Shoot", "Shoot Date", "Type", "Model", "Status", "Style #", "Color", "Description", "Category", "Season", "N41 Status", "IHD", "IHD After Shoot"],
+    ["Shoot", "Shoot Date", "Type", "Model", "Status", "Style #", "Color", "Description", "Category", "Season", "N41 Status", "IHD"],
     rows.map(r => [
       getPhotoshootTitle(shoot), shoot.date, getPhotoshootTypeLabel(shoot.type), shoot.model,
       shoot.status === "complete" ? "Complete" : "Planned",
       r.styleNo, r.color, r.description, r.category, r.season, r.n41, r.ihd,
-      r.ihdLate ? "Yes" : "",
     ]));
   showIndicator(`Exported ${rows.length} ${rows.length === 1 ? "style" : "styles"}`, "success");
 }
@@ -268,7 +346,6 @@ function exportShootPdf(id) {
   const shoot = getPhotoshootById(id);
   if (!shoot) return;
   const rows = getShootExportRows(shoot);
-  const late = rows.filter(r => r.ihdLate).length;
   printReport({
     fileTitle: shootFileBase(shoot),
     title: getPhotoshootTitle(shoot),
@@ -280,18 +357,20 @@ function exportShootPdf(id) {
       ["Status", shoot.status === "complete" ? "Complete" : "Planned"],
     ],
     notes: shoot.notes,
+    legend: reportReasonLegend(),
     photos: reportHasPhotos(),
     rows,
     columns: [
       { label: "Shot", cell: () => ({ text: "☐", className: "check" }) },
+      { label: "#", cell: r => ({ text: String(rows.indexOf(r) + 1), className: "nowrap" }) },
       { label: "Style #", cell: r => ({ text: r.styleNo, className: "strong" }) },
       { label: "Color", cell: r => ({ text: r.color, className: "nowrap" }) },
+      { label: "Shoot", cell: r => ({ html: reportReasonIcons(r.reason), className: "reasons" }) },
       { label: "Description", cell: r => ({ text: r.description }) },
       { label: "Category", cell: r => ({ text: r.category }) },
       { label: "Season", cell: r => ({ text: r.season }) },
-      { label: "IHD", cell: r => ({ html: r.ihd ? `<span class="${r.ihdLate ? "warn" : ""}">${escapeReportHtml(formatReportDate(r.ihd))}${r.ihdLate ? " — after shoot" : ""}</span>` : "", className: "nowrap" }) },
+      { label: "IHD", cell: r => ({ text: r.ihd ? formatReportDate(r.ihd) : "", className: "nowrap" }) },
     ],
-    footnote: late ? `${late} ${late === 1 ? "style arrives" : "styles arrive"} in-house after the shoot date.` : "",
   });
 }
 
@@ -352,7 +431,8 @@ function exportCurrentViewCsv() {
 function initExports() {
   document.getElementById("headerMenuExportPdf")?.addEventListener("click", () => {
     closeHeaderMenu();
-    exportBannersPdf();
+    if (getCurrentAppView() === "needToShoot") exportNeedPdf();
+    else exportBannersPdf();
   });
   document.getElementById("shootMenuExportCsv")?.addEventListener("click", () => {
     closeShootPaneMenu();

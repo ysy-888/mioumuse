@@ -72,7 +72,7 @@ function initStyleCopyMenus() {
     });
   });
   document.getElementById("shootPaneStyles")?.addEventListener("contextmenu", e => {
-    const styleNo = e.target.closest(".shoot-style-text")?.closest("[data-style-no]")?.dataset.styleNo;
+    const styleNo = e.target.closest(".shoot-style-name")?.closest("[data-style-no]")?.dataset.styleNo;
     if (styleNo) openCopyMenu(e, styleNo);
   });
 }

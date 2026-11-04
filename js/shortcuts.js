@@ -5,7 +5,8 @@
  *            Customers, Styles and Need to Shoot (the footer's pager).
  *            Tables that fit on one page ignore them.
  *   Space    the page's search box; text already in it is selected, to
- *            type over or edit.
+ *            type over or edit. (With rows quick-selected, Space ticks
+ *            them instead — js/row-quick-select.js.)
  *
  * They stand aside while you're typing (a text box, dropdown or checkbox),
  * while a window, filter or menu is open, and when Ctrl / Alt / Shift / Cmd
@@ -21,6 +22,7 @@ const SHORTCUT_SEARCH = {
   styles: ["styleSearchInput"],
   photoshoots: ["shootSearchInput"],
   needToShoot: ["needSearchInput"],
+  complete: ["completeSearchInput"],
   magento: ["mgSearchInput"],
 };
 
@@ -55,7 +57,7 @@ function focusPageSearch() {
 
 /** The pager's Next / Prev (Magento, Styles, Need to Shoot); false when there's none to press. */
 function turnPage(direction) {
-  const pagerId = { magento: "mgPager", styles: "stylesPager", needToShoot: "needPager" }[getCurrentAppView()];
+  const pagerId = { magento: "mgPager", styles: "stylesPager", needToShoot: "needPager", complete: "completePager" }[getCurrentAppView()];
   const pager = pagerId && document.getElementById(pagerId);
   if (!pager || !isShowing(pager)) return false;
   const btn = pager.querySelector(`button[title="${direction < 0 ? "Previous page" : "Next page"}"]`);

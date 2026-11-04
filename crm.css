@@ -7493,7 +7493,6 @@ th.th-select { text-align: center; cursor: default; padding-left: 4px; padding-r
 
 .shoot-controls[hidden] { display: none; }
 
-.shoot-show-shot { font-size: 12.5px; }
 
 /* Where a style stands: to shoot / scheduled / shot. */
 .shoot-status {
@@ -7528,7 +7527,7 @@ th.th-select { text-align: center; cursor: default; padding-left: 4px; padding-r
 .shoot-type[data-type="studio"]    { background: #ece6fb; color: #5a3aa8; }
 .shoot-type[data-type="editorial"] { background: #fbe3f3; color: #9b1f74; }
 
-.styles-table .col-shoot { width: 230px; min-width: 210px; }
+.styles-table .col-shoot { width: 260px; min-width: 240px; }
 .need-table .col-added { width: 110px; min-width: 100px; }
 
 /* POs: a style's row (Style #, description) across the table; its colours under it, with its PO lines down the PO column. */
@@ -7575,6 +7574,7 @@ th.th-select { text-align: center; cursor: default; padding-left: 4px; padding-r
 .po-table tr.po-gap-row td { height: 18px; padding: 0; background: var(--bg); border-left-color: transparent; border-right-color: transparent; }
 .po-table tr.po-gap-row:hover td { background: var(--bg); }
 .po-group-missing { color: var(--danger); font-size: 12px; }
+.po-group-note { color: var(--text-muted); font-size: 12px; font-style: italic; }
 /* ── POs: the month list down the left, the table beside it ── */
 .po-layout { display: flex; min-height: 0; }
 .po-layout[hidden] { display: none; }
@@ -7711,75 +7711,191 @@ th.th-select { text-align: center; cursor: default; padding-left: 4px; padding-r
 .po-notice[hidden] { display: none; }
 .po-notice .btn { padding-top: 3px; padding-bottom: 3px; }
 
-.shoots-table { min-width: 860px; }
-.shoots-table .col-date   { width: 130px; }
-.shoots-table .col-name   { width: 220px; }
-.shoots-table .col-type   { width: 110px; }
-.shoots-table .col-model  { width: 160px; }
-.shoots-table .col-styles { width: auto; min-width: 220px; }
-.shoots-table .col-status { width: 110px; }
-.shoots-table td[data-col="name"],
-.shoots-table td[data-col="model"],
-.shoots-table td[data-col="styles"] { text-align: left; }
-.shoots-table td[data-col="name"] { font-weight: 600; }
-.shoots-table td.is-overdue { color: var(--danger); font-weight: 600; }
-
-.shoot-styles-preview {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
+/* Photoshoots page: the shoots down the left pick the one the docked pane
+   shows in the rest of the page. */
+.shoots-list {
+  flex: 0 0 300px;
+  min-height: 0;
+  overflow-y: auto;
+  border-right: 1px solid var(--border);
+  background: var(--surface);
 }
+.record-table.shoots-table { width: 100%; min-width: 0; table-layout: fixed; }
+.shoots-table .col-date   { width: 84px; min-width: 0; }
+.shoots-table .col-name   { width: auto; min-width: 0; }
+.shoots-table .col-type   { width: 86px; min-width: 0; }
+.shoots-table .col-styles { width: 40px; }
+.shoots-table th[data-col="styles"],
+.shoots-table td[data-col="styles"] { text-align: right; font-variant-numeric: tabular-nums; }
+.shoots-table td[data-col="name"] {
+  text-align: left;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.shoots-table td.is-overdue { color: var(--danger); font-weight: 600; }
+.shoots-table .shoot-type { font-size: 10.5px; padding: 1px 7px; }
 
 .shoot-mini-thumb { width: 28px; height: 28px; border-radius: 4px; }
 .shoot-mini-thumb[data-count]::after { display: none; }
 
-.shoot-styles-count {
-  margin-left: 4px;
-  font-size: 11.5px;
-  color: var(--text-muted);
+.shoot-dock {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  position: relative;
+  display: flex;
+  background: var(--surface);
 }
+.shoot-dock-empty {
+  margin: auto;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+.shoot-dock-empty[hidden] { display: none; }
+
+/* Docked: part of the page, not a floating panel. */
+.item-pane.shoot-pane.is-docked {
+  position: static;
+  flex: 1;
+  width: auto;
+  max-width: none;
+  border-left: 0;
+  box-shadow: none;
+  animation: none;
+}
+.shoot-pane.is-docked .item-pane-close { display: none; }
+.shoot-pane.is-docked .item-pane-header { padding: 16px 24px 12px; }
+.shoot-pane.is-docked .item-pane-title { font-size: 18px; }
+.shoot-pane.is-docked .item-pane-section { padding: 14px 24px 24px; }
 
 /* Pane. */
-.shoot-pane-action {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 6px;
-  padding: 12px 16px;
-  border-bottom: 1px solid var(--border);
+/* A shoot's styles: one grid for the column heads and every row, so the
+   columns line up — grip · # · photo · Style # / Color · Description ·
+   Category · Shoot (the three reason buttons) · IHD · remove. */
+.shoot-pane {
+  /* grip · # · photo · Style # Color · Shoot · Description · Category · IHD · ✕ —
+     no stretchy column, so the ✕ sits right after the IHD. */
+  --shoot-cols: 12px 24px 22px 40px minmax(140px, 220px) 104px minmax(0, 280px) minmax(0, 150px) 150px 24px;
 }
-
 .shoot-style-list {
   display: flex;
   flex-direction: column;
   gap: 6px;
 }
+/* As wide as the columns need, no wider. */
+.shoot-style-list,
+.shoot-style-head { max-width: 1180px; }
+.shoot-style-head,
+.shoot-style-row {
+  display: grid;
+  grid-template-columns: var(--shoot-cols);
+  align-items: center;
+  column-gap: 12px;
+  padding: 0 14px;
+}
+.shoot-style-head {
+  padding-bottom: 6px;
+  font-family: var(--font);
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.shoot-style-head[hidden] { display: none; }
+.shoot-col-center { text-align: center; justify-self: center; }
 
 .shoot-style-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 6px 8px;
+  position: relative;
+  min-height: 52px;
+  padding-top: 6px;
+  padding-bottom: 6px;
   border: 1px solid var(--border);
   border-radius: 7px;
+  background: var(--surface);
 }
+.shoot-style-row .style-thumb { width: 40px; height: 40px; }
 
-.shoot-style-text {
+/* Style # over its Color, the largest text in the row. */
+/* Style # large, its Color beside it, lighter and thinner. */
+.shoot-style-name {
   display: flex;
-  flex-direction: column;
-  flex: 1;
+  align-items: baseline;
+  gap: 8px;
   min-width: 0;
   font-family: var(--font);
-  font-size: 12.5px;
+  white-space: nowrap;
 }
+.shoot-style-name strong { flex: 0 0 auto; font-size: 15px; font-weight: 700; color: var(--text); }
+.shoot-style-name span { min-width: 0; overflow: hidden; text-overflow: ellipsis; font-size: 13px; font-weight: 400; color: #6b7280; }
 
-.shoot-style-text span {
-  color: var(--text-muted);
-  font-size: 11.5px;
+.shoot-style-desc,
+.shoot-style-cat {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  font-family: var(--font);
+  font-size: 12.5px;
+  color: #4a5568;
 }
+.shoot-style-cat { color: var(--text-muted); font-size: 12px; }
+.shoot-style-reasons { display: inline-flex; }
+.shoot-picker.is-fixed .shoot-pick { cursor: default; }
+.shoot-style-end { display: inline-flex; justify-content: center; }
+
+/* Floating (Home): too narrow for every column — Description and Category go. */
+.shoot-pane:not(.is-docked) {
+  --shoot-cols: 12px 22px 22px 40px minmax(0, 1fr) 104px 140px 24px;
+}
+.shoot-pane:not(.is-docked) .shoot-col-desc,
+.shoot-pane:not(.is-docked) .shoot-col-cat { display: none; }
+.shoot-pane .item-pane-section.shoot-styles-section { border-bottom: 0; }
+.shoot-pane.is-docked .item-pane-section.shoot-styles-section { padding: 12px 24px 24px; }
+
+/* Notes, under the details line in the header. */
+.shoot-pane-notes {
+  margin-top: 4px;
+  font-size: 12px;
+  color: #4a5568;
+  white-space: pre-wrap;
+}
+.shoot-pane-notes[hidden] { display: none; }
+
+/* Order: a number, and a grip to drag the row somewhere else. */
+.shoot-style-grip {
+  display: inline-flex;
+  flex: 0 0 auto;
+  margin-right: -4px;
+  color: var(--border-strong);
+  cursor: grab;
+}
+.shoot-style-grip:hover { color: var(--text-muted); }
+.shoot-style-num {
+  flex: 0 0 auto;
+  min-width: 22px;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+.shoot-style-row.is-dragging { opacity: 0.4; }
+/* Where it will land: a line above (or below the last) row. */
+.shoot-style-row.is-drop-before::before,
+.shoot-style-row.is-drop-after::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 2px;
+  border-radius: 2px;
+  background: #6f93c9;
+}
+.shoot-style-row.is-drop-before::before { top: -5px; }
+.shoot-style-row.is-drop-after::after { bottom: -5px; }
 
 /* Form. */
 .shoot-form-card { width: 620px; }
@@ -7941,28 +8057,7 @@ th.th-select { text-align: center; cursor: default; padding-left: 4px; padding-r
 /* ── IHD in Photoshoots ── */
 .need-table .col-ihd { width: 150px; min-width: 140px; }
 .need-table td[data-col="ihd"] { padding: 2px 4px; cursor: default; }
-.need-table .col-shoot { width: 230px; }
-.shoots-table .col-latest-ihd { width: 130px; }
-
-/* Goods arrive after the shoot date. */
-.ihd-warning {
-  display: inline-block;
-  padding: 1px 7px;
-  border-radius: 10px;
-  background: var(--danger-tint);
-  color: var(--danger);
-  font-family: var(--font);
-  font-size: 10.5px;
-  font-weight: 700;
-  white-space: nowrap;
-  cursor: help;
-}
-
-.shoot-status-wrap {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-}
+.need-table .col-shoot { width: 260px; }
 
 /* Shoot pane rows. */
 .shoot-style-ihd {
@@ -7973,17 +8068,6 @@ th.th-select { text-align: center; cursor: default; padding-left: 4px; padding-r
 }
 
 .shoot-style-ihd .cell-date { width: 136px; }
-
-.shoot-style-ihd-label {
-  font-family: var(--font);
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  color: var(--text-muted);
-}
-
-.shoot-style-row { flex-wrap: wrap; }
-.shoot-style-row.is-late { border-color: #f3c4c4; }
 
 /* Shoot cell: the New Style / New Color / Reshoot buttons, and beside them a
    scheduled or shot date when there is one. In a table the cell splits in
@@ -8854,3 +8938,106 @@ td > .style-shoot-cell {
 .style-pane-photo.is-error figcaption::before { content: "Couldn't open · "; color: var(--danger); }
 /* The row whose style is open in the pane. */
 .record-table tr.is-pane-open td { background: var(--row-selected-hover); }
+
+/* ── Shoot cell menu (js/photoshoots.js): ⋮ → Add to Photoshoot / Mark as Complete ── */
+.shoot-menu-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 26px;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  color: #9aa3af;
+  cursor: pointer;
+}
+.shoot-menu-btn:hover:not(:disabled) { color: var(--text); background: var(--row-hover); }
+.shoot-menu-btn:disabled { opacity: 0.5; cursor: default; }
+.shoot-menu { position: fixed; right: auto; top: 0; z-index: 250; min-width: 200px; max-height: 320px; overflow-y: auto; }
+.shoot-menu .header-menu-item:disabled { color: var(--text-muted); cursor: default; background: none; }
+.shoot-menu-heading {
+  padding: 6px 12px 4px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.shoot-menu-sub { padding-left: 18px; }
+
+/* ── Complete (js/complete.js) ── */
+.complete-table .col-reason    { width: 80px; }
+.complete-table .col-method    { width: 120px; }
+.complete-table .col-shoot-name { width: 240px; }
+.complete-table .col-completed { width: 120px; }
+.complete-table .col-actions   { width: 90px; }
+.complete-reason { display: inline-flex; color: #7d96ad; cursor: help; }
+.complete-method {
+  display: inline-block;
+  padding: 2px 9px;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.complete-method[data-method="photoshoot"] { background: #e1f5ee; color: #0f6e56; }
+.complete-method[data-method="cg"]         { background: #eef2f6; color: #4f6b85; }
+.complete-undo { padding-top: 3px; padding-bottom: 3px; font-size: 12px; }
+
+/* ── Quick select (js/row-quick-select.js) ─────────────────────────────────
+   Picked rows (click / Ctrl / Shift / drag) in light blue, ticked rows in
+   light green — Space ticks the picked ones. Doubled class: wins over the
+   pane-row and open-row tints. */
+table tbody > tr:has(> td > input.row-select:checked) > td { background: rgba(25, 218, 144, 0.08); }
+table tbody > tr.row-quick-selected.row-quick-selected > td { background: #e4edfb; }
+table tbody > tr.row-quick-selected.row-quick-selected:hover > td { background: #d9e5f8; }
+table tbody > tr.row-quick-selected.row-quick-selected:has(> td > input.row-select:checked) > td { background: #dcefe9; }
+table tbody > tr.row-quick-selected.row-quick-selected > td:first-child { box-shadow: inset 3px 0 0 #6f93c9; }
+body.row-drag-selecting { user-select: none; cursor: default; }
+
+/* A shoot's style picked for ↑ / ↓ (click its row). */
+.shoot-style-row { cursor: default; }
+.shoot-style-row { cursor: pointer; }
+.shoot-style-row:hover { border-color: var(--border-strong); }
+.shoot-style-row.is-pane-open { background: #e4edfb; border-color: #9fb8de; box-shadow: inset 3px 0 0 #6f93c9; }
+
+/* ↑ / ↓ beside the number: swap with the style above / below. */
+.shoot-style-move {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.shoot-move-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 18px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--surface);
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.shoot-move-btn:hover:not(:disabled) { border-color: #9fb8de; background: #e4edfb; color: #2f5b94; }
+.shoot-move-btn:disabled { opacity: 0.3; cursor: default; }
+
+/* A style's pane open over the Photoshoots page: the shoot moves over to make room. */
+body:has(#stylePane:not([hidden])) .shoot-dock { margin-right: 540px; }
+/* The docked shoot narrows (a style pane beside it, a small window):
+   Description and Category go first, then IHD (the style pane shows it). */
+.shoot-pane.is-docked .shoot-styles-section { container-type: inline-size; }
+@container (max-width: 900px) {
+  .shoot-style-head,
+  .shoot-style-row { --shoot-cols: 12px 22px 22px 40px minmax(0, 1fr) 104px 140px 24px; }
+  .shoot-col-desc,
+  .shoot-col-cat { display: none; }
+}
+@container (max-width: 620px) {
+  .shoot-style-head,
+  .shoot-style-row { --shoot-cols: 12px 22px 22px 40px minmax(0, 1fr) 104px 24px; column-gap: 10px; }
+  .shoot-col-ihd { display: none; }
+}

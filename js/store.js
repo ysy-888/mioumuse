@@ -29,8 +29,11 @@
  *               season, category, description,
  *               ihd,                 // in-house date, "YYYY-MM-DD" or ""
  *               updatedAt }
- *   ShootListEntry { styleNo, color, addedAt,
- *               shotShootId, shotAt }    // set once a shoot with it is done
+ *   ShootListEntry { styleNo, color, addedAt, reason,
+ *               shotShootId, shotAt }    // set once done: a shoot's id, or "cg"
+ *   StyleCompletion { id, styleNo, color, // the Complete history, one per time done
+ *               method,              // "photoshoot" | "cg"
+ *               shootId, reason, completedAt }
  *   Photoshoot { id, name, date, model,
  *               type,                // "studio" | "editorial"
  *               notes, status,       // "planned" | "complete"
@@ -217,7 +220,11 @@ async function loadAppData() {
   allPhotoshoots = (shootsRes.error ? [] : shootsRes.data).map(row => normalizePhotoshoot(photoshootRowToInput(row)));
 
   // PO lines from the cost sheet — an add-on too — and the months archived.
-  [allPoLines, poArchivedMonths] = await Promise.all([loadPoLines(client), loadPoArchivedMonths(client)]);
+  [allPoLines, poArchivedMonths, allPoColors] = await Promise.all([loadPoLines(client), loadPoArchivedMonths(client), loadPoColors(client)]);
+  poColorsByPo = null;
+
+  // The Complete history (styles shot or made in CG).
+  await loadStyleCompletions(client);
 }
 
 // ── PO lines (the cost sheet) ────────────────────────────────────────────────
@@ -272,6 +279,78 @@ async function loadPoLines(client) {
 
 function getAllPoLines() {
   return allPoLines;
+}
+
+// ── PO colours (N41's PO report) ─────────────────────────────────────────────
+//
+// The cost sheet has no colours, so they come from N41: one row per P.O# +
+// Style (as N41 writes it) + Color. A report only covers its date range, so
+// an import replaces the POs it has and leaves every other PO as it was.
+
+let allPoColors = [];
+/** P.O# → its colours (upper case), rebuilt on load and import. */
+let poColorsByPo = null;
+
+const PO_COLORS_SQL = `create table if not exists po_colors (
+  user_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
+  po_no text not null, style text not null default '', color text not null default '',
+  imported_at timestamptz not null default now(),
+  primary key (user_id, po_no, style, color)
+);
+alter table po_colors enable row level security;
+drop policy if exists "po_colors: own rows only" on po_colors;
+create policy "po_colors: own rows only" on po_colors
+  for all using (user_id = auth.uid()) with check (user_id = auth.uid());`;
+
+/** A missing table (SQL not run yet) reads as no colours. */
+async function loadPoColors(client) {
+  const PAGE = 1000;
+  const rows = [];
+  for (let from = 0; ; from += PAGE) {
+    const res = await client.from("po_colors").select("po_no,style,color")
+      .order("po_no").range(from, from + PAGE - 1);
+    if (res.error) return [];
+    rows.push(...res.data.map(r => ({ poNo: r.po_no, style: r.style, color: r.color })));
+    if (res.data.length < PAGE) return rows;
+  }
+}
+
+/** The colours N41 has for a P.O#, upper case — empty when it has none. */
+function getPoColors(poNo) {
+  if (!poColorsByPo) {
+    poColorsByPo = new Map();
+    allPoColors.forEach(r => {
+      if (!poColorsByPo.has(r.poNo)) poColorsByPo.set(r.poNo, new Set());
+      poColorsByPo.get(r.poNo).add(r.color.trim().toUpperCase());
+    });
+  }
+  return poColorsByPo.get(String(poNo ?? "").trim()) ?? new Set();
+}
+
+function getAllPoColors() {
+  return allPoColors;
+}
+
+/** Save a report's rows: its POs are replaced, the rest kept. */
+async function mergePoColors(rows) {
+  const client = requireClient();
+  const tableError = err => /po_colors/.test(err.message ?? "")
+    ? new Error(`Create the po_colors table in Supabase first (SQL Editor):\n\n${PO_COLORS_SQL}`)
+    : err;
+  const pos = [...new Set(rows.map(r => r.poNo))];
+  const BATCH = 300;
+  for (let i = 0; i < pos.length; i += BATCH) {
+    const del = await client.from("po_colors").delete().in("po_no", pos.slice(i, i + BATCH));
+    if (del.error) throw tableError(del.error);
+  }
+  for (let i = 0; i < rows.length; i += 500) {
+    const res = await client.from("po_colors").insert(rows.slice(i, i + 500)
+      .map(r => ({ po_no: r.poNo, style: r.style, color: r.color })));
+    if (res.error) throw tableError(res.error);
+  }
+  const replaced = new Set(pos);
+  allPoColors = [...allPoColors.filter(r => !replaced.has(r.poNo)), ...rows];
+  poColorsByPo = null;
 }
 
 // Archived months ("2026-07"): still listed on the POs page, but their Store
@@ -1043,6 +1122,130 @@ async function removeFromShootList(styles) {
   return keys.length;
 }
 
+// ── Complete: the history of styles photographed or made in CG ───────────────
+//
+// One row per time a style got its pictures: "photoshoot" when a shoot with
+// it is marked complete (reopening the shoot takes those rows back out), or
+// "cg" when it's marked complete by hand — made in Photoshop or with AI. The
+// Need to Shoot entry is marked done too; a CG one keeps CG_SHOOT_ID in
+// shotShootId, as there's no shoot. Later reshoots add rows, so it's a log.
+
+const CG_SHOOT_ID = "cg";
+
+const STYLE_COMPLETIONS_SQL = `create table if not exists style_completions (
+  id text primary key,
+  user_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
+  style_no text not null,
+  color text not null,
+  method text not null,
+  shoot_id text,
+  reason text,
+  completed_at timestamptz not null default now()
+);
+alter table style_completions enable row level security;
+drop policy if exists "style_completions: own rows only" on style_completions;
+create policy "style_completions: own rows only" on style_completions
+  for all using (user_id = auth.uid()) with check (user_id = auth.uid());`;
+
+/** [{ id, styleNo, color, method: "photoshoot" | "cg", shootId, reason, completedAt }] */
+let styleCompletions = [];
+
+function completionRowToEntry(row) {
+  return {
+    id: String(row.id),
+    styleNo: String(row.style_no ?? ""),
+    color: String(row.color ?? ""),
+    method: row.method === "cg" ? "cg" : "photoshoot",
+    shootId: String(row.shoot_id ?? ""),
+    reason: SHOOT_REASON_KEYS.includes(row.reason) ? row.reason : "",
+    completedAt: String(row.completed_at ?? ""),
+  };
+}
+
+/** A missing table (SQL not run yet) reads as no history. */
+async function loadStyleCompletions(client) {
+  const res = await client.from("style_completions").select("*");
+  styleCompletions = res.error ? [] : res.data.map(completionRowToEntry);
+}
+
+function getStyleCompletions() {
+  return styleCompletions;
+}
+
+function completionsTableError(err) {
+  return /style_completions/.test(err?.message ?? "")
+    ? new Error(`Create the style_completions table in Supabase first (SQL Editor):\n\n${STYLE_COMPLETIONS_SQL}`)
+    : err;
+}
+
+async function insertStyleCompletions(entries) {
+  if (!entries.length) return;
+  const res = await requireClient().from("style_completions").insert(entries.map(e => ({
+    id: e.id,
+    style_no: e.styleNo,
+    color: e.color,
+    method: e.method,
+    shoot_id: e.shootId || null,
+    reason: e.reason || null,
+    completed_at: e.completedAt,
+  })));
+  if (res.error) throw completionsTableError(res.error);
+  styleCompletions.push(...entries);
+}
+
+/**
+ * Made in Photoshop or with AI: logged as CG today, and done on Need to
+ * Shoot (added there first if it wasn't). Returns how many were marked.
+ */
+async function markStylesCompleteCg(styles) {
+  const now = new Date().toISOString();
+  const seen = new Set();
+  const marked = styles.filter(({ styleNo, color }) => {
+    const key = styleKey(styleNo, color);
+    if (seen.has(key) || isNoShootStyle(styleNo, color)) return false;
+    seen.add(key);
+    return true;
+  });
+  // The log first: if its table isn't there yet, nothing changes.
+  await insertStyleCompletions(marked.map(({ styleNo, color }) => ({
+    id: newRecordId("sc"),
+    styleNo,
+    color,
+    method: "cg",
+    shootId: "",
+    reason: shootList.get(styleKey(styleNo, color))?.reason ?? "",
+    completedAt: now,
+  })));
+  await saveShootListEntries(marked.map(({ styleNo, color }) => {
+    const current = shootList.get(styleKey(styleNo, color));
+    return {
+      styleNo,
+      color,
+      addedAt: current?.addedAt || now,
+      reason: current?.reason ?? "",
+      shotShootId: CG_SHOOT_ID,
+      shotAt: now,
+    };
+  }));
+  return marked.length;
+}
+
+/**
+ * Take back a CG completion. If it's still what marks the style done on
+ * Need to Shoot, the style goes back to waiting there.
+ */
+async function undoCgCompletion(id) {
+  const entry = styleCompletions.find(c => c.id === id && c.method === "cg");
+  if (!entry) throw new Error("That completion isn't there any more.");
+  const res = await requireClient().from("style_completions").delete().eq("id", id);
+  if (res.error) throw completionsTableError(res.error);
+  styleCompletions = styleCompletions.filter(c => c.id !== id);
+  const current = shootList.get(styleKey(entry.styleNo, entry.color));
+  if (current?.shotShootId === CG_SHOOT_ID && current.shotAt === entry.completedAt) {
+    await saveShootListEntries([{ ...current, shotShootId: "", shotAt: "" }]);
+  }
+}
+
 // ── Photoshoots ──────────────────────────────────────────────────────────────
 
 function normalizePhotoshoot(raw) {
@@ -1169,6 +1372,16 @@ async function completePhotoshoot(id) {
   if (!shoot) throw new Error(`Photoshoot ${id} not found.`);
   const now = new Date().toISOString();
   await ensureOnShootList(shoot.styles);
+  // The Complete history first: if its table isn't there yet, nothing changes.
+  await insertStyleCompletions(shoot.styles.map(s => ({
+    id: newRecordId("sc"),
+    styleNo: s.styleNo,
+    color: s.color,
+    method: "photoshoot",
+    shootId: shoot.id,
+    reason: shootList.get(styleKey(s.styleNo, s.color))?.reason ?? "",
+    completedAt: now,
+  })));
   await saveShootListEntries(shoot.styles.map(s => ({
     ...shootList.get(styleKey(s.styleNo, s.color)),
     shotShootId: shoot.id,
@@ -1186,6 +1399,9 @@ async function reopenPhotoshoot(id) {
     .filter(e => e.shotShootId === shoot.id)
     .map(e => ({ ...e, shotShootId: "", shotAt: "" }));
   await saveShootListEntries(unshot);
+  // Not shot after all: out of the Complete history. No table yet, nothing to take out.
+  const res = await requireClient().from("style_completions").delete().eq("shoot_id", shoot.id);
+  if (!res.error) styleCompletions = styleCompletions.filter(c => c.shootId !== shoot.id);
   await updatePhotoshoot(id, { status: "planned", completedAt: "" });
   return shoot;
 }
