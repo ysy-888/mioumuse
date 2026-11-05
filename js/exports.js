@@ -86,8 +86,7 @@ const REPORT_CSS = `
   .reason { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 20px; margin-right: 3px; border: 1px solid #d4d9df; border-radius: 5px; color: #b4bac2; vertical-align: middle; }
   .reason svg { width: 12px; height: 12px; }
   .reason.on { background: #9bb3c9; border-color: #9bb3c9; color: #fff; }
-  .legend { display: flex; gap: 14px; margin: -2px 0 10px; color: #4b5563; font-size: 9.5px; }
-  .legend > span { display: inline-flex; align-items: center; gap: 2px; }
+  header .meta { margin: 0; justify-content: end; grid-template-columns: none; grid-auto-flow: column; }
 `;
 
 function escapeReportHtml(value) {
@@ -103,13 +102,15 @@ function escapeReportHtml(value) {
  */
 async function loadReportThumbs(rows) {
   const thumbs = new Array(rows.length).fill("");
-  const todo = rows.map((r, i) => i).filter(i => getStyleImageEntries(rows[i].styleNo, rows[i].color).length);
+  const hasModel = r => getStyleImageEntries(r.styleNo, r.color).length > 0;
+  // No model photos yet: the sample photo stands in.
+  const todo = rows.map((r, i) => i).filter(i => hasModel(rows[i]) || hasSamplePhoto(rows[i].styleNo, rows[i].color));
   let next = 0;
   let done = 0;
   const worker = async () => {
     while (next < todo.length) {
       const i = todo[next++];
-      thumbs[i] = await getStyleThumbUrl(rows[i].styleNo, rows[i].color).catch(() => "");
+      thumbs[i] = await (hasModel(rows[i]) ? getStyleThumbUrl : getSampleThumbUrl)(rows[i].styleNo, rows[i].color).catch(() => "");
       done++;
       if (todo.length > 12 && (done % 5 === 0 || done === todo.length)) {
         showIndicator(`Loading photos ${done} / ${todo.length}…`);
@@ -126,9 +127,10 @@ async function loadReportThumbs(rows) {
  * columns: [{ label, cell(row) → { text, html?, className? } }]
  * rows:    whatever `cell` reads; each needs styleNo / color for its photo
  * noun:    what a row is, for the count at the top
- * legend:  HTML above the table (the shoot-type key)
+ * metaInHeader: the meta fields sit on the right of the header, in place of
+ *          the "Generated" date and row count (shoot and Need to Shoot)
  */
-async function printReport({ fileTitle, title, subtitle = "", meta = [], notes = "", columns, rows, photos, footnote = "", noun = "style", legend = "" }) {
+async function printReport({ fileTitle, title, subtitle = "", meta = [], notes = "", columns, rows, photos, footnote = "", noun = "style", metaInHeader = false }) {
   if (!rows.length) {
     showIndicator("Nothing to export", "error");
     return;
@@ -151,14 +153,14 @@ async function printReport({ fileTitle, title, subtitle = "", meta = [], notes =
   }).join("");
 
   const generated = `${formatReportDate(todayYmd())} ${new Date().toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}`;
+  const metaHtml = meta.length ? `<div class="meta">${meta.map(([k, v]) => `<div><b>${escapeReportHtml(k)}</b><span>${escapeReportHtml(v)}</span></div>`).join("")}</div>` : "";
   const html = `<!doctype html><html><head><meta charset="utf-8"><title>${escapeReportHtml(fileTitle)}</title><style>${REPORT_CSS}</style></head><body>
     <header>
       <div><div class="brand">${escapeReportHtml(APP_NAME)}</div><h1>${escapeReportHtml(title)}</h1>${subtitle ? `<div class="sub">${escapeReportHtml(subtitle)}</div>` : ""}</div>
-      <div class="generated">Generated ${escapeReportHtml(generated)}<br>${rows.length} ${rows.length === 1 ? noun : `${noun}s`}</div>
+      ${metaInHeader ? metaHtml : `<div class="generated">Generated ${escapeReportHtml(generated)}<br>${rows.length} ${rows.length === 1 ? noun : `${noun}s`}</div>`}
     </header>
-    ${meta.length ? `<div class="meta">${meta.map(([k, v]) => `<div><b>${escapeReportHtml(k)}</b><span>${escapeReportHtml(v)}</span></div>`).join("")}</div>` : ""}
+    ${metaInHeader ? "" : metaHtml}
     ${notes ? `<div class="notes">${escapeReportHtml(notes)}</div>` : ""}
-    ${legend}
     <table><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>
     ${footnote ? `<footer>${escapeReportHtml(footnote)}</footer>` : ""}
   </body></html>`;
@@ -202,7 +204,7 @@ function formatReportDate(value) {
 
 /** Photos in reports only when the folder is linked and readable. */
 function reportHasPhotos() {
-  return typeof styleImageState !== "undefined" && (styleImageState === "ready" || styleImageState === "scanning");
+  return styleImageState === "ready" || styleImageState === "scanning" || samplePhotoState === "ready" || samplePhotoState === "scanning";
 }
 
 // ── Shared style fields ──────────────────────────────────────────────────────
@@ -232,12 +234,6 @@ function shootReasonOf(styleNo, color) {
 function reportReasonIcons(reason) {
   return SHOOT_REASONS.map(({ key, label }) =>
     `<span class="reason${key === reason ? " on" : ""}" title="${escapeReportHtml(label)}">${shootReasonIcon(key)}</span>`).join("");
-}
-
-/** The key above the table: which icon is which. */
-function reportReasonLegend() {
-  return `<div class="legend">${SHOOT_REASONS.map(({ key, label }) =>
-    `<span><span class="reason on">${shootReasonIcon(key)}</span>${escapeReportHtml(label)}</span>`).join("")}</div>`;
 }
 
 // ── Need to Shoot ────────────────────────────────────────────────────────────
@@ -289,7 +285,7 @@ function exportNeedPdf() {
       ...SHOOT_REASONS.map(({ key, label }) => [label, count(key)]),
       ["Scheduled", String(rows.filter(r => r.status?.tone === "scheduled").length)],
     ],
-    legend: reportReasonLegend(),
+    metaInHeader: true,
     photos: reportHasPhotos(),
     rows,
     columns: [
@@ -349,15 +345,15 @@ function exportShootPdf(id) {
   printReport({
     fileTitle: shootFileBase(shoot),
     title: getPhotoshootTitle(shoot),
-    subtitle: `${getPhotoshootTypeLabel(shoot.type)} shoot · ${shoot.date ? formatReportDate(shoot.date) : "No date"}`,
     meta: [
       ["Date", shoot.date ? formatReportDate(shoot.date) : "No date"],
       ["Type", getPhotoshootTypeLabel(shoot.type)],
       ["Model", shoot.model || "—"],
       ["Status", shoot.status === "complete" ? "Complete" : "Planned"],
+      ["Styles", String(rows.length)],
     ],
+    metaInHeader: true,
     notes: shoot.notes,
-    legend: reportReasonLegend(),
     photos: reportHasPhotos(),
     rows,
     columns: [

@@ -331,7 +331,9 @@ const styleThumbObserver = typeof IntersectionObserver === "function"
   : null;
 
 async function loadStyleThumbInto(el) {
-  const url = await getStyleThumbUrl(el.dataset.style, el.dataset.color);
+  const url = el.dataset.sample
+    ? await getSampleThumbUrl(el.dataset.style, el.dataset.color)
+    : await getStyleThumbUrl(el.dataset.style, el.dataset.color);
   if (!url || !el.isConnected) return;
   const img = document.createElement("img");
   img.src = url;
@@ -340,25 +342,53 @@ async function loadStyleThumbInto(el) {
   el.classList.add("has-image");
 }
 
+/** Classes fillStyleThumb sets — cleared before it fills a box again. */
+const STYLE_THUMB_STATE_CLASSES = ["is-empty", "is-missing", "is-sample", "is-sample-slot", "has-image", "is-dragover"];
+
+/**
+ * `sampleDrop`: the box takes a dragged-in sample photo while the style has
+ * no model photos (tables, a shoot's styles) — js/sample-photos.js.
+ */
 function createStyleThumb(styleNo, color, extraClass = "") {
   const el = document.createElement("span");
   el.className = "style-thumb" + (extraClass ? ` ${extraClass}` : "");
   el.dataset.style = styleNo;
   el.dataset.color = color;
+  if (!extraClass) el.dataset.sampleDrop = "";
+  fillStyleThumb(el);
+  return el;
+}
+
+/** Draw a photo box for its style: the first model photo, else the sample photo, else empty. */
+function fillStyleThumb(el) {
+  const { style: styleNo, color } = el.dataset;
+  el.classList.remove(...STYLE_THUMB_STATE_CLASSES);
+  el.replaceChildren();
+  delete el.dataset.count;
+  delete el.dataset.sample;
+  el.removeAttribute("title");
   const count = getStyleImageEntries(styleNo, color).length;
-  if (!count || !hasStyleImages(styleNo, color)) {
+  if (count && hasStyleImages(styleNo, color)) {
+    if (count > 1) el.dataset.count = String(count);
+  } else if (typeof hasSamplePhoto === "function" && hasSamplePhoto(styleNo, color)) {
+    // No model photos yet: the sample stands in, marked as one.
+    el.dataset.sample = "1";
+    el.classList.add("is-sample");
+    el.title = "Sample photo — no model photos yet" + ("sampleDrop" in el.dataset ? ". Drop an image here to replace it." : "");
+  } else {
     el.classList.add("is-empty");
     // Only crossed out when the folder is linked — otherwise it's just unknown.
-    if (arePhotosKnown()) {
-      el.classList.add("is-missing");
+    if (arePhotosKnown()) el.classList.add("is-missing");
+    if ("sampleDrop" in el.dataset && samplePhotoState !== "unsupported") {
+      el.classList.add("is-sample-slot");
+      el.title = "No photos yet — click to pick a sample photo, or drag one here";
+    } else if (arePhotosKnown()) {
       el.title = "No photos";
     }
-    return el;
+    return;
   }
-  if (count > 1) el.dataset.count = String(count);
   if (styleThumbObserver) styleThumbObserver.observe(el);
   else loadStyleThumbInto(el);
-  return el;
 }
 
 // ── Gallery ──────────────────────────────────────────────────────────────────
@@ -380,6 +410,25 @@ async function openStyleGallery(styleNo, color) {
 
   if (styleImageState === "needs-permission") {
     grid.replaceChildren(Object.assign(document.createElement("div"), { className: "style-gallery-empty", textContent: "Reconnect the image folder to see photos." }));
+    return;
+  }
+  if (!entries.length && typeof hasSamplePhoto === "function" && hasSamplePhoto(styleNo, color)) {
+    // No model photos yet: the sample photo, marked as one.
+    const [sample] = getSamplePhotoEntries(styleNo, color);
+    const fig = document.createElement("figure");
+    fig.className = "style-gallery-item is-sample";
+    const cap = document.createElement("figcaption");
+    cap.textContent = `Sample photo · ${sample.path[sample.path.length - 1]}`;
+    fig.appendChild(cap);
+    grid.replaceChildren(fig);
+    getSamplePhotoFile(sample).then(file => {
+      const url = URL.createObjectURL(file);
+      galleryUrls.push(url);
+      const img = document.createElement("img");
+      img.src = url;
+      img.alt = cap.textContent;
+      fig.prepend(img);
+    }).catch(() => fig.classList.add("is-error"));
     return;
   }
   if (!entries.length) {

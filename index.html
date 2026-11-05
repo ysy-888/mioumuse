@@ -6,7 +6,7 @@
 <title>MIOU MUSE</title>
 <link rel="icon" href="favicon.png?v=2" type="image/png" />
 <link rel="apple-touch-icon" href="favicon.png?v=2" />
-<link rel="stylesheet" href="crm.css?v=20261104-0100" />
+<link rel="stylesheet" href="crm.css?v=20261105-0102" />
 </head>
 <body>
 
@@ -134,6 +134,15 @@
         <button type="button" class="header-menu-item" id="headerMenuStyleFolderUnlink" role="menuitem" data-pages="styles">
           <svg class="header-menu-item-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M9 13h6"/></svg>
           <span>Unlink Image Folder</span>
+        </button>
+        <!-- Sample photos: a second folder, written to when an image is dropped on a style (js/sample-photos.js). -->
+        <button type="button" class="header-menu-item" id="headerMenuSampleFolder" role="menuitem" data-pages="styles">
+          <svg class="header-menu-item-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.1-3.1a2 2 0 0 0-2.8 0L6 21"/></svg>
+          <span>Link Sample Photo Folder</span>
+        </button>
+        <button type="button" class="header-menu-item" id="headerMenuSampleFolderUnlink" role="menuitem" data-pages="styles">
+          <svg class="header-menu-item-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 12h6"/></svg>
+          <span>Unlink Sample Photo Folder</span>
         </button>
         <button type="button" class="header-menu-item" id="headerMenuTableView" role="menuitem" data-pages="campaigns tradeShows platforms needToShoot complete pos styles magento:products magento:orders magento:customers">
           <svg class="header-menu-item-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9M15 21V9"/></svg>
@@ -1761,6 +1770,34 @@
   </div>
 </div>
 
+<!-- Sample photo folder, browsed to link a photo to a style by hand (js/sample-photos.js). -->
+<div id="sampleBrowserOverlay" class="modal-backdrop">
+  <div class="modal-card sample-browser-card" role="dialog" aria-modal="true" aria-labelledby="sampleBrowserTitle">
+    <div class="modal-header">
+      <div class="style-gallery-head">
+        <h3 id="sampleBrowserTitle">Sample photo</h3>
+        <span class="style-gallery-sub" id="sampleBrowserSummary"></span>
+      </div>
+      <button type="button" class="btn-close" id="sampleBrowserCloseBtn" aria-label="Close">✕</button>
+    </div>
+    <div class="sample-browser-toolbar">
+      <nav class="sample-browser-crumbs" id="sampleBrowserCrumbs" aria-label="Folder"></nav>
+      <label class="sample-browser-hide"><input type="checkbox" id="sampleBrowserHideLinked" /> Hide linked</label>
+      <input type="search" id="sampleBrowserSearch" placeholder="Search file names" autocomplete="off" />
+    </div>
+    <div class="sample-browser-body">
+      <div class="sample-browser-grid" id="sampleBrowserGrid"></div>
+      <aside class="sample-browser-side">
+        <div class="sample-browser-preview" id="sampleBrowserPreview"></div>
+        <div class="sample-browser-actions">
+          <button type="button" class="btn btn-primary" id="sampleBrowserUse" disabled>Use</button>
+          <button type="button" class="btn" id="sampleBrowserUnlink" hidden>Unlink current</button>
+        </div>
+      </aside>
+    </div>
+  </div>
+</div>
+
 <!-- ── Styles: import the ATS Excel export ───────────────────── -->
 <div id="styleImportOverlay" class="modal-backdrop">
   <div class="modal-card company-form-card style-import-card" role="dialog" aria-modal="true" aria-labelledby="styleImportTitle">
@@ -1905,44 +1942,45 @@
   </div>
 </div>
 
-<script src="js/config.js?v=20261104-0100"></script>
+<script src="js/config.js?v=20261105-0102"></script>
 <!-- Needs SUPABASE_URL/KEY from config.js and the CDN client above. -->
-<script src="js/auth.js?v=20261104-0100"></script>
-<script src="js/util.js?v=20261104-0100"></script>
-<script src="js/dates.js?v=20261104-0100"></script>
-<script src="js/store.js?v=20261104-0100"></script>
-<script src="js/tasks.js?v=20261104-0100"></script>
-<script src="js/app-shell.js?v=20261104-0100"></script>
-<script src="js/table-pager.js?v=20261104-0100"></script>
-<script src="js/record-list.js?v=20261104-0100"></script>
-<script src="js/item-pane.js?v=20261104-0100"></script>
-<script src="js/campaign-form.js?v=20261104-0100"></script>
-<script src="js/trade-show-form.js?v=20261104-0100"></script>
-<script src="js/banners.js?v=20261104-0100"></script>
-<script src="js/banner-form.js?v=20261104-0100"></script>
-<script src="js/mailchimp.js?v=20261104-0100"></script>
-<script src="js/style-import.js?v=20261104-0100"></script>
-<script src="js/column-filter.js?v=20261104-0100"></script>
-<script src="js/styles.js?v=20261104-0100"></script>
-<script src="js/style-images.js?v=20261104-0100"></script>
-<script src="js/photoshoots.js?v=20261104-0100"></script>
-<script src="js/complete.js?v=20261104-0100"></script>
-<script src="js/photoshoot-form.js?v=20261104-0100"></script>
-<script src="js/purchase-orders.js?v=20261104-0100"></script>
-<script src="js/style-pane.js?v=20261104-0100"></script>
-<script src="js/magento.js?v=20261104-0100"></script>
-<script src="js/magento-availability.js?v=20261104-0100"></script>
-<script src="js/magento-sales.js?v=20261104-0100"></script>
-<script src="js/magento-n41.js?v=20261104-0100"></script>
-<script src="js/magento-events.js?v=20261104-0100"></script>
-<script src="js/trade-show-import.js?v=20261104-0100"></script>
-<script src="js/magento-groups.js?v=20261104-0100"></script>
-<script src="js/table-view.js?v=20261104-0100"></script>
-<script src="js/exports.js?v=20261104-0100"></script>
-<script src="js/copy-menu.js?v=20261104-0100"></script>
-<script src="js/row-quick-select.js?v=20261104-0100"></script>
-<script src="js/shortcuts.js?v=20261104-0100"></script>
-<script src="js/calendar.js?v=20261104-0100"></script>
-<script src="js/main.js?v=20261104-0100"></script>
+<script src="js/auth.js?v=20261105-0102"></script>
+<script src="js/util.js?v=20261105-0102"></script>
+<script src="js/dates.js?v=20261105-0102"></script>
+<script src="js/store.js?v=20261105-0102"></script>
+<script src="js/tasks.js?v=20261105-0102"></script>
+<script src="js/app-shell.js?v=20261105-0102"></script>
+<script src="js/table-pager.js?v=20261105-0102"></script>
+<script src="js/record-list.js?v=20261105-0102"></script>
+<script src="js/item-pane.js?v=20261105-0102"></script>
+<script src="js/campaign-form.js?v=20261105-0102"></script>
+<script src="js/trade-show-form.js?v=20261105-0102"></script>
+<script src="js/banners.js?v=20261105-0102"></script>
+<script src="js/banner-form.js?v=20261105-0102"></script>
+<script src="js/mailchimp.js?v=20261105-0102"></script>
+<script src="js/style-import.js?v=20261105-0102"></script>
+<script src="js/column-filter.js?v=20261105-0102"></script>
+<script src="js/styles.js?v=20261105-0102"></script>
+<script src="js/style-images.js?v=20261105-0102"></script>
+<script src="js/sample-photos.js?v=20261105-0102"></script>
+<script src="js/photoshoots.js?v=20261105-0102"></script>
+<script src="js/complete.js?v=20261105-0102"></script>
+<script src="js/photoshoot-form.js?v=20261105-0102"></script>
+<script src="js/purchase-orders.js?v=20261105-0102"></script>
+<script src="js/style-pane.js?v=20261105-0102"></script>
+<script src="js/magento.js?v=20261105-0102"></script>
+<script src="js/magento-availability.js?v=20261105-0102"></script>
+<script src="js/magento-sales.js?v=20261105-0102"></script>
+<script src="js/magento-n41.js?v=20261105-0102"></script>
+<script src="js/magento-events.js?v=20261105-0102"></script>
+<script src="js/trade-show-import.js?v=20261105-0102"></script>
+<script src="js/magento-groups.js?v=20261105-0102"></script>
+<script src="js/table-view.js?v=20261105-0102"></script>
+<script src="js/exports.js?v=20261105-0102"></script>
+<script src="js/copy-menu.js?v=20261105-0102"></script>
+<script src="js/row-quick-select.js?v=20261105-0102"></script>
+<script src="js/shortcuts.js?v=20261105-0102"></script>
+<script src="js/calendar.js?v=20261105-0102"></script>
+<script src="js/main.js?v=20261105-0102"></script>
 </body>
 </html>

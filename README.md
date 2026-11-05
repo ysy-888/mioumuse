@@ -62,6 +62,7 @@ reference in index.html so the URLs change on every deploy.
 | `js/styles.js` | Styles tab — the style database table, Category / Season / N41 Status / IHD header filters, No photos button, search |
 | `js/style-import.js` | Import Excel — reads the N41 ATS export in the browser, lists every change under Update / New Styles / New Colors tabs, saves, and records it for Update history |
 | `js/style-images.js` | Style photos from a linked network folder — matched by file name, thumbnails, gallery |
+| `js/sample-photos.js` | Sample photos: a second linked folder, written to when an image file is dropped on a style with no model photos |
 | `js/style-pane.js` | The style pane — a style's details, POs and photos, opened from Styles, Need to Shoot and POs |
 | `js/photoshoots.js` | The Photoshoots and Need to Shoot pages — the shoots list, the Need to Shoot list, the shoot side pane, shoot status badges |
 | `js/complete.js` | The Complete page — the history of styles shot (photoshoot) or made in CG, filtered by how |
@@ -572,6 +573,36 @@ restart the browser may ask for permission again (**Reconnect image
 folder** in the header menu, one click — or choose "Allow on every visit"). **Rescan image folder** picks up
 new or renamed files straight away; a rescan also runs in the background on
 each visit. Only computers that can reach the server see the photos.
+
+### Sample photos
+
+Styles whose studio / CG pictures aren't in the model photo folder yet can
+have a **sample photo** standing in. Make a separate folder for them on the
+server (e.g. SAMPLE PHOTOS — not inside the model photo folder, or they'd
+be read as model photos), then Styles → menu ⋮ → **Link Sample Photo
+Folder** (or the button in the style pane) and allow editing when Chrome
+asks. Reconnect, Rescan and Unlink work like the model photo folder.
+
+**Linking by hand** — the photos can be called anything (IMG_4412.JPG).
+Click a style's empty photo box (in any table or a shoot's style list), or
+open its pane and, under Photos, click **Browse sample photos…**. The browser shows the image files directly
+in the folder (subfolders are skipped), and it opens already searching file names for the style number
+(clear the search box to see every photo). **Hide linked** leaves out photos already used. Click a photo
+to see it larger, then **Use for STYLE · COLOR** (or double-click it).
+Photos already linked say which style they're for. **Change…** /
+**Unlink** in the pane swap or remove a link; the file itself is never
+touched. Links are saved in Supabase (the `sample_photo_links` table, in
+`supabase-schema.sql`), so they show on any computer with the folder linked.
+
+**Dropping a file** — drag an image file from Explorer onto a style's empty
+photo box (Styles, Need to Shoot, POs, Complete, a shoot's style list) or
+onto the box under Photos in the style pane. It's saved into the folder as
+`STYLE COLOR.jpg` and linked. A photo named `STYLE COLOR.jpg` is also used
+without linking. Samples show
+with a gold "Sample" tag, open in the gallery and style pane, and print in
+the PDF reports. Once the style has model photos those show instead — the
+sample file stays in its folder. A sample doesn't count as a photo for
+"no photos" checks (POs, Need to Shoot).
 
 ## Photoshoots
 

@@ -84,6 +84,82 @@ function renderStylePaneSummary(style) {
   );
 }
 
+/**
+ * No model photos: under the note, the sample photo — or a box to drag one
+ * into (js/sample-photos.js). Dropping on a shown sample replaces it.
+ */
+function renderStylePaneSample(style, noteEl) {
+  const wrap = document.getElementById("stylePanePhotos");
+  if (samplePhotoState === "unsupported") return;
+  const box = document.createElement("div");
+  box.className = "style-pane-sample";
+  box.dataset.sampleDrop = "";
+  box.dataset.style = style.styleNo;
+  box.dataset.color = style.color;
+  const [sample] = getSamplePhotoEntries(style.styleNo, style.color);
+  if (sample) {
+    const fig = document.createElement("figure");
+    fig.className = "style-pane-photo is-sample";
+    const cap = document.createElement("figcaption");
+    cap.textContent = `Sample photo · ${sample.path[sample.path.length - 1]}`;
+    cap.title = `${sample.path.join(" / ")}${sample.linked ? " (linked by hand)" : " (named after the style)"}`;
+    fig.appendChild(cap);
+    box.appendChild(fig);
+    const forStyle = paneStyle;
+    getSamplePhotoFile(sample).then(file => {
+      if (paneStyle !== forStyle) return;
+      const url = URL.createObjectURL(file);
+      stylePaneUrls.push(url);
+      const link = document.createElement("a");
+      link.href = url;
+      link.target = "_blank";
+      link.rel = "noopener";
+      link.title = "Open full size";
+      const img = document.createElement("img");
+      img.src = url;
+      img.alt = cap.textContent;
+      link.appendChild(img);
+      fig.prepend(link);
+    }).catch(() => fig.classList.add("is-error"));
+  } else {
+    box.classList.add("is-empty");
+    const title = document.createElement("strong");
+    title.textContent = "Sample photo";
+    const hint = document.createElement("span");
+    hint.textContent = samplePhotoState === "none"
+      ? "Link the folder your sample photos are in, then pick one for this style."
+      : samplePhotoState === "needs-permission"
+        ? "Reconnect the sample photo folder to pick one."
+        : "Browse the sample photo folder, or drag an image file here.";
+    box.append(title, hint);
+  }
+
+  // Pick from the folder, or get the folder going first (the click lets the browser ask).
+  const actions = document.createElement("div");
+  actions.className = "style-pane-sample-actions";
+  const button = (label, onClick, primary = false) => {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = primary ? "btn btn-primary" : "btn";
+    b.textContent = label;
+    b.addEventListener("click", onClick);
+    actions.appendChild(b);
+  };
+  const { styleNo, color } = style;
+  if (samplePhotoState === "none") button("Link Sample Photo Folder", () => linkSamplePhotoFolder(), true);
+  else if (samplePhotoState === "needs-permission") button("Reconnect Sample Photo Folder", () => reconnectSamplePhotoFolder(), true);
+  else {
+    button(sample ? "Change…" : "Browse sample photos…", () => openSampleBrowser(styleNo, color), !sample);
+    if (sample?.linked) {
+      button("Unlink", async () => {
+        if (await linkSamplePhoto(styleNo, color, "")) showIndicator(`Sample photo unlinked (the file stays in the folder)`, "success");
+      });
+    }
+  }
+  box.appendChild(actions);
+  wrap.replaceChildren(...(noteEl ? [noteEl] : []), box);
+}
+
 function renderStylePanePhotos(style) {
   const wrap = document.getElementById("stylePanePhotos");
   const count = document.getElementById("stylePanePhotoCount");
@@ -93,12 +169,13 @@ function renderStylePanePhotos(style) {
     div.className = "style-gallery-empty";
     div.textContent = text;
     wrap.replaceChildren(div);
+    return div;
   };
   const entries = getStyleImageEntries(style.styleNo, style.color);
   count.textContent = arePhotosKnown() ? String(entries.length) : "";
-  if (styleImageState === "needs-permission") return note("Reconnect the image folder (Styles → menu ⋮) to see photos.");
-  if (styleImageState !== "ready" && styleImageState !== "scanning") return note("Link the image folder (Styles → menu ⋮) to see photos.");
-  if (!entries.length) return note(`No photos named "${style.styleNo} ${style.color.replace(/\//g, ".")} …" in the folder.`);
+  if (styleImageState === "needs-permission") return renderStylePaneSample(style, note("Reconnect the image folder (Styles → menu ⋮) to see photos."));
+  if (styleImageState !== "ready" && styleImageState !== "scanning") return renderStylePaneSample(style, note("Link the image folder (Styles → menu ⋮) to see photos."));
+  if (!entries.length) return renderStylePaneSample(style, note(`No model photos named "${style.styleNo} ${style.color.replace(/\//g, ".")} …" yet.`));
 
   const forStyle = paneStyle;
   wrap.replaceChildren(...entries.map(entry => {

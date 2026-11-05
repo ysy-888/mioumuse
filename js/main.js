@@ -20,6 +20,7 @@ async function loadAndShowApp() {
     // Mailchimp catches up in the background; the app doesn't wait on it.
     syncMailchimp();
     restoreStyleImageFolder();
+    restoreSamplePhotoFolder(); // js/sample-photos.js
     refreshPoIhds(); // passed Store Ins stop counting, even with the sheet unchanged
     restoreCostSheet(); // re-reads it if it changed since last time
     switchAppView("home");
@@ -51,6 +52,7 @@ async function bootApp() {
   initColumnFilterPopover();
   initStylesView();
   initStyleImages();
+  initSamplePhotos();
   initPhotoshoots();
   initComplete();
   initPhotoshootForm();

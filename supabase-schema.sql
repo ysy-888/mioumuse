@@ -405,3 +405,21 @@ alter table po_colors enable row level security;
 drop policy if exists "po_colors: own rows only" on po_colors;
 create policy "po_colors: own rows only" on po_colors
   for all using (user_id = auth.uid()) with check (user_id = auth.uid());
+
+-- ── Sample photo links (js/sample-photos.js) ─────────────────────────────────
+-- Which photo in the linked sample photo folder stands in for a style +
+-- colour, picked by hand. path is relative to that folder, "/"-separated.
+create table if not exists sample_photo_links (
+  user_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
+  style_no text not null,
+  color text not null default '',
+  path text not null,
+  linked_at timestamptz not null default now(),
+  primary key (user_id, style_no, color)
+);
+
+alter table sample_photo_links enable row level security;
+
+drop policy if exists "sample_photo_links: own rows only" on sample_photo_links;
+create policy "sample_photo_links: own rows only" on sample_photo_links
+  for all using (user_id = auth.uid()) with check (user_id = auth.uid());

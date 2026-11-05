@@ -220,7 +220,7 @@ async function loadAppData() {
   allPhotoshoots = (shootsRes.error ? [] : shootsRes.data).map(row => normalizePhotoshoot(photoshootRowToInput(row)));
 
   // PO lines from the cost sheet — an add-on too — and the months archived.
-  [allPoLines, poArchivedMonths, allPoColors] = await Promise.all([loadPoLines(client), loadPoArchivedMonths(client), loadPoColors(client)]);
+  [allPoLines, poArchivedMonths, allPoColors] = await Promise.all([loadPoLines(client), loadPoArchivedMonths(client), loadPoColors(client), loadSamplePhotoLinks(client)]);
   poColorsByPo = null;
 
   // The Complete history (styles shot or made in CG).
@@ -391,6 +391,70 @@ async function setPoMonthArchived(month, archived) {
       : res.error;
   }
   if (archived) poArchivedMonths.add(month); else poArchivedMonths.delete(month);
+}
+
+// ── Sample photo links ───────────────────────────────────────────────────────
+// Which photo in the sample photo folder stands in for a style + colour,
+// picked by hand (js/sample-photos.js). The path is relative to that folder,
+// "/"-separated: "FALL 26/IMG_4412.JPG".
+
+/** styleKey(style, color) → path */
+let samplePhotoLinks = new Map();
+
+const SAMPLE_PHOTO_LINKS_SQL = `create table if not exists sample_photo_links (
+  user_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
+  style_no text not null, color text not null default '', path text not null,
+  linked_at timestamptz not null default now(),
+  primary key (user_id, style_no, color)
+);
+alter table sample_photo_links enable row level security;
+drop policy if exists "sample_photo_links: own rows only" on sample_photo_links;
+create policy "sample_photo_links: own rows only" on sample_photo_links
+  for all using (user_id = auth.uid()) with check (user_id = auth.uid());`;
+
+/** A missing table (SQL not run yet) reads as no links. */
+async function loadSamplePhotoLinks(client) {
+  const PAGE = 1000;
+  const links = new Map();
+  for (let from = 0; ; from += PAGE) {
+    const res = await client.from("sample_photo_links").select("style_no,color,path")
+      .order("style_no").range(from, from + PAGE - 1);
+    if (res.error) break;
+    res.data.forEach(r => links.set(styleKey(r.style_no, r.color), r.path));
+    if (res.data.length < PAGE) break;
+  }
+  samplePhotoLinks = links;
+}
+
+function getSamplePhotoLink(styleNo, color) {
+  return samplePhotoLinks.get(styleKey(styleNo, color)) ?? "";
+}
+
+/** path → the styles linked to it, as [styleNo, color] pairs. */
+function getSamplePhotoLinksByPath() {
+  const byPath = new Map();
+  samplePhotoLinks.forEach((path, key) => {
+    if (!byPath.has(path)) byPath.set(path, []);
+    byPath.get(path).push(key.split("\u0000"));
+  });
+  return byPath;
+}
+
+/** Link a photo to a style + colour; an empty path removes the link. */
+async function setSamplePhotoLink(styleNo, color, path) {
+  const client = requireClient();
+  const res = path
+    ? await client.from("sample_photo_links").upsert(
+        { style_no: styleNo, color, path, linked_at: new Date().toISOString() },
+        { onConflict: "user_id,style_no,color" })
+    : await client.from("sample_photo_links").delete().eq("style_no", styleNo).eq("color", color);
+  if (res.error) {
+    throw /sample_photo_links/.test(res.error.message ?? "")
+      ? new Error(`Create the sample_photo_links table in Supabase first (SQL Editor):\n\n${SAMPLE_PHOTO_LINKS_SQL}`)
+      : res.error;
+  }
+  if (path) samplePhotoLinks.set(styleKey(styleNo, color), path);
+  else samplePhotoLinks.delete(styleKey(styleNo, color));
 }
 
 /** Replace every PO line with `lines` (from parseCostSheet). */

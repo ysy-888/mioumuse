@@ -212,6 +212,15 @@ function syncHeaderMenu() {
     if (label) folder.querySelector("span").textContent = label;
     unlink.hidden = !canUnlink;
   }
+  // Same for the sample photo folder (js/sample-photos.js).
+  const sampleFolder = document.getElementById("headerMenuSampleFolder");
+  const sampleUnlink = document.getElementById("headerMenuSampleFolderUnlink");
+  if (page === "styles" && sampleFolder && sampleUnlink) {
+    const { label, canUnlink } = getSamplePhotoMenuState();
+    sampleFolder.hidden = !label;
+    if (label) sampleFolder.querySelector("span").textContent = label;
+    sampleUnlink.hidden = !canUnlink;
+  }
   // Same for the linked cost sheet (js/purchase-orders.js).
   const sheet = document.getElementById("headerMenuCostSheet");
   const sheetUnlink = document.getElementById("headerMenuCostSheetUnlink");
