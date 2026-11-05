@@ -60,13 +60,13 @@ reference in index.html so the URLs change on every deploy.
 | `js/mailchimp.js` | Mailchimp links on Email tasks — create / edit / schedule / delete, link picker, sync and auto-complete |
 | `supabase/functions/mailchimp/` | Edge Function the app calls for Mailchimp; holds the API key (secret `MAILCHIMP_API_KEY`) |
 | `js/styles.js` | Styles tab — the style database table, Category / Season / N41 Status / IHD header filters, No photos button, search |
-| `js/style-import.js` | Import Excel — reads the N41 ATS export in the browser, lists every change under Update / New Styles / New Colors tabs, saves, and records it for Update history |
+| `js/style-import.js` | Import CSV — reads the N41 style export in the browser, lists every change under Update / New Styles / New Colors tabs, saves, and records it for Update history |
 | `js/style-images.js` | Style photos from a linked network folder — matched by file name, thumbnails, gallery |
 | `js/sample-photos.js` | Sample photos: a second linked folder, written to when an image file is dropped on a style with no model photos |
 | `js/style-pane.js` | The style pane — a style's details, POs and photos, opened from Styles, Need to Shoot and POs |
 | `js/photoshoots.js` | The Photoshoots and Need to Shoot pages — the shoots list, the Need to Shoot list, the shoot side pane, shoot status badges |
 | `js/complete.js` | The Complete page — the history of styles shot (photoshoot) or made in CG, filtered by how |
-| `js/purchase-orders.js` | The POs page — reading the cost sheet, setting IHDs from Store In, the month list (with archiving), PO lines by month with each colour and its shoot buttons |
+| `js/purchase-orders.js` | The POs page — importing N41's PO export, New / Recut / New Color, the month list (counts of styles without photos, auto-archiving), POs by ETA month with each colour and its shoot buttons |
 | `js/photoshoot-form.js` | Create / edit photoshoot modal |
 | `js/magento-sales.js` | Magento → Orders and Customers (read-only): lists with Status / Group filters, date quick filters, search, sort, paging; the order / customer pane |
 | `js/magento-n41.js` | Magento → Orders against N41: Import N41 Sales Orders, N41 Status, the Closed on N41 filter, tick orders and cancel them on Magento |
@@ -487,21 +487,38 @@ Links live in the `task_links` table (see `supabase-schema.sql`).
 
 ## Styles database
 
-The **Styles** tab holds every Style # + Color from the N41 ATS export.
-**Import CSV** (header menu ⋮) reads the export, .csv or .xlsx, in the browser (SheetJS, loaded only when
-importing) — the file itself is never uploaded:
+The **Styles** tab holds every Style # + Color from the N41 style export.
+**Import CSV** (header menu ⋮) reads the export in the browser (SheetJS,
+loaded only when importing) — the file itself is never uploaded. The style
+CSV (headings in row 1: style, color, status, availableDate…):
 
 | Column | Field |
 |---|---|
-| B | N41 Status |
-| D (merged with E) | Season |
-| F | Category |
-| H | Style # |
-| I | Color |
-| L (merged with M–N) | Description |
+| A | Style # |
+| B | Color |
+| C | N41 Status |
+| D | Available — the month only, shown as JUL26 |
+| F | Season |
+| J | Description |
+| K | Memo — the "updated by Mass Update" notes N41 adds are dropped |
+| R | Received qty |
 
-Rows are read from row 8 down; any row without a Style # (the size-breakdown
-and blank rows between styles) is skipped. Before anything is saved, every
+The CSV has no category, so a style keeps the category it has (new ones get
+none). Available shows as a column in the Styles table; Available, Rcvd Qty
+and Memo show in the style pane. They need three columns on the styles table
+— run the `available_date` / `memo` / `received_qty` lines in
+`supabase-schema.sql` first.
+
+**Magento Status** (Styles table, sits left so the style pane fits beside it;
+also in the style pane): is the colour showing on the webstore? Its Magento
+item is the SKU `STYLE#-COLOR` (or `STYLE#ST-COLOR`), checked by the same
+rules as the Magento tab's Available column — *Available*, *Not available*
+(why not in the tooltip) or *Not on Magento*. Last time's Magento catalog
+shows at once; a fresh check runs once per visit.
+
+The older ATS report (.xlsx) still imports: Status B, Season D, Category F,
+Style # H, Color I, Description L, read from row 8 down. Either way, any row
+without a Style # is skipped. Before anything is saved, every
 change is listed under three tabs — the count boxes across the top (the file and a search box sit in the window's header):
 
 - **Update** — a Style # + Color already there whose fields changed, each
@@ -541,7 +558,7 @@ undoes it. The calendar button picks a date, and ✕ (on hover) clears it.
 It isn't part of the ATS export, and re-importing never touches it.
 
 The table filters from its **Category**, **Season**, **N41 Status** and
-**IHD** headers (COMPANY and CANCEL start unticked under N41 Status). The
+**IHD** headers (COMPANY, CANCEL and INACTIVE start unticked under N41 Status). The
 **No photos** button (crossed-out picture) shows only colours with no photos
 that aren't COMPANY, CANCEL or INACTIVE; it needs the image folder linked.
 
@@ -633,63 +650,71 @@ puts the style back on Need to Shoot. Needs the `style_completions` SQL in
 `supabase-schema.sql`.
 
 **Style pane**: click a style on Styles, Need to Shoot or POs and it opens on
-the right — description, category, season, N41 status, IHD (editable), the
-shoot buttons and its POs from the cost sheet (folded to a count — click to
-see them), then every photo of it, one under
+the right — description, category, season, N41 status, IHD (editable unless
+it comes from POs), the shoot buttons and the colour's POs (folded to a
+count — click to see each PO with its PO date and ETA), then every photo of it, one under
 the other (click one for full size). Esc or ✕ closes it.
 
 ### POs
 
-The **POs** page (under Photoshoots) shows the cost sheet a month at a time.
-Each style has a row with its Style # and description, then the colours on
-its POs under it (photo, N41 status, IHD and the shoot buttons), with its PO
-lines down the first column (**New** or **RE#** and P.O#; hover for Store In
-and the PO's colours). Filter by **New** / **Recut**, by **Has photos** / **No photos** (needs the image folder linked),
-or search.
+The **POs** page (under Photoshoots) shows N41's PO lines a month at a time,
+by ETA month. Each style has a row with its Style # and description, then the
+colours on its POs that month under it (photo, shoot buttons, N41 status),
+with its POs in a box down the first column: **PO #**, its IHD (the ETA) and
+a **New** / **Recut** / **New Color** pill (**Recut + NC** when a PO has
+both; hover for the PO date and colours). Filter by **New** / **Recut** /
+**New Color**, by **Has photos** / **No photos** (needs the image folder
+linked). Colours with N41 status COMPANY — and POs with only those — are
+hidden unless **Show Company POs** is ticked.
 
-**Colours come from N41.** The cost sheet has none, so menu ⋮ → **Import N41
-PO Report** reads N41's Process (Quantity) Detail report (.xlsx): just P.O#,
-Style and Color, from the columns headed **PO #**, **Style** and **Color**.
-Quantities and receipts are ignored. A report covers a date range, so an
-import replaces the POs on it and keeps every other PO (`po_colors`). From
-the cost sheet only the P.O# and Store In are used. A style's colours are the
-ones in the Styles database that are on one of its POs, so suggestions only
-come from those. A colour on a PO that isn't in the database is listed in red
-by the Style #. A PO that isn't on any imported report has no colours, only its PO line,
-marked *No colours — not on an N41 PO report yet*. Run the report with open
-POs included so future months get colours too.
+**Search** looks through every month's POs (Style #, PO #, colour,
+description, status), each style with all of its POs; the menu beside the
+search box switches to **This month** to search just the month picked.
 
-Menu ⋮ → **Link Cost Sheet** and pick the workbook (`COST SHEET(MEICON).xlsx`,
-the real file, not a shortcut). Like the image folder, the link is kept in
-this browser (Chrome or Edge). Each time the app opens, and when you come back
-to its tab, the file is checked and read again only if it changed. The POs
-toolbar says when it was last read. After a browser restart it may need
-**Reconnect** (in the toolbar or the menu); choose "Allow on every visit" to
-skip that. **Update from Cost Sheet** re-reads it now; **Unlink Cost Sheet**
-forgets it. Other browsers get **Import Cost Sheet** instead, to pick the file
-each time.
+**Importing:** menu ⋮ → **Import N41 POs** and pick N41's **P.O Detail by
+Vendor** export (.xlsx). Only these columns are read, found by their headings
+(the heading row may repeat on each page):
 
-Reading it takes every tab named like `11.2026`, the header row with **STYLE
-#**, and lines with dept **S** (new) or **SR** (recut). Company (**C**) lines
-are skipped. Each read replaces the saved PO lines and sets each style's IHD
-(every colour) from Store In: the soonest one that hasn't passed, or the latest
-if all have. A Store In stops counting the day after it passes: each time the
-app opens (and when a new day starts with it open) the saved PO lines are
-checked again, so the IHD moves to the next Store In even if the sheet hasn't
-changed.
+| Column | Field |
+|---|---|
+| D | PO # |
+| F | PO Date |
+| H | ETA |
+| I | Style |
+| J | Color |
+
+Totals and page headings are skipped. An ETA typed with a wrong year (4021
+for 2021) gets the year nearest its PO date. The POs in the file replace the
+saved ones and every other PO is kept, in the `n41_po_lines` table (see
+`supabase-schema.sql`). The cost sheet and the old N41 PO report
+(`po_lines`, `po_colors`) aren't used any more.
+
+**New / Recut / New Color** is worked out per style, from its POs in PO-date
+order: everything on the style's first PO is **New**; on a later PO, a colour
+that was on an earlier one is a **Recut**, and one that wasn't is a **New
+Color**.
+
+**IHD comes from the ETAs.** A style + colour on any PO shows the next ETA
+from today as its IHD, or the latest if they've all passed (shown grey). It
+moves on by itself the day after an ETA passes. It's shown, not typed in —
+hover it for every PO and its ETA. A style + colour on no PO keeps the IHD
+typed in for it.
 
 The months are listed down the left of the page, oldest first, in a folder per
-year (click a year to open or close it), with how many
-styles each has; click one to show it. The box icon on a month (on hover)
-**archives** it: it moves to the **Archived** group at the bottom of the list
-(click it to open), still viewable, but its Store Ins no longer set IHDs. A
-style whose POs are all in archived months has its IHD cleared, unless the
-IHD isn't one of those Store Ins (typed in by hand). The arrow icon on an
-archived month brings it back. Archives are kept in the `po_month_archive`
-table (see `supabase-schema.sql`), so re-reading the sheet keeps them.
+year (click a year to open or close it); click one to show it. Each month's
+count is its styles that still have a colour **without model photos** —
+skipped are COMPANY, CANCEL and INACTIVE colours, Style #s made for another
+company (a name after a hyphen, like MMP469-VESTIQUE — but not a single
+letter or number, like MMT1290-1), and colours not in the Styles database.
+Those are never suggested for Need to Shoot either. A month where every colour has model photos is **archived on its
+own** (shown with a ✓): it moves to the **Archived** group at the bottom of
+the list (click it to open), still viewable, and comes back if a colour there
+needs photos again. Without the image folder linked, photos aren't known: the
+count is all of the month's styles and nothing is archived. (The old
+`po_month_archive` table isn't used any more.)
 
 Suggestions (a pale fill on the button) are only for colours with no photos:
-**New Style** on a new PO (S), **New Color** on a recut (SR). Colours already
+**New Style** for a New colour, **New Color** for a Recut or New Color one. Colours already
 waiting or with N41 status CANCEL or INACTIVE aren't suggested, and nothing is without the image folder linked.
 A note under the toolbar counts the month's colours with no photos that aren't
 on Need to Shoot; **Show them** (or **Suggested**) filters the page to just
@@ -773,7 +798,7 @@ Need to Shoot's default order is IHD, soonest first (no IHD on top).
   - Campaigns, Trade Shows: **Export CSV**, that page's records and tasks.
   - Platforms: **Export PDF**.
   - Need to Shoot: **Export CSV** and **Export PDF**, the list.
-  - POs: **Link Cost Sheet** (then Reconnect / Update from Cost Sheet), **Unlink Cost Sheet** and **Import N41 PO Report**.
+  - POs: **Import N41 POs**.
   - Styles: **Import CSV**, **Export CSV** (the filtered styles), **Update
     History**, and the image folder's Link / Reconnect / Rescan and Unlink.
   - Magento → Products, Orders, Customers: **Export CSV**. Products: every
@@ -782,4 +807,4 @@ Need to Shoot's default order is IHD, soonest first (no IHD on top).
     count and SKUs, category paths, prices, stock and image URLs.
 
 Data: `shoot_list` (the flag and its reason, plus which shoot it was shot in),
-`photoshoots` and `po_lines` (see `supabase-schema.sql`).
+`photoshoots` and `n41_po_lines` (see `supabase-schema.sql`).

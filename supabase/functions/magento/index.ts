@@ -89,7 +89,7 @@ import { AsyncLocalStorage } from "node:async_hooks";
  * copy running in Supabase is older than the app expects. Bump it (and
  * MG_HELPER_VERSION in js/magento.js) whenever this file changes.
  */
-const HELPER_VERSION = "2026-11-02.2";
+const HELPER_VERSION = "2026-11-05.1";
 
 /**
  * Where a request's time went: each Magento call is counted and timed, per
@@ -548,6 +548,31 @@ function buildProductPayload(sku: string, c: Record<string, unknown>) {
 
 async function getProduct(sku: string) {
   return mg(`/products/${encodeURIComponent(sku)}`);
+}
+
+/**
+ * A product's categories made exactly `wanted`: each one added or removed
+ * through its category's product links (the same calls as bulk), since
+ * Magento doesn't reliably apply category_links sent with the product.
+ */
+async function setProductCategories(sku: string, wanted: string[]) {
+  const product = await getProduct(sku);
+  const current: string[] = (product.extension_attributes?.category_links ?? []).map((l: any) => String(l.category_id));
+  const add = wanted.filter(id => !current.includes(id));
+  const remove = current.filter(id => !wanted.includes(id));
+  const s = encodeURIComponent(sku);
+  await eachLimited(add, 4, id => mg(`/categories/${encodeURIComponent(id)}/products`, {
+    method: "POST",
+    body: JSON.stringify({ productLink: { sku, position: 0, category_id: id } }),
+  }, "all"));
+  await eachLimited(remove, 4, async id => {
+    try {
+      await mg(`/categories/${encodeURIComponent(id)}/products/${s}`, { method: "DELETE" }, "all");
+    } catch (err) {
+      // Already out of it.
+      if (!(err instanceof UserError && err.status === 404)) throw err;
+    }
+  });
 }
 
 // ── Stock ────────────────────────────────────────────────────────────────────
@@ -1990,15 +2015,33 @@ const actions: Record<string, (p: any) => Promise<unknown>> = {
     if (!sku) throw new UserError("Which product?");
     const [colors] = await Promise.all([getColorNames(), findPreOrderCode()]);
     if (!changes || typeof changes !== "object" || !Object.keys(changes).length) return (await addStock([detail(await getProduct(sku), colors)]))[0];
-    // Qty and Stock Status aren't part of the product: they're saved to its stock.
-    const { qty, inStock, ...fields } = changes;
+    // Qty and Stock Status aren't part of the product: they're saved to its
+    // stock. Categories go through the category links too: Magento doesn't
+    // reliably apply category_links sent with the product.
+    const { qty, inStock, categoryIds, ...fields } = changes;
     if (Object.keys(fields).length) {
       const product = buildProductPayload(sku, fields);
       await mg(`/products/${encodeURIComponent(sku)}`, { method: "PUT", body: JSON.stringify({ product }) }, "all");
     }
+    let wantedCategories: string[] | null = null;
+    if ("categoryIds" in changes) {
+      wantedCategories = (Array.isArray(categoryIds) ? categoryIds : []).map(String);
+      await setProductCategories(sku, wantedCategories);
+    }
     if ("qty" in changes || "inStock" in changes) await setProductStock(sku, (await getProduct(sku)).type_id, changes);
     // Read back what Magento actually kept.
     const saved = (await addStock([detail(await getProduct(sku), colors)]))[0];
+    if (wantedCategories) {
+      const kept = new Set<string>((saved.categoryIds ?? []).map(String));
+      const missing = wantedCategories.filter(id => !kept.has(id));
+      const extra = [...kept].filter(id => !wantedCategories!.includes(id));
+      if (missing.length || extra.length) {
+        throw new UserError(`Magento didn't keep the category change (${[
+          missing.length ? `not added: ${missing.join(", ")}` : "",
+          extra.length ? `not removed: ${extra.join(", ")}` : "",
+        ].filter(Boolean).join("; ")}). Check the integration has Catalog → Categories access.`);
+      }
+    }
     if ("qty" in changes) saved.qty = Number(qty);
     if ("inStock" in changes) saved.inStock = inStock;
     return addSalable(saved);

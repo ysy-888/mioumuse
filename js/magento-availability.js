@@ -119,6 +119,7 @@ async function loadMgIndex({ force = false } = {}) {
     renderMgAvailControls();
     renderMgProducts();
     if (mgPane) renderMagentoPane(); // its Available tag
+    refreshStyleMgViews({ pane: true });
   })();
   return mgIndexLoading;
 }
@@ -162,6 +163,7 @@ function refreshMgAvailability() {
   renderMgProducts();
   renderMgAvailControls();
   if (mgPane) renderMagentoPane();
+  refreshStyleMgViews();
 }
 
 /** A product just loaded from Magento — the freshest word on it. */
@@ -433,4 +435,81 @@ function initMagentoAvailability() {
   });
   document.getElementById("mgFlaggedBtn")?.addEventListener("click", () => setMgClientFilter({ flagged: !mgFlaggedOnly }));
   renderMgAvailControls();
+}
+
+// ── On Styles: Magento Status (js/styles.js, js/style-pane.js) ───────────────
+//
+// A colour's Magento item is the SKU "STYLE#-COLOR" (T3201-BLACK), or with
+// ST after the Style # (T2692ST-BLUE). Its availability is worked out as on
+// the Magento tab: last time's catalog shows at once, the imported groups
+// load, and a fresh check runs once behind them.
+
+let styleMgStarted = false;
+
+/** The colour's Magento SKU; "" when Magento has none; null before the catalog is known. */
+function styleMgSku(style) {
+  if (!mgIndex) return null;
+  const styleNo = String(style.styleNo ?? "").trim().toUpperCase();
+  const color = String(style.color ?? "").trim().toUpperCase();
+  return [`${styleNo}-${color}`, `${styleNo}ST-${color}`].find(sku => mgIndex.has(sku)) ?? "";
+}
+
+/** { sku, available: true | false | null, reasons } — sku "" when it isn't on Magento. */
+function styleMgAvailability(style) {
+  const sku = styleMgSku(style);
+  if (sku === null) return { sku: null, available: null, reasons: [mgIndexError || "Checking Magento…"] };
+  if (!sku) return { sku: "", available: false, reasons: ["Not on Magento"] };
+  return { sku, ...mgAvailability(sku) };
+}
+
+/** For sorting and the column: "Available", "Not available", "Not on Magento" or "". */
+function styleMgStatusText(style) {
+  const { sku, available } = styleMgAvailability(style);
+  if (sku === "") return "Not on Magento";
+  return available === true ? "Available" : available === false ? "Not available" : "";
+}
+
+/** The Magento Status pill — why not, and the SKU, in its tooltip. */
+function createStyleMgStatusCell(style) {
+  const { sku, available, reasons } = styleMgAvailability(style);
+  const wrap = document.createElement("span");
+  wrap.className = "mg-avail-cell";
+  const pill = document.createElement("span");
+  if (sku === "") {
+    // Not on Magento: just a dash (the tooltip says so).
+    pill.className = "mg-avail-pill is-none";
+    pill.textContent = EMPTY_DISPLAY;
+    wrap.title = `Not on Magento — no product ${String(style.styleNo).trim().toUpperCase()}-${String(style.color).trim().toUpperCase()}`;
+  } else {
+    pill.className = `mg-avail-pill ${available === true ? "is-yes" : available === false ? "is-no" : "is-unknown"}`;
+    pill.textContent = available === true ? "Available" : available === false ? "Not available" : "?";
+    const head = available === true ? "Showing on the webstore" : available === false ? "Not showing on the webstore" : "Can't tell yet";
+    wrap.title = (sku ? `${sku} — ` : "") + head + (reasons.length && available !== true ? `: ${reasons.join("; ")}` : "");
+  }
+  wrap.appendChild(pill);
+  return wrap;
+}
+
+/** Once a session: last time's catalog, the groups, then a fresh check. */
+function ensureStyleMgAvailability() {
+  if (styleMgStarted) return;
+  styleMgStarted = true;
+  restoreMgIndexCache();
+  const hadCatalog = Boolean(mgIndex);
+  const groups = mgGroups ? Promise.resolve() : loadMagentoGroups();
+  groups.then(() => refreshStyleMgViews({ pane: true }));
+  // Without a catalog from before, Magento may not be set up — the Magento
+  // tab checks it then; the column waits.
+  if (hadCatalog && !mgIndexLoading) loadMgIndex();
+}
+
+/** Redraw what shows Magento Status: the Styles table, and the pane when asked (not mid-typing). */
+function refreshStyleMgViews({ pane = false } = {}) {
+  if (!styleMgStarted) return;
+  if (getCurrentAppView() === "styles") {
+    if (styleSortCol === "magento") applyStyleFilters({ keepShown: true });
+    else renderStylesTable();
+  }
+  const paneEl = document.getElementById("stylePane");
+  if (pane && paneEl && !paneEl.hidden && !paneEl.contains(document.activeElement)) refreshStylePaneSummary();
 }

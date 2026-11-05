@@ -21,8 +21,7 @@ async function loadAndShowApp() {
     syncMailchimp();
     restoreStyleImageFolder();
     restoreSamplePhotoFolder(); // js/sample-photos.js
-    refreshPoIhds(); // passed Store Ins stop counting, even with the sheet unchanged
-    restoreCostSheet(); // re-reads it if it changed since last time
+    refreshPoIhds(); // from now on, a new day re-works the IHDs from the PO ETAs
     switchAppView("home");
   } catch (err) {
     showIndicator(err.message || "Failed to load data.", "error");

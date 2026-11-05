@@ -1,10 +1,20 @@
 /**
- * Import the N41 ATS export (.xlsx) into the Styles database, and look back
- * at past imports (header menu → Update history).
+ * Import the N41 style export into the Styles database, and look back at
+ * past imports (header menu → Update history).
  *
  * The file is read here in the browser — it's never uploaded; only the
- * cleaned-up fields are saved. The export is a printed report rather than a
- * clean table, so the rules are:
+ * cleaned-up fields are saved. Two layouts are read:
+ *
+ * The style CSV (row 1 is headings, "style" in A) — the current one:
+ *
+ *   A  Style #      B  Color        C  N41 Status
+ *   D  Available    (date → "YYYY-MM", shown as JUL26)
+ *   F  Season       J  Description  K  Memo ("updated by Mass Update" dropped)
+ *   R  Received qty
+ *
+ *   It has no category, so a style keeps the one it has (new ones get none).
+ *
+ * The older ATS report (.xlsx), a printed report rather than a clean table:
  *
  *   - start at row 8 (headings and page furniture sit above it)
  *   - a row counts only if it has a Style # — the size-breakdown rows
@@ -26,6 +36,40 @@
  */
 
 const STYLE_IMPORT_FIRST_ROW = 8;
+
+/** "5/31/2025 00:00:00" (or a Date) → "2025-05"; "" when it isn't a date. */
+function importMonth(value) {
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    return `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, "0")}`;
+  }
+  const text = cleanCell(value);
+  let m = /^(\d{1,2})\/(\d{1,2})\/(\d{2}|\d{4})\b/.exec(text);
+  if (m) {
+    const year = m[3].length === 2 ? `20${m[3]}` : m[3];
+    return `${year}-${m[1].padStart(2, "0")}`;
+  }
+  m = /^(\d{4})-(\d{2})/.exec(text);
+  return m ? `${m[1]}-${m[2]}` : "";
+}
+
+/** N41 appends "updated by Mass Update" on every bulk edit — keep the rest. */
+function cleanImportMemo(value) {
+  return cleanCell(value).split(",").map(s => s.trim())
+    .filter(s => s && !/^updated by mass update$/i.test(s)).join(", ");
+}
+
+/** "1000.00" → "1000"; "" when blank or not a number. */
+function cleanImportQty(value) {
+  const text = cleanCell(value).replace(/,/g, "");
+  if (!text) return "";
+  const n = Number(text);
+  return Number.isFinite(n) ? String(n) : "";
+}
+
+/** The style CSV: headings in row 1, "style" in A. */
+function isStyleCsvLayout(sheet) {
+  return String(sheet?.A1?.v ?? "").trim().toLowerCase() === "style";
+}
 
 /** SheetJS, loaded only when an import is started — it's a large library. */
 const SHEETJS_URL = "https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js";
@@ -61,6 +105,7 @@ function cleanCell(value) {
 function extractStyles(workbook) {
   const sheet = workbook.Sheets[workbook.SheetNames[0]];
   if (!sheet) throw new Error("That file has no sheets.");
+  if (isStyleCsvLayout(sheet)) return extractStylesFromCsv(sheet);
 
   // Keyed by column letter, from row 8 down; formatted text, not raw values.
   const rows = XLSX.utils.sheet_to_json(sheet, {
@@ -97,12 +142,48 @@ function extractStyles(workbook) {
   return { styles: [...byKey.values()], skipped };
 }
 
+/** The style CSV (see the top of this file). No category — see diffStyles. */
+function extractStylesFromCsv(sheet) {
+  const rows = XLSX.utils.sheet_to_json(sheet, { header: "A", range: 1, defval: "", raw: true, blankrows: true });
+  const byKey = new Map();
+  let skipped = 0;
+  rows.forEach(row => {
+    const styleNo = cleanCell(row.A);
+    if (!styleNo || styleNo.toLowerCase() === "style") {
+      skipped += 1;
+      return;
+    }
+    const color = cleanCell(row.B);
+    byKey.set(styleKey(styleNo, color), {
+      styleNo,
+      color,
+      status: cleanCell(row.C),
+      availableDate: importMonth(row.D),
+      season: cleanCell(row.F),
+      description: cleanCell(row.J),
+      memo: cleanImportMemo(row.K),
+      receivedQty: cleanImportQty(row.R),
+    });
+  });
+  return { styles: [...byKey.values()], skipped };
+}
+
+/** `format`: how a value reads in the change lists. */
 const STYLE_FIELDS = [
   { key: "status", label: "Status" },
   { key: "season", label: "Season" },
   { key: "category", label: "Category" },
   { key: "description", label: "Description" },
+  { key: "availableDate", label: "Available", format: v => formatMonYY(v) },
+  { key: "receivedQty", label: "Rcvd Qty", format: v => (v === "" || v == null ? "" : Number(v).toLocaleString()) },
+  { key: "memo", label: "Memo" },
 ];
+const STYLE_FIELD_BY_KEY = new Map(STYLE_FIELDS.map(f => [f.key, f]));
+
+function formatStyleField(key, value) {
+  const f = STYLE_FIELD_BY_KEY.get(key);
+  return f?.format ? f.format(value) : String(value ?? "");
+}
 
 /**
  * Sort the file's records against the database: new, changed, unchanged.
@@ -133,17 +214,22 @@ function diffStyles(incoming) {
       return;
     }
     const current = existing.get(styleKey(style.styleNo, style.color));
+    // A field the file doesn't carry (the CSV has no category; the old report
+    // has no available date, memo or qty) keeps what the style has — "" if new.
+    const inFile = STYLE_FIELDS.filter(f => f.key in style);
+    const filled = { ...style };
+    STYLE_FIELDS.forEach(f => { if (!(f.key in filled)) filled[f.key] = current?.[f.key] ?? ""; });
     if (!current) {
       const existingColors = colorsByStyle.get(style.styleNo);
       added.push(existingColors
-        ? { ...style, kind: "color", existingColors: [...existingColors].sort() }
-        : { ...style, kind: "style" });
+        ? { ...filled, kind: "color", existingColors: [...existingColors].sort() }
+        : { ...filled, kind: "style" });
       return;
     }
-    const diffs = STYLE_FIELDS
-      .filter(f => current[f.key] !== style[f.key])
-      .map(f => ({ ...f, from: current[f.key], to: style[f.key] }));
-    if (diffs.length) changed.push({ style, diffs });
+    const diffs = inFile
+      .filter(f => (current[f.key] ?? "") !== style[f.key])
+      .map(f => ({ key: f.key, label: f.label, from: current[f.key] ?? "", to: style[f.key] }));
+    if (diffs.length) changed.push({ style: filled, diffs });
     else unchanged += 1;
   });
   return { added, changed, unchanged, deletedSkipped };
@@ -290,7 +376,7 @@ function createStyleChangesView({ added, changed }, { unchanged = 0, shootAction
   };
 
   const matches = style => !query ||
-    [style.styleNo, style.color, style.status, style.season, style.category, style.description]
+    [style.styleNo, style.color, style.status, style.season, style.category, style.description, style.memo]
       .some(v => String(v ?? "").toLowerCase().includes(query));
 
   const statContent = (el, n, label) => {
@@ -344,14 +430,14 @@ function createStyleChangesView({ added, changed }, { unchanged = 0, shootAction
       label.textContent = d.label;
       const from = document.createElement("span");
       from.className = "style-change-from";
-      from.textContent = d.from || "—";
+      from.textContent = formatStyleField(d.key, d.from) || "—";
       const arrow = document.createElement("span");
       arrow.className = "style-change-arrow";
       arrow.textContent = "→";
       arrow.setAttribute("aria-label", "to");
       const to = document.createElement("span");
       to.className = "style-change-to";
-      to.textContent = d.to || "—";
+      to.textContent = formatStyleField(d.key, d.to) || "—";
       item.append(label, from, arrow, to);
       list.appendChild(item);
     });
@@ -406,7 +492,7 @@ function createStyleChangesView({ added, changed }, { unchanged = 0, shootAction
         tr.append(cell(style.styleNo, "is-key style-change-link"), cell(style.color, "is-key"));
         // A new color: the colors this Style # already has.
         if (colors) tr.appendChild(cell((style.existingColors ?? []).join(", "), "style-import-muted"));
-        tr.append(...STYLE_FIELDS.map(f => cell(style[f.key], f.key === "description" ? "style-import-desc" : "")));
+        tr.append(...STYLE_FIELDS.map(f => cell(formatStyleField(f.key, style[f.key]), f.key === "description" ? "style-import-desc" : "")));
         if (shootActions) tr.appendChild(shootCell(style));
         table.appendChild(tr);
       });
@@ -490,10 +576,12 @@ async function readStyleFile(file) {
   document.getElementById("styleImportConfirmBtn").disabled = true;
   try {
     await loadSheetJs();
-    const workbook = XLSX.read(await file.arrayBuffer(), { type: "array" });
+    // A CSV is read as plain text, so dates and numbers come through as written.
+    const isCsv = /\.csv$/i.test(file.name) || file.type === "text/csv";
+    const workbook = XLSX.read(await file.arrayBuffer(), { type: "array", raw: isCsv });
     const { styles, skipped } = extractStyles(workbook);
     if (styles.length === 0) {
-      throw new Error("No styles found — expected Style # in column H from row 8 down.");
+      throw new Error("No styles found — expected the style CSV (style, color, status… in row 1) or the ATS report (Style # in column H from row 8).");
     }
     const diff = diffStyles(styles);
     styleImportPlan = { fileName: file.name, total: styles.length, skipped, ...diff };

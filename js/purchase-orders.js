@@ -1,93 +1,111 @@
 /**
- * POs — the cost sheet's style lines, a month at a time (view "pos").
+ * POs — N41's PO lines, a month at a time (view "pos").
  *
- * Menu → Link Cost Sheet keeps a handle to the workbook, which is read again
- * whenever it changes (one tab per month, "11.2026"; header row with STYLE #,
- * P.O#, dept, STORE IN). The S (new) and SR (recut) lines replace the saved
- * ones, then each style's IHD is set from Store In: the next one from today,
- * or the latest if all have passed.
+ * Menu → Import N41 POs reads N41's "P.O Detail by Vendor" export (.xlsx):
+ * PO # (D), PO Date (F), ETA (H), Style (I), Color (J). The POs in the file
+ * replace the saved ones; every other PO is kept (js/store.js).
  *
- * The cost sheet has no colours: menu → Import N41 PO Report reads them from
- * N41 (P.O#, Style, Color), and only the Store In comes from the cost sheet.
+ * Each line is worked out as New (the style's first PO), Recut (a colour
+ * that was on an earlier PO of the style) or New Color (one that wasn't).
+ * The page groups them by ETA month. A style + colour on a PO takes its IHD
+ * from the ETAs: the next one from today, or the latest if all have passed.
  *
- * Each style shows with its PO lines, and under it the colours on those POs
- * (none until N41 has given them), with
+ * Each style shows with its POs, and under it the colours on them, with
  * photos and the New Style / New Color / Reshoot picker. Only colours with
- * no photos are suggested: New Style on a new PO (S), New Color on a recut (SR).
+ * no photos are suggested: New Style on a new style, New Color otherwise.
  */
 
 let poMonth = "";
-let poTypeFilter = "all"; // "all" | "new" | "recut"
+let poTypeFilter = "all"; // "all" | "new" | "recut" | "newColor"
 let poPhotoFilter = "all"; // "all" | "with" | "without" — needs the image folder
 let poSuggestedOnly = false; // just the colours Add suggested would add
 let poNeedOnly = false; // just the colours waiting on Need to Shoot (not yet shot)
+let poShowCompany = false; // colours with N41 status COMPANY are hidden unless ticked
+let poSearchScope = "all"; // "all" months, or just this "month"
 
-// ── Reading the cost sheet ───────────────────────────────────────────────────
+const PO_KIND_LABELS = { new: "New", recut: "Recut", newColor: "New Color" };
 
-const PO_MONTH_TAB = /^(\d{1,2})\.(\d{4})$/;
+// ── Reading N41's PO export ──────────────────────────────────────────────────
 
-/** T6941-RE4 → T6941; J5937(B) → J5937; J4047-FABRIK → J4047. */
-function poBaseStyle(poStyle) {
-  return poStyle.split(/[-(]/)[0].trim().toUpperCase();
-}
-
-/** RE4 → 4; RE alone → 1; none → 0. */
-function poRecutNumber(poStyle) {
-  const m = poStyle.slice(poBaseStyle(poStyle).length).match(/RE(\d*)/i);
-  return m ? Number(m[1] || 1) : 0;
+/** An Excel date (a day number) or text like 5/31/2025 → "YYYY-MM-DD"; "" if neither. */
+function poExcelDate(value) {
+  if (typeof value === "number" && value > 20000) {
+    const d = new Date(Date.UTC(1899, 11, 30) + Math.round(value) * 86400000);
+    return d.toISOString().slice(0, 10);
+  }
+  const m = String(value ?? "").trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{2}|\d{4})/);
+  if (!m) return "";
+  const year = m[3].length === 2 ? `20${m[3]}` : m[3];
+  return `${year}-${m[1].padStart(2, "0")}-${m[2].padStart(2, "0")}`;
 }
 
 /**
- * Store In: an Excel date number, or text like 11/16/2026. Only its month
- * and day are trusted: a date typed without a year gets the year it was
- * typed in, so 1/4 on the 1.2027 tab can hold 2026. The year is the one
- * that puts the date nearest the tab's month (1/5 on 12.2025 is 2026).
+ * An ETA typed with a wrong year (4021 for 2021) gets the year that puts it
+ * nearest its PO date — the month and day are kept.
  */
-function poCellDate(value, tabYear, tabMonth) {
-  let month, day;
-  if (typeof value === "number" && value > 20000) {
-    const d = new Date(Date.UTC(1899, 11, 30) + Math.round(value) * 86400000);
-    month = d.getUTCMonth() + 1;
-    day = d.getUTCDate();
-  } else {
-    const m = String(value ?? "").trim().match(/^(\d{1,2})\/(\d{1,2})(?:\/\d{2,4})?$/);
-    if (!m) return "";
-    month = Number(m[1]);
-    day = Number(m[2]);
-  }
-  const tabAt = tabYear * 12 + tabMonth;
-  const year = [tabYear - 1, tabYear, tabYear + 1]
-    .reduce((best, y) => Math.abs(y * 12 + month - tabAt) < Math.abs(best * 12 + month - tabAt) ? y : best);
-  return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+function fixPoEta(eta, poDate) {
+  if (!eta || !poDate) return eta;
+  const etaYear = Number(eta.slice(0, 4));
+  const poYear = Number(poDate.slice(0, 4));
+  if (Math.abs(etaYear - poYear) <= 3) return eta;
+  const poAt = poYear * 12 + Number(poDate.slice(5, 7));
+  const month = Number(eta.slice(5, 7));
+  const year = [poYear - 1, poYear, poYear + 1]
+    .reduce((best, y) => Math.abs(y * 12 + month - poAt) < Math.abs(best * 12 + month - poAt) ? y : best);
+  return `${year}${eta.slice(4)}`;
 }
 
-/** Every S / SR line of every month tab. */
-function parseCostSheet(workbook) {
+/**
+ * One line per PO # + Style + Color. The columns are found by their headings
+ * (PO #, PO Date, ETA, Style, Color — the heading row may repeat on each
+ * page); D, F, H, I, J if they can't be.
+ */
+function parseN41Pos(workbook) {
+  const seen = new Set();
   const lines = [];
   workbook.SheetNames.forEach(name => {
-    const tab = name.trim().match(PO_MONTH_TAB);
-    if (!tab) return;
-    const month = `${tab[2]}-${tab[1].padStart(2, "0")}`;
-    const rows = XLSX.utils.sheet_to_json(workbook.Sheets[name], { header: "A", raw: true, defval: "", blankrows: true });
-    const headerAt = rows.findIndex(r => /^STYLE\s*#/i.test(String(r.D).trim()));
-    if (headerAt < 0) return;
-    rows.slice(headerAt + 1).forEach((r, i) => {
-      const poStyle = String(r.D).trim().toUpperCase();
-      const dept = String(r.G).trim().toUpperCase();
-      if (!poStyle || (dept !== "S" && dept !== "SR")) return;
-      lines.push({
-        month,
-        rowNo: headerAt + i + 2, // the sheet's own row number
-        poStyle,
-        styleNo: poBaseStyle(poStyle),
-        recut: dept === "SR" ? Math.max(1, poRecutNumber(poStyle)) : 0,
-        poNo: String(r.E).trim(),
-        dept,
-        storeIn: poCellDate(r.I, Number(tab[2]), Number(tab[1])),
-      });
+    const rows = XLSX.utils.sheet_to_json(workbook.Sheets[name], { header: "A", raw: true, defval: "", blankrows: false });
+    let cols = null;
+    rows.forEach(r => {
+      const cell = col => String(r[col] ?? "").trim();
+      const find = label => Object.keys(r).find(k => cell(k).replace(/\s+/g, "").toUpperCase() === label);
+      const poCol = find("PO#"), styleCol = find("STYLE"), colorCol = find("COLOR");
+      if (poCol && styleCol && colorCol) {
+        cols = { po: poCol, style: styleCol, color: colorCol, poDate: find("PODATE") ?? "F", eta: find("ETA") ?? "H" };
+        return;
+      }
+      if (!cols) return;
+      const rawPo = r[cols.po];
+      const poNo = typeof rawPo === "number" ? String(Math.round(rawPo)) : cell(cols.po);
+      const styleNo = cell(cols.style).toUpperCase();
+      const color = cell(cols.color).toUpperCase().replace(/\s+/g, " ");
+      if (!/^\d+$/.test(poNo) || !styleNo || !color) return; // totals, page furniture
+      const key = `${poNo}|${styleNo}|${color}`;
+      if (seen.has(key)) return;
+      seen.add(key);
+      const poDate = poExcelDate(r[cols.poDate]);
+      lines.push({ poNo, styleNo, color, poDate, eta: fixPoEta(poExcelDate(r[cols.eta]), poDate) });
     });
   });
   return lines;
+}
+
+async function importN41Pos(file) {
+  if (!file) return;
+  try {
+    showIndicator("Reading the N41 PO export…");
+    await loadSheetJs();
+    const workbook = XLSX.read(await file.arrayBuffer(), { type: "array" });
+    const lines = parseN41Pos(workbook);
+    if (!lines.length) throw new Error("No PO # / Style / Color columns with PO lines were found.");
+    const pos = new Set(lines.map(l => l.poNo)).size;
+    await mergePoLines(lines, (n, total) => showIndicator(`Saving POs… ${Math.round((n / total) * 100)}%`));
+    if (!poMonth) poMonth = defaultPoMonth();
+    refreshPoDependentViews();
+    showIndicator(`N41 POs imported — ${pos.toLocaleString()} POs, ${lines.length.toLocaleString()} style colours`, "success");
+  } catch (err) {
+    showIndicator(`N41 POs: ${err.message || "couldn't read the file."}`, "error");
+  }
 }
 
 /** The Styles database's colours for a PO's style: as written, or without a trailing ST. */
@@ -98,165 +116,19 @@ function getPoStyleColors(styleNo) {
 }
 
 /**
- * The IHD each style should have: its next Store In from today, or the
- * latest one if they've all passed. Keyed by the database's Style #.
- *
- * Archived months don't count. A style whose POs are all in archived months
- * has its IHD cleared — but only if it's still one of those Store Ins, so a
- * date typed in by hand is left alone.
- */
-function poIhdsByStyle(lines) {
-  const today = todayYmd();
-  const archived = getPoArchivedMonths();
-  const dates = new Map();
-  const archivedDates = new Map();
-  lines.forEach(line => {
-    const colors = getPoStyleColors(line.styleNo);
-    if (!line.storeIn || !colors.length) return;
-    const key = colors[0].styleNo;
-    const into = archived.has(line.month) ? archivedDates : dates;
-    if (!into.has(key)) into.set(key, []);
-    into.get(key).push(line.storeIn);
-  });
-  const ihds = new Map();
-  dates.forEach((list, styleNo) => {
-    list.sort();
-    ihds.set(styleNo, list.find(d => d >= today) ?? list[list.length - 1]);
-  });
-  archivedDates.forEach((list, styleNo) => {
-    if (dates.has(styleNo)) return;
-    if (getStyleColors(styleNo).some(s => list.includes(s.ihd))) ihds.set(styleNo, "");
-  });
-  return ihds;
-}
-
-/** Set IHDs from the PO lines; returns how many styles changed. */
-async function applyPoIhds(lines, onProgress) {
-  const changes = [...poIhdsByStyle(lines)]
-    .filter(([styleNo, ihd]) => getStyleColors(styleNo).some(s => s.ihd !== ihd));
-  let done = 0;
-  const queue = [...changes];
-  const worker = async () => {
-    while (queue.length) {
-      const [styleNo, ihd] = queue.shift();
-      await setStyleNoIhd(styleNo, ihd);
-      onProgress?.(++done, changes.length);
-    }
-  };
-  await Promise.all(Array.from({ length: 6 }, worker));
-  return changes.length;
-}
-
-/**
- * The day IHDs were last checked against the saved PO lines. A Store In
- * that has passed stops counting the next day, even if the sheet hasn't
- * changed, so the check runs when the app opens and when a new day starts.
+ * IHDs come from the ETAs, worked out in memory (applyPoIhds, js/store.js).
+ * An ETA that has passed stops counting the next day, so they're worked out
+ * again when a new day starts.
  */
 let poIhdsCheckedOn = "";
 
-async function refreshPoIhds() {
-  if (!getAllPoLines().length || poIhdsCheckedOn === todayYmd()) return;
+function refreshPoIhds() {
+  if (poIhdsCheckedOn === todayYmd()) return;
+  const first = !poIhdsCheckedOn;
   poIhdsCheckedOn = todayYmd();
-  try {
-    const changed = await applyPoIhds(getAllPoLines());
-    if (!changed) return;
-    refreshPoDependentViews();
-    showIndicator(`IHD updated from the cost sheet for ${changed.toLocaleString()} ${changed === 1 ? "style" : "styles"} (a Store In passed)`, "success");
-  } catch (err) {
-    poIhdsCheckedOn = "";
-    showIndicator(`Couldn't update IHDs: ${err.message || "save failed"}`, "error");
-  }
-}
-
-/** Archive a month (or bring it back), then re-work the IHDs it affects. */
-async function setPoMonthArchivedAndApply(month, archived) {
-  try {
-    await setPoMonthArchived(month, archived);
-    const changed = await applyPoIhds(getAllPoLines());
-    refreshPoDependentViews();
-    showIndicator(`${formatPoMonth(month)} ${archived ? "archived" : "brought back"} — ${changed.toLocaleString()} ${changed === 1 ? "IHD" : "IHDs"} changed`, "success");
-  } catch (err) {
-    showIndicator(err.message || "Couldn't archive the month.", "error");
-    renderPoView();
-  }
-}
-
-/** Read the workbook, replace the PO lines and set IHDs. Returns false on failure. */
-async function importCostSheet(file) {
-  if (!file) return false;
-  try {
-    showIndicator("Reading the cost sheet…");
-    await loadSheetJs();
-    const workbook = XLSX.read(await file.arrayBuffer(), { type: "array" });
-    const lines = parseCostSheet(workbook);
-    if (!lines.length) throw new Error("No month tabs (like 11.2026) with a STYLE # header were found.");
-    showIndicator("Saving PO lines…");
-    await replacePoLines(lines);
-    const changed = await applyPoIhds(lines, (n, total) => showIndicator(`Updating IHDs… ${n} / ${total}`));
-    if (!poMonth) poMonth = defaultPoMonth();
-    refreshPoDependentViews();
-    showIndicator(`Cost sheet updated — ${lines.length.toLocaleString()} PO lines, ${changed.toLocaleString()} IHDs changed`, "success");
-    return true;
-  } catch (err) {
-    showIndicator(`Cost sheet: ${err.message || "couldn't read it."}`, "error");
-    return false;
-  }
-}
-
-// ── N41's PO report (the colours) ────────────────────────────────────────────
-//
-// N41 → Process (Quantity) Detail, saved as .xlsx. Only P.O#, Style and
-// Color are read, from the columns under the "PO #", "Style" and "Color"
-// headers; quantities and receipts are ignored.
-
-/** One row per P.O# + Style + Color. */
-function parseN41PoReport(workbook) {
-  const seen = new Set();
-  const rows = [];
-  workbook.SheetNames.forEach(name => {
-    const sheetRows = XLSX.utils.sheet_to_json(workbook.Sheets[name], { header: "A", raw: false, defval: "" });
-    let cols = null;
-    sheetRows.forEach(r => {
-      const cell = col => String(r[col] ?? "").trim();
-      const find = label => Object.keys(r).find(k => cell(k).replace(/\s+/g, "").toUpperCase() === label);
-      const po = find("PO#"), style = find("STYLE"), color = find("COLOR");
-      // The header row (it may repeat on each page).
-      if (po && style && color) {
-        cols = { po, style, color };
-        return;
-      }
-      if (!cols) return;
-      const poNo = cell(cols.po);
-      const styleNo = cell(cols.style).toUpperCase();
-      const colorName = cell(cols.color).toUpperCase().replace(/\s+/g, " ");
-      if (!/^\d+$/.test(poNo) || !styleNo || !colorName) return;
-      const key = `${poNo}|${styleNo}|${colorName}`;
-      if (seen.has(key)) return; // split receipts repeat the line
-      seen.add(key);
-      rows.push({ poNo, style: styleNo, color: colorName });
-    });
-  });
-  return rows;
-}
-
-async function importN41PoReport(file) {
-  if (!file) return;
-  try {
-    showIndicator("Reading the N41 PO report…");
-    await loadSheetJs();
-    const workbook = XLSX.read(await file.arrayBuffer(), { type: "array" });
-    const rows = parseN41PoReport(workbook);
-    if (!rows.length) throw new Error("No PO # / Style / Color columns with PO lines were found.");
-    showIndicator("Saving PO colours…");
-    await mergePoColors(rows);
-    const pos = new Set(rows.map(r => r.poNo));
-    const onSheet = new Set(getAllPoLines().map(l => l.poNo));
-    const matched = [...pos].filter(p => onSheet.has(p)).length;
-    refreshPoDependentViews();
-    showIndicator(`N41 PO report — ${pos.size.toLocaleString()} POs, ${rows.length.toLocaleString()} colours; ${matched.toLocaleString()} POs are on the cost sheet`, "success");
-  } catch (err) {
-    showIndicator(`N41 PO report: ${err.message || "couldn't read it."}`, "error");
-  }
+  if (first || !getAllPoLines().length) return; // just loaded: already worked out
+  applyPoIhds();
+  refreshPoDependentViews();
 }
 
 /** IHDs show on Styles, Need to Shoot and the shoot pane as well as here. */
@@ -264,166 +136,20 @@ function refreshPoDependentViews() {
   if (getCurrentAppView() === "pos") renderPoView();
   if (getCurrentAppView() === "styles" && typeof applyStyleFilters === "function") applyStyleFilters({ keepShown: true });
   refreshPhotoshootViews();
-}
-
-// ── The linked cost sheet ────────────────────────────────────────────────────
-//
-// Like the image folder: Chrome and Edge let the page keep a handle to a file
-// the user picked once (File System Access API, kept in IndexedDB). Each
-// time the app opens — and when you come back to its tab — the file is
-// checked, and read again only if it has changed since this browser last
-// read it. Other browsers fall back to picking the file each time.
-
-const COST_SHEET_RECHECK_MS = 60 * 1000;
-
-/** "unsupported" | "none" | "needs-permission" | "ready" | "reading". */
-let costSheetState = typeof window.showOpenFilePicker === "function" ? "none" : "unsupported";
-let costSheetHandle = null;
-let costSheetCheckedAt = 0;
-let costSheetReadAt = "";
-
-/** Read the file if it changed since last time (or always, with `force`). */
-async function syncCostSheet({ force = false } = {}) {
-  if (!costSheetHandle || costSheetState === "reading") return;
-  costSheetCheckedAt = Date.now();
-  let file;
-  try {
-    file = await costSheetHandle.getFile();
-  } catch (err) {
-    // Gone, renamed, or the drive isn't reachable. Excel having it open is fine.
-    if ((await costSheetHandle.queryPermission({ mode: "read" })) !== "granted") costSheetState = "needs-permission";
-    renderCostSheetStatus();
-    if (force) showIndicator(`Couldn't open the cost sheet: ${err.message}`, "error");
-    return;
-  }
-  const seen = await idbGet("costSheetSeen");
-  const signature = `${file.lastModified}|${file.size}`;
-  if (!force && seen?.signature === signature) {
-    costSheetReadAt = seen.readAt ?? "";
-    renderCostSheetStatus();
-    return;
-  }
-  costSheetState = "reading";
-  renderCostSheetStatus();
-  const ok = await importCostSheet(file);
-  costSheetState = "ready";
-  if (ok) {
-    costSheetReadAt = new Date().toISOString();
-    await idbSet("costSheetSeen", { signature, readAt: costSheetReadAt });
-  }
-  renderCostSheetStatus();
-}
-
-async function linkCostSheet() {
-  let handle;
-  try {
-    [handle] = await window.showOpenFilePicker({
-      id: "cost-sheet",
-      types: [{ description: "Cost sheet", accept: { "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": [".xlsx", ".xlsm"] } }],
-    });
-  } catch {
-    return; // picker closed
-  }
-  costSheetHandle = handle;
-  costSheetState = "ready";
-  await idbSet("costSheet", handle);
-  await idbSet("costSheetSeen", undefined);
-  await syncCostSheet({ force: true });
-}
-
-/** After a browser restart: ask for read access again (needs a click). */
-async function reconnectCostSheet() {
-  if (!costSheetHandle) return;
-  if ((await costSheetHandle.requestPermission({ mode: "read" })) !== "granted") return;
-  costSheetState = "ready";
-  await syncCostSheet();
-}
-
-async function unlinkCostSheet() {
-  costSheetHandle = null;
-  costSheetState = "none";
-  costSheetReadAt = "";
-  await idbSet("costSheet", undefined);
-  await idbSet("costSheetSeen", undefined);
-  renderCostSheetStatus();
-}
-
-/** On app load: pick the linked file back up and check it. */
-async function restoreCostSheet() {
-  if (costSheetState === "unsupported") return renderCostSheetStatus();
-  const handle = await idbGet("costSheet");
-  if (!handle) return renderCostSheetStatus();
-  costSheetHandle = handle;
-  costSheetReadAt = (await idbGet("costSheetSeen"))?.readAt ?? "";
-  if ((await handle.queryPermission({ mode: "read" })) === "granted") {
-    costSheetState = "ready";
-    await syncCostSheet();
-  } else {
-    costSheetState = "needs-permission";
-    renderCostSheetStatus();
-  }
-}
-
-function getCostSheetMenuState() {
-  switch (costSheetState) {
-    case "unsupported": return { label: "Import Cost Sheet", canUnlink: false };
-    case "none": return { label: "Link Cost Sheet", canUnlink: false };
-    case "needs-permission": return { label: "Reconnect Cost Sheet", canUnlink: true };
-    case "ready": return { label: "Update from Cost Sheet", canUnlink: true };
-    default: return { label: "", canUnlink: false }; // mid-read
-  }
-}
-
-function runCostSheetMenuAction() {
-  if (costSheetState === "unsupported") {
-    const input = document.getElementById("poImportFile");
-    if (!input) return;
-    input.value = "";
-    input.click();
-  } else if (costSheetState === "none") linkCostSheet();
-  else if (costSheetState === "needs-permission") reconnectCostSheet();
-  else if (costSheetState === "ready") syncCostSheet({ force: true });
-}
-
-/** The POs toolbar's line: which file, when it was read, or Reconnect. */
-function renderCostSheetStatus() {
-  const wrap = document.getElementById("poCostSheetStatus");
-  if (!wrap) return;
-  const text = (t, title = "", warn = false) => {
-    const s = document.createElement("span");
-    s.className = "style-image-text" + (warn ? " is-warning" : "");
-    s.textContent = t;
-    if (title) s.title = title;
-    return s;
-  };
-  const name = costSheetHandle?.name ?? "";
-  if (costSheetState === "needs-permission") {
-    const btn = document.createElement("button");
-    btn.type = "button";
-    btn.className = "btn";
-    btn.textContent = "Reconnect";
-    btn.addEventListener("click", reconnectCostSheet);
-    wrap.replaceChildren(text("Cost sheet disconnected", `${name} — reconnect to keep POs and IHDs up to date.`, true), btn);
-  } else if (costSheetState === "reading") {
-    wrap.replaceChildren(text("Reading the cost sheet…"));
-  } else if (costSheetState === "ready") {
-    const when = costSheetReadAt ? new Date(costSheetReadAt).toLocaleString(undefined, { month: "numeric", day: "numeric", hour: "numeric", minute: "2-digit" }) : "";
-    wrap.replaceChildren(text(when ? `Cost sheet read ${when}` : "Cost sheet linked", `${name}\nRe-read automatically when it changes.`));
-  } else {
-    wrap.replaceChildren();
-  }
+  if (typeof refreshStylePane === "function") refreshStylePane();
 }
 
 // ── The page ─────────────────────────────────────────────────────────────────
 
 function getPoMonths() {
-  return [...new Set(getAllPoLines().map(l => l.month))].sort();
+  return [...new Set(getAllPoLines().map(l => l.month).filter(Boolean))].sort();
 }
 
 /** This month if it's there, else the nearest one after it, else the last — archived ones only if that's all there is. */
 function defaultPoMonth() {
   const all = getPoMonths();
-  const live = all.filter(m => !getPoArchivedMonths().has(m));
+  const archived = getPoMonthPhotoStats().archived;
+  const live = all.filter(m => !archived.has(m));
   const months = live.length ? live : all;
   const now = todayYmd().slice(0, 7);
   return months.find(m => m >= now) ?? months[months.length - 1] ?? "";
@@ -436,10 +162,15 @@ function formatPoMonth(month) {
 
 // ── Month list ───────────────────────────────────────────────────────────────
 //
-// Down the left of the page, oldest first, each with its style count, in a
-// folder per year that opens and closes. The box icon on a month archives
-// it: it moves to the Archived group at the bottom (folded away unless open,
-// with year folders of its own), and its Store Ins stop setting IHDs.
+// Down the left of the page, oldest first, in a folder per year that opens
+// and closes. Each month's count is its styles with a colour still without
+// model photos (COMPANY, CANCEL and INACTIVE colours, and Style #s with a
+// company name after a hyphen, don't need them — poColorSkipsPhotos). A month where
+// every colour has them is archived on its own: it moves to the Archived
+// group at the bottom (folded away unless open, with year folders of its
+// own) and comes back if a colour loses its photos or a new one is added.
+// Without the image folder linked, photos aren't known: the count is all of
+// the month's styles and nothing is archived.
 
 let poShowArchived = false;
 /** Open year folders, as "live:2026" / "archived:2026". */
@@ -450,10 +181,40 @@ let poYearOpenedFor = "";
 const PO_FOLDER_ICON = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>';
 const PO_FOLDER_OPEN_ICON = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v1"/><path d="M3 7v10a2 2 0 0 0 2 2h12.5a2 2 0 0 0 1.9-1.4L21.5 12a1 1 0 0 0-1-1.3H7.3a2 2 0 0 0-1.9 1.4L3 19"/></svg>';
 
-const PO_ARCHIVE_ICON = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="4" width="20" height="5" rx="1"/><path d="M4 9v9a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9"/><path d="M10 13h4"/></svg>';
-const PO_UNARCHIVE_ICON = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg>';
+/**
+ * Per month: `styles` (every Style #), `missing` (Style #s with a colour
+ * still needing model photos), `missingColors`, and the `archived` months —
+ * every colour photographed. Worked out from the PO lines and the Styles
+ * database each time the list draws.
+ */
+function getPoMonthPhotoStats() {
+  const known = arePhotosKnown();
+  const byMonth = new Map();
+  // Style # → colour → its Styles record, so each line is one lookup.
+  const colorMaps = new Map();
+  const dbColor = (styleNo, color) => {
+    if (!colorMaps.has(styleNo)) colorMaps.set(styleNo, new Map(getPoStyleColors(styleNo).map(s => [s.color.trim().toUpperCase(), s])));
+    return colorMaps.get(styleNo).get(color);
+  };
+  getAllPoLines().forEach(l => {
+    if (!l.month) return;
+    if (!byMonth.has(l.month)) byMonth.set(l.month, { styles: new Set(), missing: new Set(), missingColors: new Set() });
+    const m = byMonth.get(l.month);
+    m.styles.add(l.styleNo);
+    const style = dbColor(l.styleNo, l.color);
+    // Not in the Styles database: its photos can't be checked, so it doesn't hold the month open.
+    if (!known || !style || poColorSkipsPhotos(style) || hasCompanySuffix(l.styleNo)) return;
+    if (!hasStyleImages(style.styleNo, style.color)) {
+      m.missing.add(l.styleNo);
+      m.missingColors.add(`${l.styleNo}\u0000${l.color}`);
+    }
+  });
+  const archived = new Set();
+  if (known) byMonth.forEach((m, month) => { if (!m.missing.size) archived.add(month); });
+  return { byMonth, archived, known };
+}
 
-function createPoMonthItem(month, styleCount, archived) {
+function createPoMonthItem(month, stats, archived, known) {
   const item = document.createElement("div");
   item.className = "po-month" + (month === poMonth ? " is-active" : "") + (archived ? " is-archived" : "");
 
@@ -468,40 +229,33 @@ function createPoMonthItem(month, styleCount, archived) {
   name.title = formatPoMonth(month);
   const count = document.createElement("span");
   count.className = "po-month-count";
-  count.textContent = styleCount.toLocaleString();
-  count.title = `${styleCount.toLocaleString()} ${styleCount === 1 ? "style" : "styles"}`;
+  const total = stats?.styles.size ?? 0;
+  if (!known) {
+    count.textContent = total.toLocaleString();
+    count.title = `${total.toLocaleString()} ${total === 1 ? "style" : "styles"} — link the image folder (Styles → menu ⋮) to count the ones without model photos`;
+  } else if (archived) {
+    count.textContent = "✓";
+    count.title = "Every colour has model photos (COMPANY, CANCEL, INACTIVE and company styles skipped) — archived";
+  } else {
+    const n = stats.missing.size;
+    const colors = stats.missingColors.size;
+    count.textContent = n.toLocaleString();
+    count.title = `${n.toLocaleString()} of ${total.toLocaleString()} ${total === 1 ? "style" : "styles"} without model photos (${colors.toLocaleString()} ${colors === 1 ? "colour" : "colours"}; COMPANY, CANCEL, INACTIVE and company styles skipped)`;
+  }
   pick.append(name, count);
   pick.addEventListener("click", () => {
     poMonth = month;
     renderPoView();
   });
 
-  const toggle = document.createElement("button");
-  toggle.type = "button";
-  toggle.className = "po-month-archive";
-  toggle.innerHTML = archived ? PO_UNARCHIVE_ICON : PO_ARCHIVE_ICON;
-  const label = archived
-    ? `Bring back ${formatPoMonth(month)}: its Store Ins set IHDs again`
-    : `Archive ${formatPoMonth(month)}: its Store Ins stop setting IHDs`;
-  toggle.title = label;
-  toggle.setAttribute("aria-label", label);
-  toggle.addEventListener("click", () => {
-    if (!archived && !confirm(`Archive ${formatPoMonth(month)}?\n\nIts Store Ins stop setting IHDs. A style with POs only in archived months has its IHD cleared. You can bring the month back from Archived.`)) return;
-    setPoMonthArchivedAndApply(month, !archived);
-  });
-
-  item.append(pick, toggle);
+  item.append(pick);
   return item;
 }
 
 function renderPoMonthList() {
   const list = document.getElementById("poMonthList");
   if (!list) return;
-  const styleCounts = new Map();
-  getAllPoLines().forEach(l => {
-    if (!styleCounts.has(l.month)) styleCounts.set(l.month, new Set());
-    styleCounts.get(l.month).add(l.styleNo);
-  });
+  const { byMonth, archived: archivedSet, known } = getPoMonthPhotoStats();
   const months = getPoMonths();
   if (!months.length) {
     const empty = document.createElement("div");
@@ -510,7 +264,6 @@ function renderPoMonthList() {
     list.replaceChildren(empty);
     return;
   }
-  const archivedSet = getPoArchivedMonths();
   const live = months.filter(m => !archivedSet.has(m));
   const archived = months.filter(m => archivedSet.has(m));
   // A month newly showing: open its year (and Archived, if it's there) once,
@@ -546,7 +299,7 @@ function renderPoMonthList() {
         renderPoMonthList();
       });
       out.push(head);
-      if (open) out.push(...ms.map(m => createPoMonthItem(m, styleCounts.get(m)?.size ?? 0, section === "archived")));
+      if (open) out.push(...ms.map(m => createPoMonthItem(m, byMonth.get(m), section === "archived", known)));
     });
     return out;
   };
@@ -570,37 +323,78 @@ function renderPoMonthList() {
 }
 
 /**
- * Only a colour with no photos is suggested: New Style on a new PO, New Color
- * on a recut. Not one that's already waiting, never shot, or CANCEL or INACTIVE in N41. Photos are only
- * known with the image folder linked, so without it nothing is suggested.
+ * Only a colour with no photos is suggested: New Style on the style's first
+ * PO, New Color otherwise. Not one that's already waiting, never shot, or
+ * CANCEL or INACTIVE in N41. Photos are only known with the image folder
+ * linked, so without it nothing is suggested.
  */
 function suggestPoReason(group, style) {
   if (!arePhotosKnown() || hasStyleImages(style.styleNo, style.color)) return "";
   if (isNoShootStyle(style.styleNo, style.color)) return "";
-  if (["CANCEL", "INACTIVE"].includes(String(style.status ?? "").trim().toUpperCase())) return "";
+  if (poColorSkipsPhotos(style)) return "";
   const entry = getShootListEntry(style.styleNo, style.color);
   if (entry && !entry.shotShootId) return "";
-  return group.lines.some(l => l.dept === "S") ? "newStyle" : "newColor";
+  return poColorKind(group, style) === "new" ? "newStyle" : "newColor";
+}
+
+function isCompanyStyle(style) {
+  return String(style.status ?? "").trim().toUpperCase() === "COMPANY";
 }
 
 /**
- * The month's lines, one group per style, in sheet order, each with the
- * colours on its POs. Those come from N41's PO report: just the database's
- * colours that are on one of the style's POs (`missingColors` are on a PO but
- * not in the database). A style whose POs N41 hasn't given colours for
- * (`noPoColors`) has none — just its PO lines.
+ * A Style # made for another company: a name after a hyphen
+ * (MMP469-VESTIQUE, T5276-PINK BLUSH). A single letter or number after it
+ * (MMT1290-1, MMDC1082-A) is a variant of our own style, not a company.
+ */
+function hasCompanySuffix(styleNo) {
+  return /-.*[A-Z]{2}/i.test(String(styleNo ?? ""));
+}
+
+/**
+ * Colours that are never photographed: N41 status COMPANY, CANCEL
+ * (CANCELLED…) or INACTIVE, or a Style # with a company name after it.
+ */
+function poColorSkipsPhotos(style) {
+  const status = String(style.status ?? "").trim().toUpperCase();
+  return status === "COMPANY" || status.startsWith("CANCEL") || status === "INACTIVE" || hasCompanySuffix(style.styleNo);
+}
+
+/** A colour's kind in the month: from its first PO line in it. */
+function poColorKind(group, style) {
+  return group.kindByColor.get(style.color.trim().toUpperCase()) ?? "";
+}
+
+/**
+ * The month's lines, one group per style, each with its POs (oldest first)
+ * and the colours on them: the database's colours that are on one of the
+ * POs (`missingColors` are on a PO but not in the database). `kindByColor`
+ * is each colour's New / Recut / New Color in the month.
  */
 function getPoMonthGroups() {
+  return getPoGroups(getAllPoLines().filter(l => l.month === poMonth));
+}
+
+/** The same, for any set of lines — every month's, for a search across them all. */
+function getPoGroups(lines) {
   const groups = new Map();
-  getAllPoLines().filter(l => l.month === poMonth).forEach(line => {
+  [...lines].sort(comparePoLines).forEach(line => {
     if (!groups.has(line.styleNo)) groups.set(line.styleNo, { styleNo: line.styleNo, lines: [] });
     groups.get(line.styleNo).lines.push(line);
   });
   groups.forEach(g => {
+    // One entry per PO, with its colours and kinds.
+    const pos = new Map();
+    g.kindByColor = new Map();
+    g.lines.forEach(l => {
+      if (!pos.has(l.poNo)) pos.set(l.poNo, { poNo: l.poNo, poDate: l.poDate, eta: l.eta, colors: [], kinds: new Set() });
+      const po = pos.get(l.poNo);
+      po.colors.push(l.color);
+      po.kinds.add(l.kind);
+      if (!g.kindByColor.has(l.color)) g.kindByColor.set(l.color, l.kind);
+    });
+    g.pos = [...pos.values()];
     const all = getPoStyleColors(g.styleNo);
-    const onPo = new Set();
-    g.lines.forEach(l => getPoColors(l.poNo).forEach(c => onPo.add(c)));
-    g.noPoColors = !onPo.size;
+    const onPo = new Set(g.kindByColor.keys());
     g.colors = all.filter(s => onPo.has(s.color.trim().toUpperCase()));
     const known = new Set(all.map(s => s.color.trim().toUpperCase()));
     g.missingColors = [...onPo].filter(c => !known.has(c));
@@ -608,25 +402,40 @@ function getPoMonthGroups() {
   return groups;
 }
 
+/** Searching every month (the default) rather than just the one picked. */
+function isPoSearchingAll() {
+  return poSearchScope === "all" && Boolean((document.getElementById("poSearchInput")?.value ?? "").trim());
+}
+
 function buildPoGroups() {
   const q = (document.getElementById("poSearchInput")?.value ?? "").trim().toLowerCase();
   setActiveSearchQuery(q);
-  const groups = getPoMonthGroups();
+  const groups = isPoSearchingAll() ? getPoGroups(getAllPoLines()) : getPoMonthGroups();
   // Photos: keep the colours that match; a style with none left goes.
   const photos = arePhotosKnown() ? poPhotoFilter : "all";
   const suggestedOnly = poSuggestedOnly && arePhotosKnown();
   groups.forEach(g => {
+    // COMPANY colours, unless asked for. A style whose colours were all COMPANY goes.
+    // A PO with only COMPANY colours goes with them.
+    if (!poShowCompany && g.colors.length) {
+      const company = new Set(g.colors.filter(isCompanyStyle).map(s => s.color.trim().toUpperCase()));
+      g.colors = g.colors.filter(s => !isCompanyStyle(s));
+      g.pos = g.pos.filter(po => po.colors.some(c => !company.has(c)));
+      if (!g.colors.length) g.allCompany = true;
+    }
+    if (poTypeFilter !== "all") {
+      g.colors = g.colors.filter(s => poColorKind(g, s) === poTypeFilter);
+      g.pos = g.pos.filter(po => po.kinds.has(poTypeFilter));
+    }
     if (photos !== "all") g.colors = g.colors.filter(s => hasStyleImages(s.styleNo, s.color) === (photos === "with"));
     if (suggestedOnly) g.colors = g.colors.filter(s => suggestPoReason(g, s));
     if (poNeedOnly) g.colors = g.colors.filter(s => { const e = getShootListEntry(s.styleNo, s.color); return e && !e.shotShootId; });
   });
   return [...groups.values()].filter(g => {
     if ((photos !== "all" || suggestedOnly || poNeedOnly) && !g.colors.length) return false;
-    const isNew = g.lines.some(l => l.dept === "S");
-    if (poTypeFilter === "new" && !isNew) return false;
-    if (poTypeFilter === "recut" && isNew) return false;
+    if (!g.pos.length || g.allCompany) return false;
     if (!q) return true;
-    const text = [g.styleNo, ...g.lines.map(l => `${l.poStyle} ${l.poNo}`),
+    const text = [g.styleNo, ...g.pos.map(po => po.poNo),
       ...g.colors.map(s => `${s.color} ${s.description} ${s.status}`)].join(" ").toLowerCase();
     return text.includes(q);
   });
@@ -665,39 +474,57 @@ function createPoGroupRow(group, cols) {
     none.textContent = `On the PO, not in the Styles database: ${group.missingColors.join(", ")}`;
     head.appendChild(none);
   }
-  if (group.noPoColors) {
-    const note = document.createElement("span");
-    note.className = "po-group-note";
-    note.textContent = "No colours — not on an N41 PO report yet";
-    note.title = "Colours come from N41's PO report. Import one that covers this PO (menu ⋮ → Import N41 PO Report).";
-    head.appendChild(note);
-  }
   td.appendChild(head);
   tr.appendChild(td);
   return tr;
 }
 
-/** One PO line: New or RE#, and the PO number. Store In is in the tooltip. */
-function createPoLineChip(line) {
+/**
+ * One PO: its kind (New, Recut, New Color — or Recut + New Color when it
+ * has both) and number. PO date, ETA and colours are in the tooltip.
+ * `po`: { poNo, poDate, eta, colors, kinds } (getPoMonthGroups), or a line.
+ */
+function createPoLineChip(po) {
+  const kinds = po.kinds ? [...po.kinds] : [po.kind];
+  const kind = kinds.includes("new") ? "new" : kinds.length > 1 ? "mixed" : kinds[0];
+  // Short enough to fit the pill; the tooltip says it in full.
+  const label = kind === "mixed" ? "Recut + NC" : PO_KIND_LABELS[kind] ?? "";
   const chip = document.createElement("span");
   chip.className = "po-line";
-  chip.dataset.dept = line.dept;
-  const kind = line.dept === "S" ? "New" : `RE${line.recut}`;
-  chip.innerHTML = `<b>${escapeHtml(kind)}</b> PO ${buildSearchHighlightedHtml(line.poNo || EMPTY_DISPLAY, getActiveSearchQuery())}`;
-  const colors = [...getPoColors(line.poNo)].join(", ");
-  chip.title = `${line.poStyle} · Store In ${line.storeIn ? formatMdy(line.storeIn) : EMPTY_DISPLAY} · row ${line.rowNo}`;
-  if (colors) chip.title += `\nN41 colours: ${colors}`;
+  chip.dataset.kind = kind;
+  chip.textContent = label;
+  chip.title = `PO ${po.poNo} · ${kind === "mixed" ? "Recut + New Color" : label} · PO date ${po.poDate ? formatMdy(po.poDate) : EMPTY_DISPLAY} · ETA ${po.eta ? formatMdy(po.eta) : EMPTY_DISPLAY}`;
+  if (po.colors) chip.title += `\nColours: ${po.colors.join(", ")}`;
   return chip;
 }
 
-/** All of a style's PO lines, stacked, for the one PO cell beside its colours. */
+/** One PO in the PO cell: its number, its IHD (the ETA), then its kind pill. */
+function createPoEntry(po) {
+  const row = document.createElement("div");
+  row.className = "po-entry";
+  const no = document.createElement("span");
+  no.className = "po-entry-no";
+  no.append("PO # ");
+  const num = document.createElement("span");
+  mountSearchHighlightedText(num, po.poNo || EMPTY_DISPLAY);
+  no.appendChild(num);
+  const eta = document.createElement("span");
+  eta.className = "po-entry-eta";
+  eta.textContent = po.eta ? formatMdy(po.eta) : EMPTY_DISPLAY;
+  eta.title = "IHD (the PO's ETA)";
+  eta.classList.toggle("is-past", Boolean(po.eta) && po.eta < todayYmd());
+  row.append(no, eta, createPoLineChip(po));
+  return row;
+}
+
+/** All of a style's POs, stacked, for the one PO cell beside its colours. */
 function createPoLinesCell(group, rowSpan) {
   const td = document.createElement("td");
   td.dataset.col = "po";
   td.rowSpan = rowSpan;
   const list = document.createElement("div");
   list.className = "po-lines";
-  list.append(...group.lines.map(createPoLineChip));
+  list.append(...group.pos.map(createPoEntry));
   td.appendChild(list);
   return td;
 }
@@ -766,13 +593,16 @@ function renderPoView() {
   const tbody = document.getElementById("poTableBody");
   if (!tbody) return;
   const cols = [...document.querySelectorAll("#poTable thead th[data-col]")].map(th => th.dataset.col);
-  const groups = poMonth ? buildPoGroups() : [];
+  const groups = poMonth || isPoSearchingAll() ? buildPoGroups() : [];
   const counter = document.getElementById("poRowCounter");
-  if (counter) counter.textContent = groups.length === 1 ? "1 style" : `${groups.length.toLocaleString()} styles`;
+  if (counter) {
+    counter.textContent = (groups.length === 1 ? "1 style" : `${groups.length.toLocaleString()} styles`)
+      + (isPoSearchingAll() ? " · all months" : "");
+  }
 
   if (!groups.length) {
     const msg = !months.length
-      ? (poLinesTableReady ? "No PO data yet — use Import Cost Sheet in the menu (⋮)." : "Create the po_lines table in Supabase (supabase-schema.sql), then use Import Cost Sheet in the menu (⋮).")
+      ? (poLinesTableReady ? "No PO data yet — use Import N41 POs in the menu (⋮)." : "Create the n41_po_lines table in Supabase (supabase-schema.sql), then use Import N41 POs in the menu (⋮).")
       : "No styles match the current filters.";
     tbody.innerHTML = `<tr class="state-row"><td colspan="${cols.length}">${escapeHtml(msg)}</td></tr>`;
     return;
@@ -866,15 +696,6 @@ async function addPoSuggested() {
 }
 
 function initPurchaseOrders() {
-  document.getElementById("headerMenuCostSheet")?.addEventListener("click", () => {
-    closeHeaderMenu();
-    runCostSheetMenuAction();
-  });
-  document.getElementById("headerMenuCostSheetUnlink")?.addEventListener("click", () => {
-    closeHeaderMenu();
-    unlinkCostSheet();
-  });
-  document.getElementById("poImportFile")?.addEventListener("change", e => importCostSheet(e.target.files?.[0]));
   document.getElementById("headerMenuImportPoColors")?.addEventListener("click", () => {
     closeHeaderMenu();
     const input = document.getElementById("poN41File");
@@ -882,12 +703,9 @@ function initPurchaseOrders() {
     input.value = "";
     input.click();
   });
-  document.getElementById("poN41File")?.addEventListener("change", e => importN41PoReport(e.target.files?.[0]));
-  // Coming back to the app's tab: check the file again (at most once a minute).
+  document.getElementById("poN41File")?.addEventListener("change", e => importN41Pos(e.target.files?.[0]));
+  // A new day: ETAs that passed yesterday stop counting.
   document.addEventListener("visibilitychange", () => {
-    if (document.visibilityState === "visible" && costSheetState === "ready"
-      && Date.now() - costSheetCheckedAt > COST_SHEET_RECHECK_MS) syncCostSheet();
-    // A new day: Store Ins that passed yesterday stop counting.
     if (document.visibilityState === "visible") refreshPoIhds();
   });
   document.querySelectorAll("#poTypeFilters .filter-btn").forEach(btn => {
@@ -902,10 +720,22 @@ function initPurchaseOrders() {
       renderPoView();
     });
   });
-  document.getElementById("poSearchInput")?.addEventListener("input", renderPoView);
+  let searchTimer = 0;
+  document.getElementById("poSearchInput")?.addEventListener("input", () => {
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(renderPoView, 150);
+  });
+  document.getElementById("poSearchScope")?.addEventListener("change", e => {
+    poSearchScope = e.target.value;
+    renderPoView();
+  });
   document.getElementById("poSuggestedBtn")?.addEventListener("click", () => {
     poSuggestedOnly = !poSuggestedOnly;
     if (poSuggestedOnly) poNeedOnly = false; // suggestions are never already waiting
+    renderPoView();
+  });
+  document.getElementById("poShowCompany")?.addEventListener("change", e => {
+    poShowCompany = e.target.checked;
     renderPoView();
   });
   document.getElementById("poNeedBtn")?.addEventListener("click", () => {

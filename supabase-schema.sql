@@ -260,6 +260,12 @@ alter table styles add column if not exists deleted_at timestamptz;
 -- sends it, so re-importing leaves it alone.
 alter table styles add column if not exists notes text not null default '';
 
+-- From the ATS export (CSV): N41's available date as 'YYYY-MM' (the app
+-- shows it as JUL26), the memo, and the received quantity.
+alter table styles add column if not exists available_date text not null default '';
+alter table styles add column if not exists memo text not null default '';
+alter table styles add column if not exists received_qty numeric;
+
 -- ── Magento groups (Magento tab → Import groups) ────────────────────────────
 --
 -- Which Simple items belong to each Grouped product, exactly as Magento has
@@ -422,4 +428,29 @@ alter table sample_photo_links enable row level security;
 
 drop policy if exists "sample_photo_links: own rows only" on sample_photo_links;
 create policy "sample_photo_links: own rows only" on sample_photo_links
+  for all using (user_id = auth.uid()) with check (user_id = auth.uid());
+
+-- ── N41 PO lines (POs → menu → Import N41 POs) ──────────────────────────────
+--
+-- One row per PO # + Style + Color from N41's "P.O Detail by Vendor" export,
+-- with the PO date and ETA. An import replaces the POs in the file and keeps
+-- the rest. A style + colour on a PO takes its IHD from the ETAs (worked out
+-- in the app). Replaces the cost sheet's po_lines and N41 report's po_colors,
+-- which the app no longer reads.
+
+create table if not exists n41_po_lines (
+  user_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
+  po_no text not null,
+  style_no text not null,
+  color text not null default '',
+  po_date date,
+  eta date,
+  imported_at timestamptz not null default now(),
+  primary key (user_id, po_no, style_no, color)
+);
+
+alter table n41_po_lines enable row level security;
+
+drop policy if exists "n41_po_lines: own rows only" on n41_po_lines;
+create policy "n41_po_lines: own rows only" on n41_po_lines
   for all using (user_id = auth.uid()) with check (user_id = auth.uid());

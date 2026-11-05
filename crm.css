@@ -6902,9 +6902,13 @@ span.dash-event { cursor: pointer; /* clicking selects the day */ }
 .styles-table .col-category    { width: 180px; min-width: 140px; }
 .styles-table .col-season      { width: 90px;  min-width: 80px; }
 .styles-table .col-status      { width: 110px; min-width: 100px; }
-/* Styles and Need to Shoot: only as wide as their columns, centered. */
-#stylesTable,
+.styles-table .col-available   { width: 84px;  min-width: 76px; }
+.styles-table .col-magento     { width: 130px; min-width: 120px; }
+/* Styles and Need to Shoot: only as wide as their columns. Styles sits on
+   the left, leaving room for the style pane on the right; Need is centered. */
+#stylesTable { width: max-content; margin: 0; }
 #needTable { width: max-content; margin: 0 auto; }
+body:has(#stylePane:not([hidden])) #stylesTableWrap > .table-scroll-x { margin-right: 540px; }
 #stylesTable .col-description,
 #needTable .col-description { width: 300px; }
 
@@ -7531,10 +7535,12 @@ th.th-select { text-align: center; cursor: default; padding-left: 4px; padding-r
 .need-table .col-added { width: 110px; min-width: 100px; }
 
 /* POs: a style's row (Style #, description) across the table; its colours under it, with its PO lines down the PO column. */
-#poTable { width: max-content; margin: 0 auto; }
+/* Against the month list on the left; with the style pane open, the table
+   stops at its edge (scrolling sideways if it has to) instead of under it. */
+#poTable { width: max-content; margin: 0; }
+body:has(#stylePane:not([hidden])) #posTableWrap > .table-scroll-y { margin-right: 540px; }
 .po-table .col-color  { width: 200px; }
-.po-table .col-po     { width: 130px; }
-.po-table .col-ihd    { width: 100px; }
+.po-table .col-po     { width: 290px; }
 .po-group-row td {
   padding-top: 10px;
   padding-bottom: 10px;
@@ -7559,17 +7565,47 @@ th.th-select { text-align: center; cursor: default; padding-left: 4px; padding-r
    doesn't light up with the colour row under the mouse. */
 .po-table td[data-col="po"] { vertical-align: top; padding-top: 8px; }
 .po-table tr:hover td[data-col="po"] { background: var(--surface); }
-.po-lines { display: flex; flex-direction: column; align-items: flex-start; gap: 3px; }
-.po-line {
-  padding: 2px 8px;
-  border-radius: 10px;
-  background: #fff;
-  color: #1f56a5;
-  box-shadow: inset 0 0 0 1px #b9cdee;
-  font-size: 11px;
-  white-space: nowrap;
+/* A style's POs together in a soft box. */
+.po-lines {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+  padding: 6px 8px;
+  border: 1px solid #e3e6eb;
+  border-radius: 8px;
+  background: #f6f7f9;
 }
-.po-line[data-dept="S"] { background: #1f56a5; color: #fff; box-shadow: none; }
+/* One PO in the PO cell: number, IHD (its ETA), kind pill — in columns. */
+.po-entry { display: grid; grid-template-columns: 86px 62px auto; align-items: center; gap: 6px; font-size: 12px; }
+.po-entry-no { color: var(--text-muted); font-size: 11px; white-space: nowrap; }
+.po-entry-no > span { color: var(--text); font-size: 12px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.po-entry-eta { font-variant-numeric: tabular-nums; }
+.po-entry-eta.is-past { color: var(--text-muted); }
+/* The kind pill: every one the same width, filled with a soft shade —
+   New a deeper magenta, New Color the paler one, Recut teal-blue; a PO
+   with both blends Recut into New Color. */
+.po-line {
+  display: inline-block;
+  box-sizing: border-box;
+  width: 92px;
+  padding: 1px 6px;
+  border-radius: 9px;
+  background: #ecc6ea;
+  color: #7a1c78;
+  font-size: 10.5px;
+  font-weight: 600;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.po-line[data-kind="recut"] { background: #dfeef6; color: #1d6f9e; }
+.po-line[data-kind="newColor"] { background: #f5e3f4; color: #9d2c9b; }
+.po-line[data-kind="mixed"] { background: linear-gradient(90deg, #dfeef6, #f5e3f4); color: #5b3f8c; }
+/* An IHD set from PO ETAs: shown, not typed in. */
+.cell-date-po { font-variant-numeric: tabular-nums; cursor: help; }
+.cell-date-po.is-past { color: var(--text-muted); }
 /* Space between one style's colours and the next style. */
 .po-table tr.po-gap-row td { height: 18px; padding: 0; background: var(--bg); border-left-color: transparent; border-right-color: transparent; }
 .po-table tr.po-gap-row:hover td { background: var(--bg); }
@@ -7646,6 +7682,7 @@ th.th-select { text-align: center; cursor: default; padding-left: 4px; padding-r
 .po-month:hover .po-month-pick { color: var(--text); }
 .po-month-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .po-month-count { font-size: 11.5px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.po-search-scope { width: auto; height: 32px; padding: 0 28px 0 10px; font-size: 13px; }
 
 /* Picked: dark, like the main menu. */
 .po-month.is-active { background: var(--text); }
@@ -8385,6 +8422,8 @@ td > .style-shoot-cell {
 }
 .mg-avail-pill.is-yes { background: #dff3e6; color: #13703a; }
 .mg-avail-pill.is-no { background: #eef0f3; color: #6b7280; }
+.mg-avail-pill.is-none { background: transparent; color: var(--text-muted); font-weight: 600; }
+.mg-avail-pill.is-none::before { display: none; }
 .mg-avail-pill.is-unknown { background: transparent; color: var(--text-muted); border: 1px dashed var(--border-strong); }
 .mg-flagged-btn.active { background: #a3233a; border-color: #a3233a; color: #fff; }
 
@@ -8901,21 +8940,125 @@ td > .style-shoot-cell {
    Style pane (js/style-pane.js) — details, then photos one under another
    ============================================================ */
 
-.style-pane .item-pane-summary { align-items: center; }
+/* Two fields to a row (label, value, label, value); a wide one takes the row. */
+.style-pane .item-pane-summary { align-items: center; grid-template-columns: max-content minmax(0, 1fr) max-content minmax(0, 1fr); }
+.style-pane .item-pane-value { font-weight: 400; }
+/* Each label stays level with the first line of its value, even beside an open PO list. */
+.style-pane .item-pane-summary { align-items: start; row-gap: 2px; }
+.style-pane .item-pane-label,
+.style-pane .item-pane-value { min-height: 26px; display: flex; align-items: center; }
+.style-pane .item-pane-value > .style-pane-pos-box { align-self: flex-start; padding-top: 3px; }
+.style-pane .item-pane-value.is-wide { grid-column: span 3; }
+/* Header: Style # · Color and its season, the description, then N41 and Magento status. */
+/* Nothing in the header is cut off: long names and descriptions wrap. */
+.style-pane .item-pane-title { font-size: 17px; gap: 4px 6px; flex-wrap: wrap; }
+.style-pane-name { white-space: normal; overflow-wrap: anywhere; }
+.style-pane .item-pane-subtitle { white-space: normal; overflow: visible; text-overflow: clip; }
+/* Several colours: the colour is a dropdown, its arrow beside it. */
+.style-pane-color-pick { position: relative; display: inline-flex; align-items: center; max-width: 100%; }
+.style-pane-color-select {
+  appearance: none;
+  min-width: 0;
+  max-width: 100%;
+  margin: 0;
+  padding: 1px 22px 1px 4px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") no-repeat right 6px center;
+  color: var(--text);
+  font: inherit;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+.style-pane-color-select:hover,
+.style-pane-color-select:focus { border-color: var(--border-strong); background-color: var(--surface); outline: none; }
+.style-pane-category { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+/* Memo: Style #s (a set's pieces) as rounded pills; the others open on click. */
+.style-pane-memo { display: block; line-height: 1.9; white-space: pre-wrap; }
+.style-pane-memo-style {
+  display: inline-block;
+  margin: 0 1px;
+  padding: 0 7px;
+  border: 1px solid #c9d6ea;
+  border-radius: 6px;
+  background: #eef3fb;
+  color: #1f4f8f;
+  font: inherit;
+  font-weight: 600;
+  line-height: 1.6;
+  white-space: nowrap;
+}
+button.style-pane-memo-style { cursor: pointer; }
+button.style-pane-memo-style:hover { background: #dde8f8; border-color: #9fb7dc; text-decoration: underline; }
+.style-pane-memo-style.is-current { background: #eef0f3; border-color: #d6dae0; color: var(--text); }
+.style-pane-memo-style.is-missing { background: transparent; border-style: dashed; color: var(--text-muted); font-weight: 500; }
+.style-pane-season {
+  flex-shrink: 0;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: #eef0f3;
+  color: #4b5563;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+}
+/* N41 and Magento on the right of the header: the name above, the pill under it. */
+.style-pane-statuses { display: flex; align-items: flex-start; gap: 14px; flex-shrink: 0; }
+.style-pane-status { display: flex; flex-direction: column; align-items: flex-start; gap: 3px; }
+.style-pane-status-label { font-size: 10.5px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--text-muted); }
+.style-pane-statuses .mg-avail-cell { display: inline-flex; }
+/* Notes: the text and a pencil; the box opens only to edit. */
+.style-pane-notes { display: flex; align-items: flex-start; gap: 6px; min-width: 0; }
+.style-pane-notes-text { flex: 0 1 auto; min-width: 0; white-space: pre-wrap; word-break: break-word; font-size: 13px; padding-top: 3px; }
+/* PO: the count in a pill, then the arrow. */
+.style-pane-pos-count {
+  min-width: 22px;
+  padding: 0 7px;
+  border-radius: 999px;
+  background: #e8ebf0;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 600;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+.style-pane-notes-text.is-empty { color: var(--text-muted); }
+.style-pane-notes-edit { flex-shrink: 0; width: 26px; height: 26px; display: inline-flex; align-items: center; justify-content: center; }
+.style-pane-notes .cell-notes-input { flex: 1; }
+.style-pane-notes [hidden] { display: none !important; }
+/* Shoot buttons over the photos, when there are no model photos. */
+.style-pane-shoot { margin-bottom: 12px; }
+.style-pane-shoot[hidden] { display: none; }
 .style-pane .style-shoot-cell { justify-content: flex-start; }
 .style-pane .cell-date { width: 136px; }
 .style-pane-pos-summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   font-size: 12.5px;
   font-weight: 600;
   color: var(--text);
   cursor: pointer;
   user-select: none;
+  list-style: none;
 }
+.style-pane-pos-summary::-webkit-details-marker { display: none; }
+/* The arrow: right when folded, down when open. */
+.style-pane-pos-summary::after {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: rotate(-45deg);
+  transition: transform 0.15s;
+}
+.style-pane-pos-box[open] .style-pane-pos-summary::after { transform: rotate(45deg) translate(-1px, -1px); }
 .style-pane-pos-summary:hover { color: var(--text-muted); }
 .style-pane-pos-box[open] .style-pane-pos-summary { margin-bottom: 6px; }
 .style-pane-pos { display: flex; flex-direction: column; gap: 4px; }
 .style-pane-po { display: flex; align-items: center; gap: 8px; font-size: 12px; }
-.style-pane-po-month { font-weight: 600; }
+.style-pane-po-month { font-weight: 400; }
 .style-pane-po-store { color: var(--text-muted); }
 .style-pane-photos { display: flex; flex-direction: column; gap: 14px; }
 .style-pane-photo { margin: 0; }

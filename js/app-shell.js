@@ -5,7 +5,7 @@
  * (lists), "platforms" (banners), "styles" (the style database),
  * "photoshoots" (the shoots), "needToShoot" (styles waiting for one), "complete"
  * (styles shot or made in CG), "pos"
- * (the cost sheet's PO lines by month), and "magento" (the store's
+ * (N41's PO lines by ETA month), and "magento" (the store's
  * products and categories, live). A record opens in a side pane over
  * whichever view is showing (js/item-pane.js, js/banners.js,
  * js/photoshoots.js, js/magento.js), not as a view of its own.
@@ -92,7 +92,10 @@ function switchAppView(view) {
   if (view === "home") renderCalendar();
   RECORD_LISTS[view]?.apply();
   if (view === "platforms") applyBannerFilters();
-  if (view === "styles") applyStyleFilters();
+  if (view === "styles") {
+    ensureStyleMgAvailability(); // Magento Status (js/magento-availability.js)
+    applyStyleFilters();
+  }
   if (isPhotoshootView(view)) renderPhotoshootsView();
   if (view === "complete") renderCompleteView();
   if (view === "pos") renderPoView();
@@ -221,16 +224,6 @@ function syncHeaderMenu() {
     if (label) sampleFolder.querySelector("span").textContent = label;
     sampleUnlink.hidden = !canUnlink;
   }
-  // Same for the linked cost sheet (js/purchase-orders.js).
-  const sheet = document.getElementById("headerMenuCostSheet");
-  const sheetUnlink = document.getElementById("headerMenuCostSheetUnlink");
-  if (page === "pos" && sheet && sheetUnlink) {
-    const { label, canUnlink } = getCostSheetMenuState();
-    sheet.hidden = !label;
-    if (label) sheet.querySelector("span").textContent = label;
-    sheetUnlink.hidden = !canUnlink;
-  }
-
   // Sign Out's divider only when something sits above it.
   document.getElementById("headerMenuSignOut")?.classList.toggle("header-menu-item-separator", items.some(item => !item.hidden));
 }

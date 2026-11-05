@@ -34,10 +34,27 @@ const STYLE_COLUMNS = {
   category: { value: s => s.category },
   season: { value: s => s.season },
   status: { value: s => s.status },
+  // Showing on the webstore (js/magento-availability.js).
+  magento: { value: s => styleMgStatusText(s) },
+  // "YYYY-MM" sorts as a date; shown as JUL26.
+  available: { value: s => s.availableDate ?? "", display: s => formatMonYY(s.availableDate) },
   // "YYYY-MM-DD" sorts as a date; blanks on top soonest first, at the bottom latest first.
   ihd: { value: s => fixTwoDigitYear(s.ihd) }, // an old 0026-… sorts as 2026, as it shows
   notes: { value: s => s.notes ?? "" },
 };
+
+/** N41's available month, "2026-07" → "JUL26" ("" when there's none). */
+function formatMonYY(ym) {
+  const m = /^(\d{4})-(\d{2})/.exec(String(ym ?? ""));
+  if (!m) return "";
+  const month = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"][Number(m[2]) - 1];
+  return month ? `${month}${m[1].slice(2)}` : "";
+}
+
+/** What search looks through for a style. */
+function styleSearchText(s) {
+  return `${s.styleNo} ${s.color} ${s.description} ${s.category} ${s.season} ${s.status} ${formatMonYY(s.availableDate)} ${s.memo ?? ""} ${s.notes ?? ""}`.toLowerCase();
+}
 
 /** Statuses the No photos button leaves out (CANCEL also covers CANCELLED…). */
 const NO_PHOTOS_SKIP_STATUSES = ["COMPANY", "CANCEL", "INACTIVE"];
@@ -69,6 +86,11 @@ function isStatusHiddenByDefault(key) {
   return STATUS_HIDDEN_BY_DEFAULT.some(s => upper === s || upper.startsWith(s));
 }
 
+/** On Styles, INACTIVE starts unticked too. */
+function isStyleStatusHiddenByDefault(key) {
+  return isStatusHiddenByDefault(key) || key.toUpperCase() === "INACTIVE";
+}
+
 function compareStyles(a, b) {
   if (styleSortCol) {
     // compareSortValues (js/photoshoots.js) keeps blanks last — but IHD soonest first puts them on top.
@@ -85,14 +107,14 @@ function applyStyleFilters({ keepShown = false } = {}) {
   const noPhotos = styleNoPhotosOnly && arePhotosKnown();
 
   filteredStyles = getShownStyleSource().filter(s => {
-    if (styleShowDeleted) return !q || `${s.styleNo} ${s.color} ${s.description} ${s.category} ${s.season} ${s.status} ${s.notes ?? ""}`.toLowerCase().includes(q);
+    if (styleShowDeleted) return !q || styleSearchText(s).includes(q);
     if (!columnFilterPasses("stylesTable", "status", statusFilterKey(s.status))) return false;
     if (!columnFilterPasses("stylesTable", "category", statusFilterKey(s.category))) return false;
     if (!columnFilterPasses("stylesTable", "season", statusFilterKey(s.season))) return false;
     if (noPhotos && (NO_PHOTOS_SKIP_STATUSES.some(st => statusFilterKey(s.status).toUpperCase().startsWith(st)) || hasStyleImages(s.styleNo, s.color))) return false;
     if (!columnFilterPasses("stylesTable", "ihd", monthFilterKey(s.ihd))) return false;
     if (!q) return true;
-    return `${s.styleNo} ${s.color} ${s.description} ${s.category} ${s.season} ${s.status} ${s.notes ?? ""}`.toLowerCase().includes(q);
+    return styleSearchText(s).includes(q);
   });
   filteredStyles.sort(compareStyles);
   // A new search or filter starts at page 1; a redraw (a save, a photo scan) stays put.
@@ -187,7 +209,7 @@ function renderStylesTable() {
     const msg = styleShowDeleted
       ? (getDeletedStyles().length ? "No deleted styles match the search." : "No deleted styles.")
       : getAllStyles().length === 0
-        ? "No styles yet — use Import Excel in the menu (⋮) to load the ATS export."
+        ? "No styles yet — use Import CSV in the menu (⋮) to load the style export."
         : "No styles match the current filters.";
     tbody.innerHTML = `<tr class="state-row"><td colspan="${cols.length}">${escapeHtml(msg)}</td></tr>`;
     renderStylesPager();
@@ -209,7 +231,8 @@ function renderStylesTable() {
       else if (col === "ihd") td.appendChild(createIhdInput(style));
       else if (col === "notes") td.appendChild(createStyleNotesInput(style, { onSaved: refreshStylePaneSummary }));
       else if (col === "status") td.appendChild(createStyleStatusPill(style.status));
-      else mountSearchHighlightedText(td, STYLE_COLUMNS[col].value(style));
+      else if (col === "magento") td.appendChild(createStyleMgStatusCell(style));
+      else mountSearchHighlightedText(td, (STYLE_COLUMNS[col].display ?? STYLE_COLUMNS[col].value)(style));
       if (col === "description" && style.description) td.title = style.description;
       tr.appendChild(td);
     });
@@ -301,7 +324,23 @@ function createStyleNotesInput(style, { multiline = false, onSaved } = {}) {
 // picks one and saves straight away. Esc undoes the edit.
 
 /** `onSaved` runs after a successful save — for views whose warnings depend on it. */
+/** A PO-set IHD: the date, with every PO and its ETA in the tooltip. */
+function createPoIhdText(style) {
+  const span = document.createElement("span");
+  span.className = "cell-date-po";
+  const today = todayYmd();
+  span.classList.toggle("is-past", Boolean(style.ihd) && style.ihd < today);
+  span.textContent = style.ihd ? formatMdy(style.ihd) : EMPTY_DISPLAY;
+  const lines = getStylePoLines(style.styleNo, style.color);
+  span.title = "IHD from the PO ETAs — the next one from today" +
+    (style.ihd && style.ihd < today ? " (all have passed: the latest)" : "") + "\n" +
+    lines.map(l => `PO ${l.poNo} · ETA ${l.eta ? formatMdy(l.eta) : EMPTY_DISPLAY}`).join("\n");
+  return span;
+}
+
 function createIhdInput(style, { onSaved } = {}) {
+  // On a PO: the IHD is the next ETA (js/store.js applyPoIhds) — shown, not typed.
+  if (style.ihdFromPo) return createPoIhdText(style);
   const wrap = document.createElement("span");
   wrap.className = "cell-date";
 
@@ -576,7 +615,7 @@ function initStylesView() {
   initColumnFilter("stylesTable", "status", {
     options: () => statusFilterOptions(getAllStyles().map(s => s.status)),
     onChange: () => applyStyleFilters(),
-    hideByDefault: isStatusHiddenByDefault,
+    hideByDefault: isStyleStatusHiddenByDefault,
     sortable: true,
   });
   document.getElementById("styleSearchInput")?.addEventListener("input", () => applyStyleFilters());

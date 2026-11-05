@@ -6,7 +6,7 @@
 <title>MIOU MUSE</title>
 <link rel="icon" href="favicon.png?v=2" type="image/png" />
 <link rel="apple-touch-icon" href="favicon.png?v=2" />
-<link rel="stylesheet" href="crm.css?v=20261105-0102" />
+<link rel="stylesheet" href="crm.css?v=20261105-2238" />
 </head>
 <body>
 
@@ -101,18 +101,9 @@
           <svg class="header-menu-item-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M17 8l-5-5-5 5"/><path d="M12 3v12"/></svg>
           <span>Import N41 Sales Orders</span>
         </button>
-        <!-- Label follows the cost sheet's state: Link / Reconnect / Update (js/purchase-orders.js). -->
-        <button type="button" class="header-menu-item" id="headerMenuCostSheet" role="menuitem" data-pages="pos">
-          <svg class="header-menu-item-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
-          <span>Link Cost Sheet</span>
-        </button>
-        <button type="button" class="header-menu-item" id="headerMenuCostSheetUnlink" role="menuitem" data-pages="pos">
-          <svg class="header-menu-item-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M9 15h6"/></svg>
-          <span>Unlink Cost Sheet</span>
-        </button>
         <button type="button" class="header-menu-item" id="headerMenuImportPoColors" role="menuitem" data-pages="pos">
           <svg class="header-menu-item-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M17 8l-5-5-5 5"/><path d="M12 3v12"/></svg>
-          <span>Import N41 PO Report</span>
+          <span>Import N41 POs</span>
         </button>
         <button type="button" class="header-menu-item" id="headerMenuExportCsv" role="menuitem" data-pages="campaigns tradeShows needToShoot styles magento:products magento:orders magento:customers">
           <svg class="header-menu-item-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5"/><path d="M12 3v12"/></svg>
@@ -265,10 +256,11 @@
 <div id="posToolbar" class="toolbar" hidden>
   <div class="toolbar-filter-cluster">
     <div class="toolbar-filter-section shoot-controls">
-      <div class="filter-btn-group" id="poTypeFilters" role="group" aria-label="New or recut">
+      <div class="filter-btn-group" id="poTypeFilters" role="group" aria-label="New, recut or new color">
         <button type="button" class="filter-btn" data-type="all">All</button>
         <button type="button" class="filter-btn" data-type="new">New</button>
         <button type="button" class="filter-btn" data-type="recut">Recut</button>
+        <button type="button" class="filter-btn" data-type="newColor">New Color</button>
       </div>
       <span class="toolbar-filter-divider" aria-hidden="true"></span>
       <div class="filter-btn-group" id="poPhotoFilters" role="group" aria-label="Photos">
@@ -286,6 +278,12 @@
       <button type="button" class="filter-btn" id="poNeedBtn" title="Show only the colours waiting on Need to Shoot">Need to Shoot</button>
       <button type="button" class="filter-btn" id="poSuggestedBtn">Suggested</button>
       <button type="button" class="btn" id="poAddSuggestedBtn" title="Put every suggestion (the filled buttons) on Need to Shoot">Add suggested to Need to Shoot</button>
+      <span class="toolbar-filter-divider" aria-hidden="true"></span>
+      <label class="form-check" title="Colours with N41 status COMPANY are hidden unless this is ticked">
+        <input type="checkbox" id="poShowCompany" />
+        <span class="form-check-box" aria-hidden="true"></span>
+        <span>Show Company POs</span>
+      </label>
     </div>
   </div>
 
@@ -295,10 +293,11 @@
       <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
       <input type="search" id="poSearchInput" placeholder="Search" />
     </div>
-    <input type="file" id="poImportFile" accept=".xlsx,.xlsm,.xls" hidden />
+    <select class="form-input po-search-scope" id="poSearchScope" aria-label="Search which POs" title="Search every month's POs, or just the month picked">
+      <option value="all">All months</option>
+      <option value="month">This month</option>
+    </select>
     <input type="file" id="poN41File" accept=".xlsx,.xls" hidden />
-    <!-- The linked cost sheet: when it was read, or Reconnect (js/purchase-orders.js). -->
-    <div class="style-image-status" id="poCostSheetStatus"></div>
   </div>
 
   <!-- Colours with no photos not on Need to Shoot yet (js/purchase-orders.js). -->
@@ -701,6 +700,8 @@
         <col class="col-category" />
         <col class="col-season" />
         <col class="col-status" />
+        <col class="col-magento" />
+        <col class="col-available" />
         <col class="col-ihd" />
         <col class="col-shoot" />
         <col class="col-notes" />
@@ -715,13 +716,15 @@
           <th data-col="category">Category</th>
           <th data-col="season">Season</th>
           <th data-col="status">N41 Status</th>
+          <th data-col="magento" title="Showing on the webstore: the colour's Magento item (STYLE#-COLOR) is enabled, in stock, salable qty above 0, and in an available group">Magento Status</th>
+          <th data-col="available" title="N41 available date">Available</th>
           <th data-col="ihd" title="In-house date">IHD</th>
           <th data-col="shoot">Shoot</th>
           <th data-col="notes">Notes</th>
         </tr>
       </thead>
       <tbody id="stylesTableBody">
-        <tr class="state-row"><td colspan="11">Loading styles…</td></tr>
+        <tr class="state-row"><td colspan="13">Loading styles…</td></tr>
       </tbody>
     </table>
     </div>
@@ -807,7 +810,7 @@
     </div>
   </div>
 
-  <!-- ── POs: the cost sheet by month ────────────────────────── -->
+  <!-- ── POs: N41's PO lines by ETA month ─────────────────── -->
   <!-- The months down the left (js/purchase-orders.js), the month's POs beside them. -->
   <div id="posTableWrap" class="po-view-content po-layout" hidden>
     <nav class="po-months" id="poMonthList" aria-label="Months"></nav>
@@ -819,23 +822,21 @@
         <col class="col-image" />
         <col class="col-color" />
         <col class="col-shoot" />
-        <col class="col-ihd" />
         <col class="col-status" />
         <col class="col-notes" />
       </colgroup>
       <thead>
         <tr>
-          <th data-col="po" aria-label="PO"></th>
+          <th data-col="po" title="PO #, its IHD (the ETA) and New / Recut / New Color">PO · IHD</th>
           <th data-col="image" aria-label="Photo"></th>
           <th data-col="color">Color</th>
           <th data-col="shoot">Shoot</th>
-          <th data-col="ihd" title="In-house date">IHD</th>
           <th data-col="status">N41 Status</th>
           <th data-col="notes">Notes</th>
         </tr>
       </thead>
       <tbody id="poTableBody">
-        <tr class="state-row"><td colspan="7">Loading…</td></tr>
+        <tr class="state-row"><td colspan="6">Loading…</td></tr>
       </tbody>
     </table>
     </div>
@@ -933,6 +934,7 @@
         <span class="item-pane-title" id="stylePaneTitle"></span>
         <span class="item-pane-subtitle" id="stylePaneSubtitle"></span>
       </div>
+      <div class="style-pane-statuses" id="stylePaneStatuses"></div>
       <div class="item-pane-header-actions">
         <button type="button" class="item-pane-icon-btn item-pane-close" id="stylePaneClose" aria-label="Close" title="Close">✕</button>
       </div>
@@ -944,6 +946,7 @@
           <span class="item-pane-section-title">Photos</span>
           <span class="item-pane-section-count" id="stylePanePhotoCount"></span>
         </div>
+        <div class="style-pane-shoot" id="stylePaneShoot" hidden></div>
         <div class="style-pane-photos" id="stylePanePhotos"></div>
       </section>
     </div>
@@ -1804,7 +1807,7 @@
     <!-- Title with the file under it, then the changes' search (js/style-import.js). -->
     <div class="modal-header style-import-header">
       <div class="style-import-head">
-        <h3 id="styleImportTitle">Import styles from Excel</h3>
+        <h3 id="styleImportTitle">Import styles</h3>
         <span class="style-import-head-file" id="styleImportHeadFile"></span>
       </div>
       <div class="style-import-head-search" id="styleImportHeadSearch"></div>
@@ -1817,7 +1820,7 @@
           <input type="file" id="styleImportFile" accept=".csv,text/csv,.xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel" hidden />
           Choose file
         </label>
-        <span class="form-hint">Read from row 8: Status (B), Season (D), Category (F), Style # (H), Color (I), Description (L). Rows without a Style # are skipped. Nothing is saved until you confirm.</span>
+        <span class="form-hint">The style CSV: Style # (A), Color (B), Status (C), Available date (D), Season (F), Description (J), Memo (K), Received qty (R). Category isn't in it, so styles keep theirs. Rows without a Style # are skipped. Nothing is saved until you confirm.</span>
       </div>
       <div class="style-import-preview" id="styleImportPreview"></div>
     </div>
@@ -1942,45 +1945,45 @@
   </div>
 </div>
 
-<script src="js/config.js?v=20261105-0102"></script>
+<script src="js/config.js?v=20261105-2238"></script>
 <!-- Needs SUPABASE_URL/KEY from config.js and the CDN client above. -->
-<script src="js/auth.js?v=20261105-0102"></script>
-<script src="js/util.js?v=20261105-0102"></script>
-<script src="js/dates.js?v=20261105-0102"></script>
-<script src="js/store.js?v=20261105-0102"></script>
-<script src="js/tasks.js?v=20261105-0102"></script>
-<script src="js/app-shell.js?v=20261105-0102"></script>
-<script src="js/table-pager.js?v=20261105-0102"></script>
-<script src="js/record-list.js?v=20261105-0102"></script>
-<script src="js/item-pane.js?v=20261105-0102"></script>
-<script src="js/campaign-form.js?v=20261105-0102"></script>
-<script src="js/trade-show-form.js?v=20261105-0102"></script>
-<script src="js/banners.js?v=20261105-0102"></script>
-<script src="js/banner-form.js?v=20261105-0102"></script>
-<script src="js/mailchimp.js?v=20261105-0102"></script>
-<script src="js/style-import.js?v=20261105-0102"></script>
-<script src="js/column-filter.js?v=20261105-0102"></script>
-<script src="js/styles.js?v=20261105-0102"></script>
-<script src="js/style-images.js?v=20261105-0102"></script>
-<script src="js/sample-photos.js?v=20261105-0102"></script>
-<script src="js/photoshoots.js?v=20261105-0102"></script>
-<script src="js/complete.js?v=20261105-0102"></script>
-<script src="js/photoshoot-form.js?v=20261105-0102"></script>
-<script src="js/purchase-orders.js?v=20261105-0102"></script>
-<script src="js/style-pane.js?v=20261105-0102"></script>
-<script src="js/magento.js?v=20261105-0102"></script>
-<script src="js/magento-availability.js?v=20261105-0102"></script>
-<script src="js/magento-sales.js?v=20261105-0102"></script>
-<script src="js/magento-n41.js?v=20261105-0102"></script>
-<script src="js/magento-events.js?v=20261105-0102"></script>
-<script src="js/trade-show-import.js?v=20261105-0102"></script>
-<script src="js/magento-groups.js?v=20261105-0102"></script>
-<script src="js/table-view.js?v=20261105-0102"></script>
-<script src="js/exports.js?v=20261105-0102"></script>
-<script src="js/copy-menu.js?v=20261105-0102"></script>
-<script src="js/row-quick-select.js?v=20261105-0102"></script>
-<script src="js/shortcuts.js?v=20261105-0102"></script>
-<script src="js/calendar.js?v=20261105-0102"></script>
-<script src="js/main.js?v=20261105-0102"></script>
+<script src="js/auth.js?v=20261105-2238"></script>
+<script src="js/util.js?v=20261105-2238"></script>
+<script src="js/dates.js?v=20261105-2238"></script>
+<script src="js/store.js?v=20261105-2238"></script>
+<script src="js/tasks.js?v=20261105-2238"></script>
+<script src="js/app-shell.js?v=20261105-2238"></script>
+<script src="js/table-pager.js?v=20261105-2238"></script>
+<script src="js/record-list.js?v=20261105-2238"></script>
+<script src="js/item-pane.js?v=20261105-2238"></script>
+<script src="js/campaign-form.js?v=20261105-2238"></script>
+<script src="js/trade-show-form.js?v=20261105-2238"></script>
+<script src="js/banners.js?v=20261105-2238"></script>
+<script src="js/banner-form.js?v=20261105-2238"></script>
+<script src="js/mailchimp.js?v=20261105-2238"></script>
+<script src="js/style-import.js?v=20261105-2238"></script>
+<script src="js/column-filter.js?v=20261105-2238"></script>
+<script src="js/styles.js?v=20261105-2238"></script>
+<script src="js/style-images.js?v=20261105-2238"></script>
+<script src="js/sample-photos.js?v=20261105-2238"></script>
+<script src="js/photoshoots.js?v=20261105-2238"></script>
+<script src="js/complete.js?v=20261105-2238"></script>
+<script src="js/photoshoot-form.js?v=20261105-2238"></script>
+<script src="js/purchase-orders.js?v=20261105-2238"></script>
+<script src="js/style-pane.js?v=20261105-2238"></script>
+<script src="js/magento.js?v=20261105-2238"></script>
+<script src="js/magento-availability.js?v=20261105-2238"></script>
+<script src="js/magento-sales.js?v=20261105-2238"></script>
+<script src="js/magento-n41.js?v=20261105-2238"></script>
+<script src="js/magento-events.js?v=20261105-2238"></script>
+<script src="js/trade-show-import.js?v=20261105-2238"></script>
+<script src="js/magento-groups.js?v=20261105-2238"></script>
+<script src="js/table-view.js?v=20261105-2238"></script>
+<script src="js/exports.js?v=20261105-2238"></script>
+<script src="js/copy-menu.js?v=20261105-2238"></script>
+<script src="js/row-quick-select.js?v=20261105-2238"></script>
+<script src="js/shortcuts.js?v=20261105-2238"></script>
+<script src="js/calendar.js?v=20261105-2238"></script>
+<script src="js/main.js?v=20261105-2238"></script>
 </body>
 </html>
