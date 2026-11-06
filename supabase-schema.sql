@@ -266,6 +266,12 @@ alter table styles add column if not exists available_date text not null default
 alter table styles add column if not exists memo text not null default '';
 alter table styles add column if not exists received_qty numeric;
 
+-- From the production sheet (Styles → Import Production Sheet): the date the
+-- TOP sample's comments came in ('YYYY-MM-DD', '' = no TOP yet) and its PO #.
+-- Only that import writes them; the style CSV import leaves them alone.
+alter table styles add column if not exists top_date text not null default '';
+alter table styles add column if not exists top_po text not null default '';
+
 -- ── Magento groups (Magento tab → Import groups) ────────────────────────────
 --
 -- Which Simple items belong to each Grouped product, exactly as Magento has

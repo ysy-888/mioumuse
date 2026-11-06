@@ -386,9 +386,10 @@ function getPoGroups(lines) {
     const pos = new Map();
     g.kindByColor = new Map();
     g.lines.forEach(l => {
-      if (!pos.has(l.poNo)) pos.set(l.poNo, { poNo: l.poNo, poDate: l.poDate, eta: l.eta, colors: [], kinds: new Set() });
+      if (!pos.has(l.poNo)) pos.set(l.poNo, { poNo: l.poNo, poDate: l.poDate, eta: l.eta, colors: [], kinds: new Set(), mismatch: [] });
       const po = pos.get(l.poNo);
       po.colors.push(l.color);
+      if (l.etaMismatch) po.mismatch.push(l);
       po.kinds.add(l.kind);
       if (!g.kindByColor.has(l.color)) g.kindByColor.set(l.color, l.kind);
     });
@@ -493,9 +494,23 @@ function createPoLineChip(po) {
   chip.className = "po-line";
   chip.dataset.kind = kind;
   chip.textContent = label;
-  chip.title = `PO ${po.poNo} · ${kind === "mixed" ? "Recut + New Color" : label} · PO date ${po.poDate ? formatMdy(po.poDate) : EMPTY_DISPLAY} · ETA ${po.eta ? formatMdy(po.eta) : EMPTY_DISPLAY}`;
+  chip.title = `PO ${po.poNo} · ${kind === "mixed" ? "Recut + New Color" : label} · PO date ${po.poDate ? formatMdy(po.poDate) : EMPTY_DISPLAY} · ETA ${formatIhd(po.eta)}`;
   if (po.colors) chip.title += `\nColours: ${po.colors.join(", ")}`;
   return chip;
+}
+
+const PO_FLAG_ICON = '<svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 21V4"/><path d="M5 4h12l-2.5 4L17 12H5z"/></svg>';
+
+/** A small flag on an ETA that's set (not 1/1) but in another month than its colours' Available. */
+function createPoEtaFlag(po) {
+  const flag = document.createElement("span");
+  flag.className = "po-eta-flag";
+  flag.innerHTML = PO_FLAG_ICON;
+  const months = [...new Set(po.mismatch.map(l => formatMonYY(l.month)))].join(", ");
+  flag.title = `ETA ${formatMdy(po.eta)} isn't in the Available month (${months}): `
+    + `${po.mismatch.map(l => l.color).join(", ")}. Filed under Available.`;
+  flag.setAttribute("aria-label", flag.title);
+  return flag;
 }
 
 /** One PO in the PO cell: its number, its IHD (the ETA), then its kind pill. */
@@ -510,9 +525,10 @@ function createPoEntry(po) {
   no.appendChild(num);
   const eta = document.createElement("span");
   eta.className = "po-entry-eta";
-  eta.textContent = po.eta ? formatMdy(po.eta) : EMPTY_DISPLAY;
+  eta.textContent = formatIhd(po.eta);
   eta.title = "IHD (the PO's ETA)";
   eta.classList.toggle("is-past", Boolean(po.eta) && po.eta < todayYmd());
+  if (po.mismatch?.length) eta.appendChild(createPoEtaFlag(po));
   row.append(no, eta, createPoLineChip(po));
   return row;
 }
@@ -556,7 +572,7 @@ function createPoColorRow(group, style, cols, first) {
     if (col === "image") td.appendChild(createStyleThumb(style.styleNo, style.color));
     else if (col === "color") mountSearchHighlightedText(td, style.color);
     else if (col === "status") td.appendChild(createStyleStatusPill(style.status));
-    else if (col === "ihd") setDisplayText(td, style.ihd ? formatMdy(style.ihd) : EMPTY_DISPLAY);
+    else if (col === "ihd") setDisplayText(td, formatIhd(style.ihd));
     else if (col === "shoot") td.appendChild(createStyleShootCell(style, { suggested: suggestPoReason(group, style) }));
     else if (col === "notes") td.appendChild(createStyleNotesInput(style, { onSaved: refreshStylePaneSummary }));
     tr.appendChild(td);

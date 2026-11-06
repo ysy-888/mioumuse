@@ -116,6 +116,8 @@ function createShootPicker(styleNo, color, onDone, { suggested = "", menu = true
     wrap.classList.add("is-waiting");
     wrap.title = "On Need to Shoot — pick a reason";
   }
+  // Nothing lit: faded until its row is hovered (crm.css).
+  if (!waiting) wrap.classList.add("is-unpicked");
   SHOOT_REASONS.forEach(({ key, label }) => {
     const btn = document.createElement("button");
     btn.type = "button";
@@ -251,6 +253,15 @@ function openShootMenu(anchor, styleNo, color, onDone) {
 }
 
 /** `compact`: the short label (the Shoot column, beside the camera / AI buttons). */
+const SHOOT_STATUS_CAMERA_ICON = '<svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/></svg>';
+
+/** The Photoshoots page with that shoot open. */
+function goToPhotoshoot(id) {
+  if (!getPhotoshootById(id)) return;
+  switchAppView("photoshoots");
+  if (getCurrentAppView() === "photoshoots") openShootPane(id);
+}
+
 function createShootStatusBadge(styleNo, color, { compact = false } = {}) {
   const status = describeShootStatus(styleNo, color);
   const el = document.createElement("span");
@@ -265,7 +276,20 @@ function createShootStatusBadge(styleNo, color, { compact = false } = {}) {
   el.textContent = compact ? status.short ?? status.label : status.label;
   if (compact) el.title = status.label;
   if (status.shoots.length) {
-    el.title = (compact ? `${status.label}\n` : "") + status.shoots.map(s => `${getPhotoshootTitle(s)} · ${getPhotoshootTypeLabel(s.type)} · ${formatShootDate(s.date)}${s.model ? ` · ${s.model}` : ""}`).join("\n");
+    el.title = (compact ? `${status.label}\n` : "") + status.shoots.map(s => `${getPhotoshootTitle(s)} · ${getPhotoshootTypeLabel(s.type)} · ${formatShootDate(s.date)}${s.model ? ` · ${s.model}` : ""}`).join("\n")
+      + "\nClick to open the photoshoot";
+    // A camera in front; a click opens the (next) photoshoot on the Photoshoots page.
+    el.classList.add("is-link");
+    el.setAttribute("role", "link");
+    el.tabIndex = 0;
+    el.insertAdjacentHTML("afterbegin", SHOOT_STATUS_CAMERA_ICON);
+    const open = e => {
+      e.preventDefault();
+      e.stopPropagation();
+      goToPhotoshoot(status.shoots[0].id);
+    };
+    el.addEventListener("click", open);
+    el.addEventListener("keydown", e => { if (e.key === "Enter") open(e); });
   }
   return el;
 }
@@ -413,7 +437,7 @@ function buildNeedRows() {
 
 // ── IHD months ───────────────────────────────────────────────────────────────
 //
-// Down the left of Need to Shoot: Show all, No IHD, then each IHD month on the
+// Down the left of Need to Shoot: Show all, No month, then each month (Available, or a real IHD) on the
 // list in a folder per year that opens and closes. Picking one filters the
 // list to it. Only months some style on the list has are shown.
 
@@ -423,10 +447,13 @@ const needOpenYears = new Set([String(new Date().getFullYear())]);
 /** The month whose year was last opened for it — a newly picked month opens its year once. */
 let needYearOpenedFor = "";
 
-/** "YYYY-MM" of the row's IHD, or "none". */
+/**
+ * The row's month — its Available month, else its IHD's (styleScheduleMonth);
+ * from a PO, the month that PO line is under on the POs page — or "none".
+ */
 function needIhdMonthKey(r) {
-  const ihd = fixTwoDigitYear(findStyle(r.styleNo, r.color)?.ihd ?? "");
-  return /^\d{4}-\d{2}/.test(ihd) ? ihd.slice(0, 7) : "none";
+  const style = findStyle(r.styleNo, r.color);
+  return (style?.ihdFromPo && style.ihdMonth) || styleScheduleMonth(style, style?.ihd) || "none";
 }
 
 function createNeedMonthItem(key, label, count, { top = false, title = "" } = {}) {
@@ -471,7 +498,7 @@ function renderNeedMonthList(rows) {
   }
 
   const nodes = [createNeedMonthItem("all", "Show all", rows.length, { top: true })];
-  if (counts.has("none")) nodes.push(createNeedMonthItem("none", "No IHD", counts.get("none"), { top: true }));
+  if (counts.has("none")) nodes.push(createNeedMonthItem("none", "No month", counts.get("none"), { top: true }));
   const byYear = new Map();
   months.forEach(m => {
     const y = m.slice(0, 4);
@@ -846,6 +873,7 @@ function renderShootPane(shoot) {
       // Shot: the reason it was shot for, lit but fixed.
       fixed: shoot.status === "complete",
     }));
+    addStyleTopPill(reasons, style ?? s); // js/styles.js: the yellow TOP pill
     row.append(reasons,
       cell("shoot-style-desc shoot-col-desc", style ? style.description : "Not in the Styles database"),
       cell("shoot-style-cat shoot-col-cat", style?.category ?? ""));

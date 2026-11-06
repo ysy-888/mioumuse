@@ -279,7 +279,6 @@ function comparePoLines(a, b) {
 function setPoLines(lines) {
   const byStyle = new Map();
   lines.forEach(l => {
-    l.month = l.eta ? l.eta.slice(0, 7) : "";
     if (!byStyle.has(l.styleNo)) byStyle.set(l.styleNo, []);
     byStyle.get(l.styleNo).push(l);
   });
@@ -343,6 +342,57 @@ function applyPoIhds() {
       style.ihdFromPo = false;
     }
   });
+  // Each line's month (POs page). N41's Available is the colour's latest cut,
+  // so only its newest PO goes by Available; older POs go by their ETA.
+  const newest = new Map(); // Style # + colour → its latest PO line
+  allPoLines.forEach(l => {
+    const key = `${l.styleNo}\u0000${l.color}`;
+    const cur = newest.get(key);
+    if (!cur || comparePoLines(cur, l) < 0) newest.set(key, l);
+  });
+  const lineMonths = new Map(); // Style # + colour → ETA → month, for Need to Shoot
+  allPoLines.forEach(l => {
+    const style = newest.get(`${l.styleNo}\u0000${l.color}`) === l
+      ? findStyle(l.styleNo, l.color) ?? (/ST$/.test(l.styleNo) ? findStyle(l.styleNo.slice(0, -2), l.color) : null)
+      : null;
+    l.month = styleScheduleMonth(style, l.eta, l.poDate);
+    // A real ETA (not 1/1) in another month than the one it's filed under: flagged on the POs page.
+    l.etaMismatch = Boolean(l.eta) && !isPlaceholderDate(l.eta) && Boolean(l.month) && l.month !== l.eta.slice(0, 7);
+    const key = `${l.styleNo}\u0000${l.color}`;
+    if (!lineMonths.has(key)) lineMonths.set(key, new Map());
+    lineMonths.get(key).set(l.eta, l.month);
+  });
+  // The month of the PO line its IHD came from, so Need to Shoot matches the POs page.
+  allStyles.forEach(style => {
+    style.ihdMonth = style.ihdFromPo
+      ? lineMonths.get(`${style.styleNo.trim().toUpperCase()}\u0000${style.color.trim().toUpperCase()}`)?.get(style.ihd) ?? ""
+      : "";
+  });
+}
+
+/** N41 puts 1/1 of the year in an ETA until the real in-house date is set. */
+function isPlaceholderDate(ymd) {
+  return /^\d{4}-01-01$/.test(String(ymd ?? ""));
+}
+
+/** An IHD / ETA as shown: mm/dd/yy, or a dash when there's none or it's N41's 1/1 placeholder. */
+function formatIhd(ymd) {
+  return ymd && !isPlaceholderDate(ymd) ? formatMdy(ymd) : EMPTY_DISPLAY;
+}
+
+/**
+ * The "YYYY-MM" a style colour is grouped under (POs and Need to Shoot): the
+ * colour's Available month, else the month of `date` (an ETA or IHD) — ""
+ * with neither. Available is per colour, not per PO, so a recut can carry
+ * the month of an earlier cut: one before the PO's own date (`poDate`)
+ * doesn't count. A real ETA in another month is flagged (etaMismatch).
+ */
+function styleScheduleMonth(style, date, poDate = "") {
+  const d = fixTwoDigitYear(String(date ?? ""));
+  const has = /^\d{4}-\d{2}/.test(d);
+  const avail = /^(\d{4}-\d{2})/.exec(String(style?.availableDate ?? ""))?.[1];
+  if (avail && !(poDate && avail < String(poDate).slice(0, 7))) return avail;
+  return has ? d.slice(0, 7) : "";
 }
 
 /** Save an import's lines: the POs in it are replaced, every other PO kept. */
@@ -807,6 +857,10 @@ function styleRowToStyle(row) {
     ihd: normalizeYmd(row.ihd),
     // Also entered in the app; the import leaves it alone.
     notes: String(row.notes ?? ""),
+    // From the production sheet: when the TOP sample's comments came in
+    // ("YYYY-MM-DD", "" = no TOP yet) and on which PO.
+    topDate: normalizeYmd(row.top_date),
+    topPo: String(row.top_po ?? ""),
     updatedAt: String(row.updated_at ?? ""),
     deletedAt: String(row.deleted_at ?? ""),
   };
@@ -939,6 +993,31 @@ async function setStyleNotes(styleNo, color, notes) {
   throwIfError(res);
   style.notes = value;
   return style;
+}
+
+/**
+ * Save TOP dates from the production sheet: [{ styleNo, color, topDate, topPo }],
+ * each an existing style. Only those two columns are sent, so nothing else changes.
+ */
+async function saveStyleTops(tops, onProgress) {
+  const BATCH = 500;
+  const client = requireClient();
+  for (let i = 0; i < tops.length; i += BATCH) {
+    const batch = tops.slice(i, i + BATCH);
+    const res = await client.from("styles").upsert(
+      batch.map(t => ({ style_no: t.styleNo, color: t.color, top_date: t.topDate, top_po: t.topPo })),
+      { onConflict: "user_id,style_no,color" },
+    );
+    if (res.error && /top_(date|po)/.test(res.error.message ?? "")) {
+      throw new Error("TOP needs the top_date and top_po columns. Run the styles SQL in supabase-schema.sql first.");
+    }
+    throwIfError(res);
+    batch.forEach(t => {
+      const style = findStyle(t.styleNo, t.color);
+      if (style) { style.topDate = t.topDate; style.topPo = t.topPo; }
+    });
+    onProgress?.(Math.min(i + BATCH, tops.length), tops.length);
+  }
 }
 
 /** Distinct Style #s, for suggestions as you type. */

@@ -36,24 +36,34 @@ const STYLE_COLUMNS = {
   status: { value: s => s.status },
   // Showing on the webstore (js/magento-availability.js).
   magento: { value: s => styleMgStatusText(s) },
-  // "YYYY-MM" sorts as a date; shown as JUL26.
+  // "YYYY-MM" sorts as a date; shown as a JUL 26 pill.
   available: { value: s => s.availableDate ?? "", display: s => formatMonYY(s.availableDate) },
   // "YYYY-MM-DD" sorts as a date; blanks on top soonest first, at the bottom latest first.
   ihd: { value: s => fixTwoDigitYear(s.ihd) }, // an old 0026-… sorts as 2026, as it shows
   notes: { value: s => s.notes ?? "" },
 };
 
-/** N41's available month, "2026-07" → "JUL26" ("" when there's none). */
+/** N41's available month, "2026-07" → "JUL 26" ("" when there's none). */
 function formatMonYY(ym) {
   const m = /^(\d{4})-(\d{2})/.exec(String(ym ?? ""));
   if (!m) return "";
   const month = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"][Number(m[2]) - 1];
-  return month ? `${month}${m[1].slice(2)}` : "";
+  return month ? `${month} ${m[1].slice(2)}` : "";
+}
+
+/** The Available month as a rounded pill (null when there's none). */
+function createAvailablePill(ym) {
+  const text = formatMonYY(ym);
+  if (!text) return null;
+  const pill = document.createElement("span");
+  pill.className = "available-pill";
+  pill.textContent = text;
+  return pill;
 }
 
 /** What search looks through for a style. */
 function styleSearchText(s) {
-  return `${s.styleNo} ${s.color} ${s.description} ${s.category} ${s.season} ${s.status} ${formatMonYY(s.availableDate)} ${s.memo ?? ""} ${s.notes ?? ""}`.toLowerCase();
+  return `${s.styleNo} ${s.color} ${s.description} ${s.category} ${s.season} ${s.status} ${formatMonYY(s.availableDate)} ${formatMonYY(s.availableDate).replace(" ", "")} ${s.memo ?? ""} ${s.notes ?? ""}`.toLowerCase();
 }
 
 /** Statuses the No photos button leaves out (CANCEL also covers CANCELLED…). */
@@ -186,6 +196,7 @@ function createStyleShootCell(style, { suggested = "" } = {}) {
       none.textContent = "No shoot needed";
       none.title = `${style.status} styles aren't photographed`;
       wrap.replaceChildren(none);
+      addStyleTopPill(wrap, style);
       return;
     }
     // The lit icon says "waiting"; only a date (scheduled / shot) needs words.
@@ -195,9 +206,22 @@ function createStyleShootCell(style, { suggested = "" } = {}) {
       refreshPhotoshootViews();
     }, { suggested }));
     if (tone === "scheduled" || tone === "shot") wrap.appendChild(createShootStatusBadge(style.styleNo, style.color, { compact: true }));
+    addStyleTopPill(wrap, style);
   };
   fill();
   return wrap;
+}
+
+/** A yellow TOP pill when the production sheet has the colour's TOP (js/production-import.js). */
+function addStyleTopPill(wrap, style) {
+  const saved = findStyle(style.styleNo, style.color) ?? style;
+  if (!saved.topDate) return;
+  wrap.classList.add("has-top");
+  const pill = document.createElement("span");
+  pill.className = "style-top-pill";
+  pill.textContent = "TOP";
+  pill.title = `TOP comments in ${formatMdy(saved.topDate)}${saved.topPo ? ` · PO ${saved.topPo}` : ""}`;
+  wrap.appendChild(pill);
 }
 
 function renderStylesTable() {
@@ -232,6 +256,7 @@ function renderStylesTable() {
       else if (col === "notes") td.appendChild(createStyleNotesInput(style, { onSaved: refreshStylePaneSummary }));
       else if (col === "status") td.appendChild(createStyleStatusPill(style.status));
       else if (col === "magento") td.appendChild(createStyleMgStatusCell(style));
+      else if (col === "available") { const pill = createAvailablePill(style.availableDate); if (pill) td.appendChild(pill); }
       else mountSearchHighlightedText(td, (STYLE_COLUMNS[col].display ?? STYLE_COLUMNS[col].value)(style));
       if (col === "description" && style.description) td.title = style.description;
       tr.appendChild(td);
@@ -330,11 +355,11 @@ function createPoIhdText(style) {
   span.className = "cell-date-po";
   const today = todayYmd();
   span.classList.toggle("is-past", Boolean(style.ihd) && style.ihd < today);
-  span.textContent = style.ihd ? formatMdy(style.ihd) : EMPTY_DISPLAY;
+  span.textContent = formatIhd(style.ihd);
   const lines = getStylePoLines(style.styleNo, style.color);
   span.title = "IHD from the PO ETAs — the next one from today" +
     (style.ihd && style.ihd < today ? " (all have passed: the latest)" : "") + "\n" +
-    lines.map(l => `PO ${l.poNo} · ETA ${l.eta ? formatMdy(l.eta) : EMPTY_DISPLAY}`).join("\n");
+    lines.map(l => `PO ${l.poNo} · ETA ${formatIhd(l.eta)}`).join("\n");
   return span;
 }
 

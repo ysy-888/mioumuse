@@ -6,7 +6,7 @@
 <title>MIOU MUSE</title>
 <link rel="icon" href="favicon.png?v=2" type="image/png" />
 <link rel="apple-touch-icon" href="favicon.png?v=2" />
-<link rel="stylesheet" href="crm.css?v=20261106-0847" />
+<link rel="stylesheet" href="crm.css?v=20261106-1140" />
 </head>
 <body>
 
@@ -33,17 +33,17 @@
     <button type="button" class="app-sidenav-item" id="navTabStyles" data-view="styles">
       <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true"><path d="M20.59 13.41 13.42 20.58a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><circle cx="7" cy="7" r="1"/></svg>Styles
     </button>
-    <button type="button" class="app-sidenav-item" id="navTabNeedToShoot" data-view="needToShoot">
-      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>Need to Shoot
-    </button>
-    <button type="button" class="app-sidenav-item" id="navTabComplete" data-view="complete">
-      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="m8 12 3 3 5-6"/></svg>Complete
-    </button>
     <button type="button" class="app-sidenav-item" id="navTabPos" data-view="pos">
       <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M8 13h8M8 17h8M8 9h2"/></svg>POs
     </button>
+    <button type="button" class="app-sidenav-item" id="navTabNeedToShoot" data-view="needToShoot">
+      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>Need to Shoot
+    </button>
     <button type="button" class="app-sidenav-item" id="navTabPhotoshoots" data-view="photoshoots">
       <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>Photoshoots
+    </button>
+    <button type="button" class="app-sidenav-item" id="navTabComplete" data-view="complete">
+      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="m8 12 3 3 5-6"/></svg>Complete
     </button>
 
     <div class="app-sidenav-group">Magento</div>
@@ -92,6 +92,10 @@
         <button type="button" class="header-menu-item" id="headerMenuImportStyles" role="menuitem" data-pages="styles">
           <svg class="header-menu-item-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M17 8l-5-5-5 5"/><path d="M12 3v12"/></svg>
           <span>Import CSV</span>
+        </button>
+        <button type="button" class="header-menu-item" id="headerMenuImportProduction" role="menuitem" data-pages="styles pos">
+          <svg class="header-menu-item-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M17 8l-5-5-5 5"/><path d="M12 3v12"/></svg>
+          <span>Import Production Sheet</span>
         </button>
         <button type="button" class="header-menu-item" id="headerMenuImportGroups" role="menuitem" data-pages="magento:products">
           <svg class="header-menu-item-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M17 8l-5-5-5 5"/><path d="M12 3v12"/></svg>
@@ -1832,6 +1836,35 @@
   </div>
 </div>
 
+<!-- ── Styles: production sheet → TOP (js/production-import.js) ── -->
+<div id="productionImportOverlay" class="modal-backdrop">
+  <div class="modal-card production-import-card" role="dialog" aria-modal="true" aria-labelledby="productionImportTitle">
+    <div class="modal-header">
+      <div class="style-import-head">
+        <h3 id="productionImportTitle">Import Production Sheet</h3>
+        <span class="style-import-head-file" id="productionImportFileName"></span>
+      </div>
+      <button type="button" class="btn-close" id="productionImportCloseBtn" aria-label="Close">✕</button>
+    </div>
+    <div class="modal-body production-import-body">
+      <div class="style-import-pick" id="productionImportPick">
+        <span>Drop the production sheet (.xlsx) here, or</span>
+        <label class="btn btn-primary style-import-choose">
+          <input type="file" id="productionImportFile" accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel" hidden />
+          Choose file
+        </label>
+        <span class="form-hint">Every tab is read. Columns are found by their headings — STYLE #, PO#, COLOR and TOP 1 … IN DATE (H, I, J and Z if not). A date in the TOP column marks that Style # + Color as TOP; a blank changes nothing. Nothing is saved until you confirm.</span>
+      </div>
+      <div id="productionImportPreview"></div>
+    </div>
+    <div class="modal-footer">
+      <span class="modal-footer-message" id="productionImportMessage"></span>
+      <button type="button" class="btn" id="productionImportCancelBtn">Cancel</button>
+      <button type="button" class="btn btn-primary" id="productionImportConfirmBtn" disabled>Save</button>
+    </div>
+  </div>
+</div>
+
 <!-- ── Styles: past imports (header menu → Update history) ──── -->
 <div id="styleHistoryOverlay" class="modal-backdrop">
   <div class="modal-card company-form-card style-import-card" role="dialog" aria-modal="true" aria-labelledby="styleHistoryTitle">
@@ -1945,45 +1978,46 @@
   </div>
 </div>
 
-<script src="js/config.js?v=20261106-0847"></script>
+<script src="js/config.js?v=20261106-1140"></script>
 <!-- Needs SUPABASE_URL/KEY from config.js and the CDN client above. -->
-<script src="js/auth.js?v=20261106-0847"></script>
-<script src="js/util.js?v=20261106-0847"></script>
-<script src="js/dates.js?v=20261106-0847"></script>
-<script src="js/store.js?v=20261106-0847"></script>
-<script src="js/tasks.js?v=20261106-0847"></script>
-<script src="js/app-shell.js?v=20261106-0847"></script>
-<script src="js/table-pager.js?v=20261106-0847"></script>
-<script src="js/record-list.js?v=20261106-0847"></script>
-<script src="js/item-pane.js?v=20261106-0847"></script>
-<script src="js/campaign-form.js?v=20261106-0847"></script>
-<script src="js/trade-show-form.js?v=20261106-0847"></script>
-<script src="js/banners.js?v=20261106-0847"></script>
-<script src="js/banner-form.js?v=20261106-0847"></script>
-<script src="js/mailchimp.js?v=20261106-0847"></script>
-<script src="js/style-import.js?v=20261106-0847"></script>
-<script src="js/column-filter.js?v=20261106-0847"></script>
-<script src="js/styles.js?v=20261106-0847"></script>
-<script src="js/style-images.js?v=20261106-0847"></script>
-<script src="js/sample-photos.js?v=20261106-0847"></script>
-<script src="js/photoshoots.js?v=20261106-0847"></script>
-<script src="js/complete.js?v=20261106-0847"></script>
-<script src="js/photoshoot-form.js?v=20261106-0847"></script>
-<script src="js/purchase-orders.js?v=20261106-0847"></script>
-<script src="js/style-pane.js?v=20261106-0847"></script>
-<script src="js/magento.js?v=20261106-0847"></script>
-<script src="js/magento-availability.js?v=20261106-0847"></script>
-<script src="js/magento-sales.js?v=20261106-0847"></script>
-<script src="js/magento-n41.js?v=20261106-0847"></script>
-<script src="js/magento-events.js?v=20261106-0847"></script>
-<script src="js/trade-show-import.js?v=20261106-0847"></script>
-<script src="js/magento-groups.js?v=20261106-0847"></script>
-<script src="js/table-view.js?v=20261106-0847"></script>
-<script src="js/exports.js?v=20261106-0847"></script>
-<script src="js/copy-menu.js?v=20261106-0847"></script>
-<script src="js/row-quick-select.js?v=20261106-0847"></script>
-<script src="js/shortcuts.js?v=20261106-0847"></script>
-<script src="js/calendar.js?v=20261106-0847"></script>
-<script src="js/main.js?v=20261106-0847"></script>
+<script src="js/auth.js?v=20261106-1140"></script>
+<script src="js/util.js?v=20261106-1140"></script>
+<script src="js/dates.js?v=20261106-1140"></script>
+<script src="js/store.js?v=20261106-1140"></script>
+<script src="js/tasks.js?v=20261106-1140"></script>
+<script src="js/app-shell.js?v=20261106-1140"></script>
+<script src="js/table-pager.js?v=20261106-1140"></script>
+<script src="js/record-list.js?v=20261106-1140"></script>
+<script src="js/item-pane.js?v=20261106-1140"></script>
+<script src="js/campaign-form.js?v=20261106-1140"></script>
+<script src="js/trade-show-form.js?v=20261106-1140"></script>
+<script src="js/banners.js?v=20261106-1140"></script>
+<script src="js/banner-form.js?v=20261106-1140"></script>
+<script src="js/mailchimp.js?v=20261106-1140"></script>
+<script src="js/style-import.js?v=20261106-1140"></script>
+<script src="js/column-filter.js?v=20261106-1140"></script>
+<script src="js/styles.js?v=20261106-1140"></script>
+<script src="js/style-images.js?v=20261106-1140"></script>
+<script src="js/sample-photos.js?v=20261106-1140"></script>
+<script src="js/photoshoots.js?v=20261106-1140"></script>
+<script src="js/complete.js?v=20261106-1140"></script>
+<script src="js/photoshoot-form.js?v=20261106-1140"></script>
+<script src="js/purchase-orders.js?v=20261106-1140"></script>
+<script src="js/production-import.js?v=20261106-1140"></script>
+<script src="js/style-pane.js?v=20261106-1140"></script>
+<script src="js/magento.js?v=20261106-1140"></script>
+<script src="js/magento-availability.js?v=20261106-1140"></script>
+<script src="js/magento-sales.js?v=20261106-1140"></script>
+<script src="js/magento-n41.js?v=20261106-1140"></script>
+<script src="js/magento-events.js?v=20261106-1140"></script>
+<script src="js/trade-show-import.js?v=20261106-1140"></script>
+<script src="js/magento-groups.js?v=20261106-1140"></script>
+<script src="js/table-view.js?v=20261106-1140"></script>
+<script src="js/exports.js?v=20261106-1140"></script>
+<script src="js/copy-menu.js?v=20261106-1140"></script>
+<script src="js/row-quick-select.js?v=20261106-1140"></script>
+<script src="js/shortcuts.js?v=20261106-1140"></script>
+<script src="js/calendar.js?v=20261106-1140"></script>
+<script src="js/main.js?v=20261106-1140"></script>
 </body>
 </html>

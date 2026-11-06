@@ -66,6 +66,7 @@ reference in index.html so the URLs change on every deploy.
 | `js/style-pane.js` | The style pane — a style's details, POs and photos, opened from Styles, Need to Shoot and POs |
 | `js/photoshoots.js` | The Photoshoots and Need to Shoot pages — the shoots list, the Need to Shoot list, the shoot side pane, shoot status badges |
 | `js/complete.js` | The Complete page — the history of styles shot (photoshoot) or made in CG, filtered by how |
+| `js/production-import.js` | Import Production Sheet — reads the production .xlsx and marks each Style # + Color with a TOP date as TOP |
 | `js/purchase-orders.js` | The POs page — importing N41's PO export, New / Recut / New Color, the month list (counts of styles without photos, auto-archiving), POs by ETA month with each colour and its shoot buttons |
 | `js/photoshoot-form.js` | Create / edit photoshoot modal |
 | `js/magento-sales.js` | Magento → Orders and Customers (read-only): lists with Status / Group filters, date quick filters, search, sort, paging; the order / customer pane |
@@ -117,7 +118,7 @@ drags don't open the side pane.
 ## Header menus
 
 **Home**, then three menus that open on hover: **Marketing** (Campaigns, Trade
-Shows, Platforms), **Photoshoots** (Styles, Need to Shoot, POs, Photoshoots) and **Magento**
+Shows, Platforms), **Photoshoots** (Styles, POs, Need to Shoot, Photoshoots, Complete) and **Magento**
 (Products, Categories). The page you're on is ticked and its menu
 underlined.
 
@@ -497,7 +498,7 @@ CSV (headings in row 1: style, color, status, availableDate…):
 | A | Style # |
 | B | Color |
 | C | N41 Status |
-| D | Available — the month only, shown as JUL26 |
+| D | Available — the month only, shown as a JUL 26 pill |
 | F | Season |
 | J | Description |
 | K | Memo — the "updated by Mass Update" notes N41 adds are dropped |
@@ -561,6 +562,22 @@ The table filters from its **Category**, **Season**, **N41 Status** and
 **IHD** headers (COMPANY, CANCEL and INACTIVE start unticked under N41 Status). The
 **No photos** button (crossed-out picture) shows only colours with no photos
 that aren't COMPANY, CANCEL or INACTIVE; it needs the image folder linked.
+
+**TOP** comes from the production sheet: menu ⋮ → **Import Production
+Sheet** (Styles or POs) and pick the .xlsx. Every tab is read; columns are
+found by their headings (STYLE #, PO#, COLOR, TOP 1 … IN DATE — H, I, J and
+Z if not), merged cells are filled in from their top cell, a colour's code
+after a line break ("COCOA BEAN
+#CA049") is dropped, and blank rows are
+skipped. A date in the TOP column marks that Style # + Color as TOP; a blank
+changes nothing, so TOP is never taken away. Rows match by Style # (with or
+without a trailing ST) and colour, compared on letters and digits only; when
+the colour doesn't match, the PO # is looked up in the N41 POs for that
+style's colour. The window lists what will be marked, dated rows that match
+no style, and TOP cells that aren't dates, and saves only on confirm
+(`top_date` / `top_po` — run the styles SQL in `supabase-schema.sql`; the
+latest date wins). A yellow **TOP** pill then shows in the Shoot column
+everywhere, with the date and PO on hover.
 
 Banner Style # fields look styles up as you type: suggestions, the style's
 colours, and its description and status under the row and in the banner pane.
@@ -642,9 +659,20 @@ style off, or another to change the reason. A dashed outline is the
 suggested reason. To flag many,
 tick styles in the Styles tab and use the **Need to Shoot: New Style / New
 Color / Reshoot** buttons. Need to Shoot also filters by reason (the same three icons).
-The IHD months down the left of Need to Shoot filter the list: **Show
-all**, **No IHD**, then each month some style on the list arrives in, in a
+The months down the left of Need to Shoot filter the list: **Show
+all**, **No month**, then each month some style on the list arrives in, in a
 folder per year (click a year to open or close it), with its style count.
+A style's month is its **Available** month (N41 keeps an ETA at 1/1 of the
+year until the real in-house date is set), or its IHD's month when it has
+no Available. Available belongs to the colour, not the PO, so a recut can
+carry an old one: an Available month before the PO's own date doesn't
+count, and the ETA's month is used.
+
+After the buttons, a scheduled or shot date shows with a camera, lined up
+at the left of its half of the cell — click it to open that photoshoot on
+the Photoshoots page. The yellow **TOP** pill (from the production sheet)
+has its own narrow space after that, there and in a shoot's style list, so
+the buttons and dates line up whether a style has TOP or not.
 
 The **⋮** after the shoot buttons (Styles, Need to Shoot, POs, the style
 pane) has **Add to Photoshoot** — a planned shoot, or a new one — and **Mark
@@ -668,7 +696,9 @@ the other (click one for full size). Esc or ✕ closes it.
 ### POs
 
 The **POs** page (under Photoshoots) shows N41's PO lines a month at a time,
-by ETA month. Each style has a row with its Style # and description, then the
+by the colour's **Available** month (the ETA's month when it has none). An
+ETA that's been set (not N41's 1/1 placeholder) but falls in another month
+gets a small amber flag beside it; hover for the colours and months. Each style has a row with its Style # and description, then the
 colours on its POs that month under it (photo, shoot buttons, N41 status),
 with its POs in a box down the first column: **PO #**, its IHD (the ETA) and
 a **New** / **Recut** / **New Color** pill (**Recut + NC** when a PO has
@@ -808,8 +838,8 @@ Need to Shoot's default order is IHD, soonest first (no IHD on top).
   - Campaigns, Trade Shows: **Export CSV**, that page's records and tasks.
   - Platforms: **Export PDF**.
   - Need to Shoot: **Export CSV** and **Export PDF**, the list.
-  - POs: **Import N41 POs**.
-  - Styles: **Import CSV**, **Export CSV** (the filtered styles), **Update
+  - POs: **Import N41 POs** and **Import Production Sheet**.
+  - Styles: **Import CSV**, **Import Production Sheet**, **Export CSV** (the filtered styles), **Update
     History**, and the image folder's Link / Reconnect / Rescan and Unlink.
   - Magento → Products, Orders, Customers: **Export CSV**. Products: every
     product matching the filters, search and sort (all pages, fetched from

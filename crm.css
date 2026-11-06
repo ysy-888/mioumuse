@@ -7518,6 +7518,10 @@ th.th-select { text-align: center; cursor: default; padding-left: 4px; padding-r
 .shoot-status[data-tone="scheduled"][data-shoot-type="studio"]    { background: #ece6fb; color: #5a3aa8; }
 .shoot-status[data-tone="scheduled"][data-shoot-type="editorial"] { background: #fbe3f3; color: #9b1f74; }
 .shoot-status[title] { cursor: help; }
+/* A date with its photoshoot: a camera, and a click opens the shoot. */
+.shoot-status.is-link { display: inline-flex; align-items: center; gap: 4px; cursor: pointer; }
+.shoot-status.is-link svg { flex-shrink: 0; }
+.shoot-status.is-link:hover { filter: brightness(0.95); text-decoration: underline; }
 
 .shoot-type {
   display: inline-block;
@@ -7814,7 +7818,7 @@ body:has(#stylePane:not([hidden])) #posTableWrap > .table-scroll-y { margin-righ
 .shoot-pane {
   /* grip · # · photo · Style # Color · Shoot · Description · Category · IHD · ✕ —
      no stretchy column, so the ✕ sits right after the IHD. */
-  --shoot-cols: 12px 24px 22px 40px minmax(140px, 220px) 104px minmax(0, 280px) minmax(0, 150px) 150px 24px;
+  --shoot-cols: 12px 24px 22px 40px minmax(140px, 220px) 148px minmax(0, 280px) minmax(0, 150px) 150px 24px;
 }
 .shoot-style-list {
   display: flex;
@@ -7879,13 +7883,15 @@ body:has(#stylePane:not([hidden])) #posTableWrap > .table-scroll-y { margin-righ
   color: #4a5568;
 }
 .shoot-style-cat { color: var(--text-muted); font-size: 12px; }
-.shoot-style-reasons { display: inline-flex; }
+/* The shoot buttons, then room for the TOP pill, so the buttons line up with or without it. */
+.shoot-style-reasons { display: inline-grid; grid-template-columns: auto 38px; align-items: center; column-gap: 6px; }
+.shoot-style-reasons .style-top-pill { grid-column: 2; justify-self: start; }
 .shoot-picker.is-fixed .shoot-pick { cursor: default; }
 .shoot-style-end { display: inline-flex; justify-content: center; }
 
 /* Floating (Home): too narrow for every column — Description and Category go. */
 .shoot-pane:not(.is-docked) {
-  --shoot-cols: 12px 22px 22px 40px minmax(0, 1fr) 104px 140px 24px;
+  --shoot-cols: 12px 22px 22px 40px minmax(0, 1fr) 148px 140px 24px;
 }
 .shoot-pane:not(.is-docked) .shoot-col-desc,
 .shoot-pane:not(.is-docked) .shoot-col-cat { display: none; }
@@ -8126,15 +8132,28 @@ td > .style-shoot-cell {
    icon buttons in one soft slate blue. The solid one is why it's on Need to
    Shoot; a pale tint with a dashed edge is the suggestion. */
 .shoot-picker {
-  --c: #9bb3c9;
-  --tint: #eef2f6;
+  --c: #a3aab3;
+  --tint: #f0f2f4;
   display: inline-flex;
   gap: 4px;
-  padding: 2px;
-  border-radius: 8px;
+  padding: 5px 6px;
+  border-radius: 10px;
+  /* A light tray behind the icons and the ⋮ menu, so they read as one group. */
+  background: #f8f9fa;
+  box-shadow: inset 0 0 0 1px #eef0f3;
 }
 /* On Need to Shoot from before reasons: no button lit yet, so the box says it. */
 .shoot-picker.is-waiting { background: var(--tint); box-shadow: inset 0 0 0 1px var(--c); }
+/* Nothing picked: the whole group is barely there until its row is hovered
+   or it's in use. (Not the read-only ones, or Need to Shoot's "pick a
+   reason" box.) */
+.shoot-picker.is-unpicked {
+  opacity: 0.18;
+  transition: opacity 0.15s;
+}
+.shoot-picker.is-unpicked:is(:hover, :focus-within),
+tr:hover .shoot-picker.is-unpicked,
+.shoot-style-row:hover .shoot-picker.is-unpicked { opacity: 1; }
 .shoot-pick {
   display: inline-flex;
   align-items: center;
@@ -8874,6 +8893,36 @@ td > .style-shoot-cell {
   .mg-pane .company-form-body { grid-template-columns: 1fr; }
 }
 
+/* TOP (production sheet): a yellow pill at the end of the Shoot cell. In a
+   table it takes a third, narrow column so the buttons stay lined up. */
+.style-top-pill {
+  flex-shrink: 0;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: #fde68a;
+  border: 1px solid #f2c94c;
+  color: #7a5200;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+}
+td > .style-shoot-cell { grid-template-columns: 1fr 1fr 38px; }
+td > .style-shoot-cell .style-top-pill { grid-column: 3; justify-self: start; }
+/* The shoot date sits at the left of its half, so it lines up down the column. */
+td > .style-shoot-cell > .shoot-status { grid-column: 2; justify-self: start; }
+
+/* Import Production Sheet dialog. */
+.production-import-card { width: min(980px, calc(100vw - 32px)); max-height: calc(100vh - 32px); }
+.production-import-card .modal-body { flex: 1 1 auto; }
+.production-import-summary { font-size: 13px; margin: 0 0 12px; }
+.production-import-section { margin-bottom: 16px; }
+.production-import-section h4 { font-size: 13px; font-weight: 600; margin: 0 0 6px; }
+.production-import-section > summary { font-size: 13px; font-weight: 600; cursor: pointer; margin-bottom: 6px; }
+.production-import-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.production-import-table th { text-align: left; font-weight: 600; color: var(--text-muted); border-bottom: 1px solid var(--border); padding: 4px 8px; }
+.production-import-table td { border-bottom: 1px solid var(--border); padding: 4px 8px; text-align: left; }
+
 /* Styles table: COMPANY styles — no photoshoot. */
 .style-no-shoot {
   color: var(--text-muted);
@@ -9096,7 +9145,7 @@ button.style-pane-memo-style:hover { background: #dde8f8; border-color: #9fb7dc;
   color: #9aa3af;
   cursor: pointer;
 }
-.shoot-menu-btn:hover:not(:disabled) { color: var(--text); background: var(--row-hover); }
+.shoot-menu-btn:hover:not(:disabled) { color: var(--text); background: #e4e7eb; }
 .shoot-menu-btn:disabled { opacity: 0.5; cursor: default; }
 .shoot-menu { position: fixed; right: auto; top: 0; z-index: 250; min-width: 200px; max-height: 320px; overflow-y: auto; }
 .shoot-menu .header-menu-item:disabled { color: var(--text-muted); cursor: default; background: none; }
@@ -9175,13 +9224,13 @@ body:has(#stylePane:not([hidden])) .shoot-dock { margin-right: 540px; }
 .shoot-pane.is-docked .shoot-styles-section { container-type: inline-size; }
 @container (max-width: 900px) {
   .shoot-style-head,
-  .shoot-style-row { --shoot-cols: 12px 22px 22px 40px minmax(0, 1fr) 104px 140px 24px; }
+  .shoot-style-row { --shoot-cols: 12px 22px 22px 40px minmax(0, 1fr) 148px 140px 24px; }
   .shoot-col-desc,
   .shoot-col-cat { display: none; }
 }
 @container (max-width: 620px) {
   .shoot-style-head,
-  .shoot-style-row { --shoot-cols: 12px 22px 22px 40px minmax(0, 1fr) 104px 24px; column-gap: 10px; }
+  .shoot-style-row { --shoot-cols: 12px 22px 22px 40px minmax(0, 1fr) 148px 24px; column-gap: 10px; }
   .shoot-col-ihd { display: none; }
 }
 
@@ -9373,3 +9422,27 @@ body.is-dragging-file .style-pane-sample { border-color: #6f93c9; background-col
 .sample-browser-actions { display: flex; flex-direction: column; gap: 8px; }
 .sample-browser-actions .btn { width: 100%; justify-content: center; }
 .sample-browser-actions .btn[hidden] { display: none; }
+
+/* Available (N41's month) on Styles and the style pane: a soft rounded rectangle, "JUL 26". */
+.available-pill {
+  display: inline-block;
+  padding: 2px 7px;
+  border-radius: 5px;
+  background: #f1f3f5;
+  box-shadow: inset 0 0 0 1px #e3e6ea;
+  color: #4b5563;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+/* POs page: a set ETA in another month than the colour's Available. */
+.po-eta-flag {
+  display: inline-flex;
+  vertical-align: -1px;
+  margin-left: 4px;
+  color: #d97706;
+  cursor: help;
+}
