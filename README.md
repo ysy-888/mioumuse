@@ -573,7 +573,11 @@ user + Style # + Color, and are loaded 1,000 rows at a time.
 Photos come straight from a folder on the network — nothing is uploaded.
 In the Styles tab, the header menu's **Link image folder** picks the folder (Chrome or Edge;
 browsers only let a website read a folder the user chooses). Subfolders are
-searched too. File names say what each photo is:
+searched too, except ones that never hold style photos: `00 SHOOTS`,
+`01 EDITORIAL SHOOTS`, `EDITORIAL edits`, `STYLE NOT IN DATABASE` and
+`DUPLICATES` (`STYLE_IMAGE_SKIP_FOLDERS` in `js/style-images.js`; matched by
+name, so renaming one of them means updating that list). File names say what
+each photo is:
 
 ```
 STYLE COLOR NUMBER.ext        D1898 WHITE.BROWN 4.jpg
@@ -583,6 +587,12 @@ Separated by spaces; a `/` in the colour is written `.` (so `WHITE.BROWN`
 is `WHITE/BROWN`); colours can contain spaces; the number is optional and
 orders a style's photos. jpg, jpeg, png, webp and gif are read; anything
 else is ignored.
+
+**Reshoots:** a photo with RESHOOT in its name (`D2927 BLACK 1 - RESHOOT.jpg`,
+`P3791 BLACK 1 - RESHOOT (3).jpg`, `… (RESHOOT) 2.jpg`, `… 2 (RESHOOT).jpg`)
+replaces the original shoot: once a colour has any RESHOOT photos, only
+those show, thumbnail included, in number order (a `(3)` copy number after
+the tag orders copies of one number).
 
 Photos show as thumbnails in the Styles, Need to Shoot and POs tables, beside each Style # in the banner form, and in the banner pane. The
 folder and its list of file names are remembered in the browser; after a

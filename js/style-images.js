@@ -14,6 +14,8 @@
  * separated by spaces; a "/" in the colour is written "." (file names can't
  * hold "/"), so WHITE.BROWN is WHITE/BROWN. Colours can have spaces
  * ("2 TONE GREY"); the number is optional. Subfolders are searched too.
+ * Photos tagged RESHOOT ("D2927 BLACK 1 - RESHOOT.jpg", "… (RESHOOT) 2.jpg")
+ * replace a colour's original photos.
  * A number stuck to the colour (OATMEAL.BLUE1) or "_" for "/" still match
  * when that gives one of the style's colours.
  *
@@ -24,8 +26,10 @@
 const STYLE_IMAGE_EXTENSIONS = ["jpg", "jpeg", "png", "webp", "gif"];
 const STYLE_IMAGE_DB = "mioumuse-style-images";
 const STYLE_THUMB_PX = 96;
-/** Folders (any level) that never hold style photos — raw shoots and editorials. Not scanned. */
-const STYLE_IMAGE_SKIP_FOLDERS = ["00 SHOOTS", "EDITORIAL PIC"];
+/** Folders (any level, matched in upper case) that never hold style photos — raw shoots,
+ *  editorial shoots, editorial edits (LIFE / EDITORIAL / FW26 tagged photos), styles not
+ *  in the database, and duplicates moved aside. Not scanned. */
+const STYLE_IMAGE_SKIP_FOLDERS = ["00 SHOOTS", "01 EDITORIAL SHOOTS", "EDITORIAL EDITS", "STYLE NOT IN DATABASE", "DUPLICATES"];
 
 function isSkippedImageFolder(name) {
   return STYLE_IMAGE_SKIP_FOLDERS.includes(String(name).trim().toUpperCase());
@@ -58,7 +62,23 @@ function styleImageKey(styleNo, color) {
 function parseStyleImageName(fileName) {
   const m = /^(.*)\.([a-z0-9]+)$/i.exec(fileName);
   if (!m || !STYLE_IMAGE_EXTENSIONS.includes(m[2].toLowerCase())) return null;
-  const tokens = m[1].trim().split(/\s+/);
+  // A reshoot: "RESHOOT" anywhere in the name — "BLACK 1 - RESHOOT",
+  // "BLACK 1- RESHOOT (3)", "BLACK (RESHOOT) 2", "BLACK 2 (RESHOOT)". The
+  // tag comes out, and a copy number "(3)" after it orders the copies.
+  let name = m[1];
+  let reshoot = false;
+  let copy = 0;
+  if (/RESHOOT/i.test(name)) {
+    reshoot = true;
+    name = name.replace(/\(\s*RESHOOT\s*\)/gi, " ").replace(/-?\s*RESHOOT\b/gi, " ");
+    const dup = /\(\s*(\d+)\s*\)\s*$/.exec(name);
+    if (dup) {
+      copy = Number(dup[1]);
+      name = name.slice(0, dup.index);
+    }
+    name = name.replace(/\s-\s*$/, " ").replace(/\s+-(?=\s|$)/g, " ");
+  }
+  const tokens = name.trim().split(/\s+/);
   let num = 0;
   if (tokens.length >= 3 && /^\d+$/.test(tokens[tokens.length - 1])) num = Number(tokens.pop());
   if (tokens.length < 2) return null;
@@ -71,6 +91,7 @@ function parseStyleImageName(fileName) {
     style: tokens.slice(0, styleWords).join(" "),
     color: tokens.slice(styleWords).join(" "),
     num,
+    ...(reshoot ? { reshoot, copy } : {}),
   };
 }
 
@@ -176,17 +197,28 @@ function resolveImageColor(style, color, num) {
   return tries.find(t => known.has(normalizeImageColor(t.color))) ?? { color, num };
 }
 
+/**
+ * Style + colour → its photos. A colour with RESHOOT photos shows only
+ * those: they replace the original shoot (thumbnail included).
+ */
 function buildStyleImageIndex(entries) {
   const index = new Map();
-  entries.forEach(e => {
+  entries.forEach(cached => {
     // A list cached before those folders were skipped.
-    if (e.path.slice(0, -1).some(isSkippedImageFolder)) return;
+    if (cached.path.slice(0, -1).some(isSkippedImageFolder)) return;
+    // Read the name again: a list cached by an older version didn't know RESHOOT.
+    const e = { ...(parseStyleImageName(cached.path[cached.path.length - 1]) ?? cached), path: cached.path };
     const { color, num } = resolveImageColor(e.style, e.color, e.num);
     const key = styleImageKey(e.style, color);
     if (!index.has(key)) index.set(key, []);
-    index.get(key).push({ num, path: e.path });
+    index.get(key).push({ num, path: e.path, ...(e.reshoot ? { reshoot: true, copy: e.copy } : {}) });
   });
-  index.forEach(list => list.sort((a, b) => a.num - b.num || a.path.join("/").localeCompare(b.path.join("/"))));
+  index.forEach((list, key) => {
+    const reshoots = list.filter(e => e.reshoot);
+    const shown = reshoots.length ? reshoots : list;
+    shown.sort((a, b) => a.num - b.num || (a.copy ?? 0) - (b.copy ?? 0) || a.path.join("/").localeCompare(b.path.join("/")));
+    if (shown !== list) index.set(key, shown);
+  });
   return index;
 }
 
