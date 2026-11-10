@@ -68,7 +68,7 @@ function renderStylePaneSummary(style) {
     ...field("Category", createStylePaneCategory(style), { wide: true }),
     ...field("IHD", createIhdInput(style, { onSaved: () => refreshPhotoshootViews() })),
     // N41's available month (Styles CSV column D).
-    ...field("Available", createAvailablePill(style.availableDate) ?? ""),
+    ...field("Available", createAvailablePill(style.availableDate, style) ?? ""),
     ...field("PO", poValue),
     ...field("Rcvd Qty", style.receivedQty ? Number(style.receivedQty).toLocaleString() : ""),
     ...field("Memo", style.memo ? createStylePaneMemo(style) : "", { wide: true }),

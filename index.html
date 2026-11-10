@@ -6,7 +6,7 @@
 <title>MIOU MUSE</title>
 <link rel="icon" href="favicon.png?v=2" type="image/png" />
 <link rel="apple-touch-icon" href="favicon.png?v=2" />
-<link rel="stylesheet" href="crm.css?v=20261106-1140" />
+<link rel="stylesheet" href="crm.css?v=20261110-1241" />
 </head>
 <body>
 
@@ -287,6 +287,11 @@
         <input type="checkbox" id="poShowCompany" />
         <span class="form-check-box" aria-hidden="true"></span>
         <span>Show Company POs</span>
+      </label>
+      <label class="form-check" title="List the POs you've deleted (every month), to restore them">
+        <input type="checkbox" id="poShowDeleted" />
+        <span class="form-check-box" aria-hidden="true"></span>
+        <span>Show deleted POs</span>
       </label>
     </div>
   </div>
@@ -825,6 +830,7 @@
         <col class="col-po" />
         <col class="col-image" />
         <col class="col-color" />
+        <col class="col-available" />
         <col class="col-shoot" />
         <col class="col-status" />
         <col class="col-notes" />
@@ -834,13 +840,14 @@
           <th data-col="po" title="PO #, its IHD (the ETA) and New / Recut / New Color">PO · IHD</th>
           <th data-col="image" aria-label="Photo"></th>
           <th data-col="color">Color</th>
+          <th data-col="available" title="N41 available date (Style Master) — the month the colour is filed under">Available</th>
           <th data-col="shoot">Shoot</th>
           <th data-col="status">N41 Status</th>
           <th data-col="notes">Notes</th>
         </tr>
       </thead>
       <tbody id="poTableBody">
-        <tr class="state-row"><td colspan="6">Loading…</td></tr>
+        <tr class="state-row"><td colspan="7">Loading…</td></tr>
       </tbody>
     </table>
     </div>
@@ -1805,7 +1812,7 @@
   </div>
 </div>
 
-<!-- ── Styles: import the ATS Excel export ───────────────────── -->
+<!-- ── Styles: import the Style Master ───────────────────── -->
 <div id="styleImportOverlay" class="modal-backdrop">
   <div class="modal-card company-form-card style-import-card" role="dialog" aria-modal="true" aria-labelledby="styleImportTitle">
     <!-- Title with the file under it, then the changes' search (js/style-import.js). -->
@@ -1819,12 +1826,12 @@
     </div>
     <div class="modal-body style-import-body">
       <div class="style-import-pick" id="styleImportPick">
-        <span>Drop the ATS export (.csv or .xlsx) here, or</span>
+        <span>Drop the Style Master (.csv or .xlsx) here, or</span>
         <label class="btn btn-primary style-import-choose">
           <input type="file" id="styleImportFile" accept=".csv,text/csv,.xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel" hidden />
           Choose file
         </label>
-        <span class="form-hint">The style CSV: Style # (A), Color (B), Status (C), Available date (D), Season (F), Description (J), Memo (K), Received qty (R). Category isn't in it, so styles keep theirs. Rows without a Style # are skipped. Nothing is saved until you confirm.</span>
+        <span class="form-hint">The Style Master: Style # (A), Color (B), Status (C), Available date (D), Season (F), Description (J), Memo (K), Received qty (R). Category isn't in it, so styles keep theirs. Rows without a Style # are skipped. Nothing is saved until you confirm.</span>
       </div>
       <div class="style-import-preview" id="styleImportPreview"></div>
     </div>
@@ -1978,46 +1985,46 @@
   </div>
 </div>
 
-<script src="js/config.js?v=20261106-1140"></script>
+<script src="js/config.js?v=20261110-1241"></script>
 <!-- Needs SUPABASE_URL/KEY from config.js and the CDN client above. -->
-<script src="js/auth.js?v=20261106-1140"></script>
-<script src="js/util.js?v=20261106-1140"></script>
-<script src="js/dates.js?v=20261106-1140"></script>
-<script src="js/store.js?v=20261106-1140"></script>
-<script src="js/tasks.js?v=20261106-1140"></script>
-<script src="js/app-shell.js?v=20261106-1140"></script>
-<script src="js/table-pager.js?v=20261106-1140"></script>
-<script src="js/record-list.js?v=20261106-1140"></script>
-<script src="js/item-pane.js?v=20261106-1140"></script>
-<script src="js/campaign-form.js?v=20261106-1140"></script>
-<script src="js/trade-show-form.js?v=20261106-1140"></script>
-<script src="js/banners.js?v=20261106-1140"></script>
-<script src="js/banner-form.js?v=20261106-1140"></script>
-<script src="js/mailchimp.js?v=20261106-1140"></script>
-<script src="js/style-import.js?v=20261106-1140"></script>
-<script src="js/column-filter.js?v=20261106-1140"></script>
-<script src="js/styles.js?v=20261106-1140"></script>
-<script src="js/style-images.js?v=20261106-1140"></script>
-<script src="js/sample-photos.js?v=20261106-1140"></script>
-<script src="js/photoshoots.js?v=20261106-1140"></script>
-<script src="js/complete.js?v=20261106-1140"></script>
-<script src="js/photoshoot-form.js?v=20261106-1140"></script>
-<script src="js/purchase-orders.js?v=20261106-1140"></script>
-<script src="js/production-import.js?v=20261106-1140"></script>
-<script src="js/style-pane.js?v=20261106-1140"></script>
-<script src="js/magento.js?v=20261106-1140"></script>
-<script src="js/magento-availability.js?v=20261106-1140"></script>
-<script src="js/magento-sales.js?v=20261106-1140"></script>
-<script src="js/magento-n41.js?v=20261106-1140"></script>
-<script src="js/magento-events.js?v=20261106-1140"></script>
-<script src="js/trade-show-import.js?v=20261106-1140"></script>
-<script src="js/magento-groups.js?v=20261106-1140"></script>
-<script src="js/table-view.js?v=20261106-1140"></script>
-<script src="js/exports.js?v=20261106-1140"></script>
-<script src="js/copy-menu.js?v=20261106-1140"></script>
-<script src="js/row-quick-select.js?v=20261106-1140"></script>
-<script src="js/shortcuts.js?v=20261106-1140"></script>
-<script src="js/calendar.js?v=20261106-1140"></script>
-<script src="js/main.js?v=20261106-1140"></script>
+<script src="js/auth.js?v=20261110-1241"></script>
+<script src="js/util.js?v=20261110-1241"></script>
+<script src="js/dates.js?v=20261110-1241"></script>
+<script src="js/store.js?v=20261110-1241"></script>
+<script src="js/tasks.js?v=20261110-1241"></script>
+<script src="js/app-shell.js?v=20261110-1241"></script>
+<script src="js/table-pager.js?v=20261110-1241"></script>
+<script src="js/record-list.js?v=20261110-1241"></script>
+<script src="js/item-pane.js?v=20261110-1241"></script>
+<script src="js/campaign-form.js?v=20261110-1241"></script>
+<script src="js/trade-show-form.js?v=20261110-1241"></script>
+<script src="js/banners.js?v=20261110-1241"></script>
+<script src="js/banner-form.js?v=20261110-1241"></script>
+<script src="js/mailchimp.js?v=20261110-1241"></script>
+<script src="js/style-import.js?v=20261110-1241"></script>
+<script src="js/column-filter.js?v=20261110-1241"></script>
+<script src="js/styles.js?v=20261110-1241"></script>
+<script src="js/style-images.js?v=20261110-1241"></script>
+<script src="js/sample-photos.js?v=20261110-1241"></script>
+<script src="js/photoshoots.js?v=20261110-1241"></script>
+<script src="js/complete.js?v=20261110-1241"></script>
+<script src="js/photoshoot-form.js?v=20261110-1241"></script>
+<script src="js/purchase-orders.js?v=20261110-1241"></script>
+<script src="js/production-import.js?v=20261110-1241"></script>
+<script src="js/style-pane.js?v=20261110-1241"></script>
+<script src="js/magento.js?v=20261110-1241"></script>
+<script src="js/magento-availability.js?v=20261110-1241"></script>
+<script src="js/magento-sales.js?v=20261110-1241"></script>
+<script src="js/magento-n41.js?v=20261110-1241"></script>
+<script src="js/magento-events.js?v=20261110-1241"></script>
+<script src="js/trade-show-import.js?v=20261110-1241"></script>
+<script src="js/magento-groups.js?v=20261110-1241"></script>
+<script src="js/table-view.js?v=20261110-1241"></script>
+<script src="js/exports.js?v=20261110-1241"></script>
+<script src="js/copy-menu.js?v=20261110-1241"></script>
+<script src="js/row-quick-select.js?v=20261110-1241"></script>
+<script src="js/shortcuts.js?v=20261110-1241"></script>
+<script src="js/calendar.js?v=20261110-1241"></script>
+<script src="js/main.js?v=20261110-1241"></script>
 </body>
 </html>

@@ -1,5 +1,5 @@
 /**
- * Styles — the style database imported from the N41 ATS export.
+ * Styles — the style database imported from the N41 Style Master.
  *
  * A table of every Style # + Color, filtered from the Category, Season, N41
  * Status and IHD column headers, by the No photos button, and by search
@@ -51,13 +51,22 @@ function formatMonYY(ym) {
   return month ? `${month} ${m[1].slice(2)}` : "";
 }
 
-/** The Available month as a rounded pill (null when there's none). */
-function createAvailablePill(ym) {
+/**
+ * The Available month as a rounded pill (null when there's none) — amber
+ * when the colour's newest PO is filed under another month (applyPoIhds).
+ */
+function createAvailablePill(ym, style = null) {
   const text = formatMonYY(ym);
   if (!text) return null;
   const pill = document.createElement("span");
   pill.className = "available-pill";
   pill.textContent = text;
+  if (style?.availMismatch && style.newestPo) {
+    const po = style.newestPo;
+    pill.classList.add("is-mismatch");
+    pill.title = `Doesn't match its newest PO: PO # ${po.poNo} is in ${formatMonYY(po.month)}`
+      + (po.tentative ? " (ETA not set yet)" : ` (ETA ${formatMdy(po.etaFinal)}${po.etaFromReceived ? ", received" : ""})`);
+  }
   return pill;
 }
 
@@ -256,7 +265,7 @@ function renderStylesTable() {
       else if (col === "notes") td.appendChild(createStyleNotesInput(style, { onSaved: refreshStylePaneSummary }));
       else if (col === "status") td.appendChild(createStyleStatusPill(style.status));
       else if (col === "magento") td.appendChild(createStyleMgStatusCell(style));
-      else if (col === "available") { const pill = createAvailablePill(style.availableDate); if (pill) td.appendChild(pill); }
+      else if (col === "available") { const pill = createAvailablePill(style.availableDate, style); if (pill) td.appendChild(pill); }
       else mountSearchHighlightedText(td, (STYLE_COLUMNS[col].display ?? STYLE_COLUMNS[col].value)(style));
       if (col === "description" && style.description) td.title = style.description;
       tr.appendChild(td);
@@ -539,7 +548,7 @@ async function deleteSelectedStyles() {
   });
   const n = styles.length === 1 ? `${styles[0].styleNo} ${styles[0].color}` : `${styles.length.toLocaleString()} styles`;
   const extra = waiting.length ? `\n\n${waiting.length.toLocaleString()} of them ${waiting.length === 1 ? "comes" : "come"} off Need to Shoot.` : "";
-  if (!confirm(`Delete ${n}?\n\nThey're hidden from the app and skipped when the ATS export is imported again. Restore them from the Deleted styles button.${extra}`)) return;
+  if (!confirm(`Delete ${n}?\n\nThey're hidden from the app and skipped when the Style Master is imported again. Restore them from the Deleted styles button.${extra}`)) return;
   try {
     await setStylesDeleted(styles, true);
     if (waiting.length) await removeFromShootList(waiting);

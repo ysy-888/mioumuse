@@ -1,11 +1,10 @@
 /**
- * Import the N41 style export into the Styles database, and look back at
+ * Import N41's Style Master into the Styles database, and look back at
  * past imports (header menu → Update history).
  *
  * The file is read here in the browser — it's never uploaded; only the
- * cleaned-up fields are saved. Two layouts are read:
- *
- * The style CSV (row 1 is headings, "style" in A) — the current one:
+ * cleaned-up fields are saved. The Style Master (.csv or .xlsx; row 1 is
+ * headings, "style" in A):
  *
  *   A  Style #      B  Color        C  N41 Status
  *   D  Available    (date → "YYYY-MM", shown as JUL26)
@@ -13,20 +12,7 @@
  *   R  Received qty
  *
  *   It has no category, so a style keeps the one it has (new ones get none).
- *
- * The older ATS report (.xlsx), a printed report rather than a clean table:
- *
- *   - start at row 8 (headings and page furniture sit above it)
- *   - a row counts only if it has a Style # — the size-breakdown rows
- *     between styles, and blank rows, have none and are skipped
- *   - repeated heading rows ("Style" in the Style # column) are skipped
- *
- *   Column B        N41 Status
- *   Column D (+E)   Season       merged — the value sits in D
- *   Column F        Category
- *   Column H        Style #
- *   Column I        Color
- *   Columns L–N     Description  merged — the value sits in L
+ *   (The old ATS report isn't read any more.)
  *
  * A Style # + Color is one record. Before anything is saved, the dialog lists
  * every change under three tabs — Update, New Styles (a Style # seen for the
@@ -34,8 +20,6 @@
  * and confirming saves only those. Styles missing from the file are left as they are. Each import that
  * saves anything is recorded in full, so it can be looked through later.
  */
-
-const STYLE_IMPORT_FIRST_ROW = 8;
 
 /** "5/31/2025 00:00:00" (or a Date) → "2025-05"; "" when it isn't a date. */
 function importMonth(value) {
@@ -66,7 +50,7 @@ function cleanImportQty(value) {
   return Number.isFinite(n) ? String(n) : "";
 }
 
-/** The style CSV: headings in row 1, "style" in A. */
+/** The Style Master: headings in row 1, "style" in A. */
 function isStyleCsvLayout(sheet) {
   return String(sheet?.A1?.v ?? "").trim().toLowerCase() === "style";
 }
@@ -105,44 +89,13 @@ function cleanCell(value) {
 function extractStyles(workbook) {
   const sheet = workbook.Sheets[workbook.SheetNames[0]];
   if (!sheet) throw new Error("That file has no sheets.");
-  if (isStyleCsvLayout(sheet)) return extractStylesFromCsv(sheet);
-
-  // Keyed by column letter, from row 8 down; formatted text, not raw values.
-  const rows = XLSX.utils.sheet_to_json(sheet, {
-    header: "A",
-    range: STYLE_IMPORT_FIRST_ROW - 1,
-    defval: "",
-    raw: false,
-    blankrows: true,
-  });
-
-  const byKey = new Map();
-  let skipped = 0;
-  rows.forEach(row => {
-    const styleNo = cleanCell(row.H);
-    if (!styleNo || styleNo.toLowerCase() === "style") {
-      skipped += 1;
-      return;
-    }
-    const color = cleanCell(row.I);
-    // Merged cells keep their value in the first cell; the others are read
-    // too, in case a future export splits them.
-    const description = [row.L, row.M, row.N].map(cleanCell).filter(Boolean)
-      .filter((v, i, all) => all.indexOf(v) === i).join(" ");
-    byKey.set(styleKey(styleNo, color), {
-      styleNo,
-      color,
-      status: cleanCell(row.B),
-      season: cleanCell(row.D) || cleanCell(row.E),
-      category: cleanCell(row.F),
-      description,
-    });
-  });
-
-  return { styles: [...byKey.values()], skipped };
+  if (!isStyleCsvLayout(sheet)) {
+    throw new Error("That isn't the Style Master — expected style, color, status… as the headings in row 1.");
+  }
+  return extractStylesFromCsv(sheet);
 }
 
-/** The style CSV (see the top of this file). No category — see diffStyles. */
+/** The Style Master (see the top of this file). No category — see diffStyles. */
 function extractStylesFromCsv(sheet) {
   const rows = XLSX.utils.sheet_to_json(sheet, { header: "A", range: 1, defval: "", raw: true, blankrows: true });
   const byKey = new Map();
@@ -214,8 +167,8 @@ function diffStyles(incoming) {
       return;
     }
     const current = existing.get(styleKey(style.styleNo, style.color));
-    // A field the file doesn't carry (the CSV has no category; the old report
-    // has no available date, memo or qty) keeps what the style has — "" if new.
+    // A field the file doesn't carry (the Style Master has no category) keeps
+    // what the style has — "" if new.
     const inFile = STYLE_FIELDS.filter(f => f.key in style);
     const filled = { ...style };
     STYLE_FIELDS.forEach(f => { if (!(f.key in filled)) filled[f.key] = current?.[f.key] ?? ""; });
@@ -581,7 +534,7 @@ async function readStyleFile(file) {
     const workbook = XLSX.read(await file.arrayBuffer(), { type: "array", raw: isCsv });
     const { styles, skipped } = extractStyles(workbook);
     if (styles.length === 0) {
-      throw new Error("No styles found — expected the style CSV (style, color, status… in row 1) or the ATS report (Style # in column H from row 8).");
+      throw new Error("No styles found in the Style Master — expected style, color, status… in row 1 and styles below.");
     }
     const diff = diffStyles(styles);
     styleImportPlan = { fileName: file.name, total: styles.length, skipped, ...diff };

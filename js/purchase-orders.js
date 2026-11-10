@@ -1,14 +1,24 @@
 /**
  * POs — N41's PO lines, a month at a time (view "pos").
  *
- * Menu → Import N41 POs reads N41's "P.O Detail by Vendor" export (.xlsx):
- * PO # (D), PO Date (F), ETA (H), Style (I), Color (J). The POs in the file
- * replace the saved ones; every other PO is kept (js/store.js).
+ * Menu → Import N41 POs reads N41's PO export (po.xls — see parseN41Pos):
+ * Status, PO #, ETA, Style, Color. The POs in the file replace the saved
+ * ones; every other PO is kept (js/store.js).
  *
  * Each line is worked out as New (the style's first PO), Recut (a colour
  * that was on an earlier PO of the style) or New Color (one that wasn't).
- * The page groups them by ETA month. A style + colour on a PO takes its IHD
- * from the ETAs: the next one from today, or the latest if all have passed.
+ *
+ * How the dates fit together (js/store.js applyPoIhds):
+ *   - A style colour's Available month (Style Master) is its tentative IHD.
+ *   - A PO's ETA is 1/1 of a year until it's confirmed; confirmed, it should
+ *     fall in the Available month. Closed means the PO was received.
+ *   - The page files a line under its colour's Available month (its newest
+ *     PO, or one still on 1/1); an older PO with a confirmed ETA stays in
+ *     that ETA's month.
+ *   - Flagged: a confirmed ETA outside the Available month; a Closed PO
+ *     whose ETA is still 1/1 or still in the future.
+ * A style + colour on a PO takes its IHD from the ETAs: the next one from
+ * today, or the latest if all have passed.
  *
  * Each style shows with its POs, and under it the colours on them, with
  * photos and the New Style / New Color / Reshoot picker. Only colours with
@@ -21,6 +31,7 @@ let poPhotoFilter = "all"; // "all" | "with" | "without" — needs the image fol
 let poSuggestedOnly = false; // just the colours Add suggested would add
 let poNeedOnly = false; // just the colours waiting on Need to Shoot (not yet shot)
 let poShowCompany = false; // colours with N41 status COMPANY are hidden unless ticked
+let poShowDeleted = false; // list the deleted POs (every month) to restore them
 let poSearchScope = "all"; // "all" months, or just this "month"
 
 const PO_KIND_LABELS = { new: "New", recut: "Recut", newColor: "New Color" };
@@ -56,35 +67,52 @@ function fixPoEta(eta, poDate) {
 }
 
 /**
- * One line per PO # + Style + Color. The columns are found by their headings
- * (PO #, PO Date, ETA, Style, Color — the heading row may repeat on each
- * page); D, F, H, I, J if they can't be.
+ * N41's PO export (po.xls) — the only layout read. Headings in row 1, one
+ * row per PO # + Style + Color:
+ *
+ *   A  dstatus  Open / Closed (Closed: received)
+ *   B  pono     PO #
+ *   D  eta      ETA — 1/1 of a year until the real date is set
+ *   E  style    Style #
+ *   F  color    Color
+ *   po_date     PO date (found by heading) — orders the POs for New / Recut / New Color
+ *   first_rcv_date  received date (found by heading) — the final ETA of a
+ *               Closed PO whose ETA was never updated from 1/1
+ *
+ * Columns are found by heading, the letters above if a heading moves.
  */
 function parseN41Pos(workbook) {
+  const sheet = workbook.Sheets[workbook.SheetNames[0]];
+  const rows = XLSX.utils.sheet_to_json(sheet, { header: "A", raw: true, defval: "", blankrows: false });
+  const head = rows.shift() ?? {};
+  const find = (label, fallback) => Object.keys(head).find(k => String(head[k]).trim().toLowerCase() === label) ?? fallback;
+  const cols = {
+    status: find("dstatus", "A"), po: find("pono", "B"), eta: find("eta", "D"),
+    style: find("style", "E"), color: find("color", "F"), poDate: find("po_date", ""),
+    received: find("first_rcv_date", ""),
+  };
+  if (String(head[cols.po] ?? "").trim().toLowerCase() !== "pono") {
+    throw new Error("That isn't N41's PO export — expected dstatus, pono, vendor, eta, style, color… as the headings in row 1.");
+  }
   const seen = new Set();
   const lines = [];
-  workbook.SheetNames.forEach(name => {
-    const rows = XLSX.utils.sheet_to_json(workbook.Sheets[name], { header: "A", raw: true, defval: "", blankrows: false });
-    let cols = null;
-    rows.forEach(r => {
-      const cell = col => String(r[col] ?? "").trim();
-      const find = label => Object.keys(r).find(k => cell(k).replace(/\s+/g, "").toUpperCase() === label);
-      const poCol = find("PO#"), styleCol = find("STYLE"), colorCol = find("COLOR");
-      if (poCol && styleCol && colorCol) {
-        cols = { po: poCol, style: styleCol, color: colorCol, poDate: find("PODATE") ?? "F", eta: find("ETA") ?? "H" };
-        return;
-      }
-      if (!cols) return;
-      const rawPo = r[cols.po];
-      const poNo = typeof rawPo === "number" ? String(Math.round(rawPo)) : cell(cols.po);
-      const styleNo = cell(cols.style).toUpperCase();
-      const color = cell(cols.color).toUpperCase().replace(/\s+/g, " ");
-      if (!/^\d+$/.test(poNo) || !styleNo || !color) return; // totals, page furniture
-      const key = `${poNo}|${styleNo}|${color}`;
-      if (seen.has(key)) return;
-      seen.add(key);
-      const poDate = poExcelDate(r[cols.poDate]);
-      lines.push({ poNo, styleNo, color, poDate, eta: fixPoEta(poExcelDate(r[cols.eta]), poDate) });
+  rows.forEach(r => {
+    const cell = col => String(r[col] ?? "").trim();
+    const rawPo = r[cols.po];
+    const poNo = typeof rawPo === "number" ? String(Math.round(rawPo)) : cell(cols.po);
+    const styleNo = cell(cols.style).toUpperCase();
+    const color = cell(cols.color).toUpperCase().replace(/\s+/g, " ");
+    if (!/^\d+$/.test(poNo) || !styleNo || !color) return;
+    const key = `${poNo}|${styleNo}|${color}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    const poDate = cols.poDate ? poExcelDate(r[cols.poDate]) : "";
+    const status = cell(cols.status);
+    lines.push({
+      poNo, styleNo, color, poDate,
+      eta: fixPoEta(poExcelDate(r[cols.eta]), poDate),
+      status: /^closed$/i.test(status) ? "Closed" : /^open$/i.test(status) ? "Open" : status,
+      received: cols.received ? poExcelDate(r[cols.received]) : "",
     });
   });
   return lines;
@@ -386,10 +414,11 @@ function getPoGroups(lines) {
     const pos = new Map();
     g.kindByColor = new Map();
     g.lines.forEach(l => {
-      if (!pos.has(l.poNo)) pos.set(l.poNo, { poNo: l.poNo, poDate: l.poDate, eta: l.eta, colors: [], kinds: new Set(), mismatch: [] });
+      if (!pos.has(l.poNo)) pos.set(l.poNo, { poNo: l.poNo, poDate: l.poDate, eta: l.etaFinal ?? l.eta, etaN41: l.eta, fromReceived: Boolean(l.etaFromReceived), colors: [], kinds: new Set(), statuses: new Set(), flagged: [] });
       const po = pos.get(l.poNo);
       po.colors.push(l.color);
-      if (l.etaMismatch) po.mismatch.push(l);
+      if (l.status) po.statuses.add(l.status);
+      if (l.flags?.length) po.flagged.push(l);
       po.kinds.add(l.kind);
       if (!g.kindByColor.has(l.color)) g.kindByColor.set(l.color, l.kind);
     });
@@ -411,7 +440,8 @@ function isPoSearchingAll() {
 function buildPoGroups() {
   const q = (document.getElementById("poSearchInput")?.value ?? "").trim().toLowerCase();
   setActiveSearchQuery(q);
-  const groups = isPoSearchingAll() ? getPoGroups(getAllPoLines()) : getPoMonthGroups();
+  const groups = poShowDeleted ? getPoGroups(getDeletedPoLines())
+    : isPoSearchingAll() ? getPoGroups(getAllPoLines()) : getPoMonthGroups();
   // Photos: keep the colours that match; a style with none left goes.
   const photos = arePhotosKnown() ? poPhotoFilter : "all";
   const suggestedOnly = poSuggestedOnly && arePhotosKnown();
@@ -501,20 +531,75 @@ function createPoLineChip(po) {
 
 const PO_FLAG_ICON = '<svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 21V4"/><path d="M5 4h12l-2.5 4L17 12H5z"/></svg>';
 
-/** A small flag on an ETA that's set (not 1/1) but in another month than its colours' Available. */
+/** What each flag says (the rules are in js/store.js applyPoIhds). */
+const PO_FLAG_TEXT = {
+  notUpdated: po => po.fromReceived
+    ? `Closed (received ${formatMdy(po.eta)}), but N41's ETA was never updated — still ${formatMdy(po.etaN41) || "blank"}. The received date is used as the ETA`
+    : `Closed (received), but N41's ETA was never updated — still ${formatMdy(po.etaN41) || "blank"}`,
+  closedFuture: po => `Closed (received), but the ETA ${formatMdy(po.eta)} hasn't come yet`,
+};
+
+/** A small amber flag by the ETA — hover for why, and which colours. */
 function createPoEtaFlag(po) {
   const flag = document.createElement("span");
   flag.className = "po-eta-flag";
   flag.innerHTML = PO_FLAG_ICON;
-  const months = [...new Set(po.mismatch.map(l => formatMonYY(l.month)))].join(", ");
-  flag.title = `ETA ${formatMdy(po.eta)} isn't in the Available month (${months}): `
-    + `${po.mismatch.map(l => l.color).join(", ")}. Filed under Available.`;
+  flag.title = Object.keys(PO_FLAG_TEXT).map(key => {
+    const ls = po.flagged.filter(l => l.flags.includes(key));
+    return ls.length ? `${PO_FLAG_TEXT[key](po, ls)}: ${ls.map(l => l.color).join(", ")}` : "";
+  }).filter(Boolean).join("\n");
   flag.setAttribute("aria-label", flag.title);
   return flag;
 }
 
-/** One PO in the PO cell: its number, its IHD (the ETA), then its kind pill. */
-function createPoEntry(po) {
+/** Open / Closed, from N41's PO export (Partly closed when its colours differ). */
+function createPoStatus(po) {
+  const statuses = [...po.statuses];
+  if (!statuses.length) return null;
+  const text = statuses.length > 1 ? "Part closed" : statuses[0];
+  const tag = document.createElement("span");
+  tag.className = "po-status";
+  tag.dataset.status = text.toLowerCase().replace(/\s+/g, "-");
+  tag.textContent = text;
+  tag.title = statuses.length > 1 ? "Some colours on this PO are closed (received), some open" : text === "Closed" ? "Closed — received" : `${text} — not received yet`;
+  return tag;
+}
+
+const PO_TRASH_ICON = '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/></svg>';
+const PO_RESTORE_ICON = '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg>';
+
+/** Delete a flagged PO # + Style # from the POs page, or restore a deleted one (js/store.js). */
+async function togglePoDeleted(po, styleNo, deleted) {
+  const what = `PO # ${po.poNo} for ${styleNo}`;
+  if (deleted && !confirm(`Delete ${what}?\n\nIt's hidden from the POs page and Need to Shoot's dates, and stays hidden when N41's POs are imported again. Restore it from "Show deleted POs".`)) return;
+  try {
+    await setPosDeleted([{ poNo: po.poNo, styleNo }], deleted);
+    refreshPoDependentViews();
+    showIndicator(`${what} ${deleted ? "deleted" : "restored"}`, "success");
+  } catch (err) {
+    showIndicator(err.message || "Couldn't save.", "error");
+  }
+}
+
+function createPoEntryAction(po, styleNo) {
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "po-entry-action" + (poShowDeleted ? " is-restore" : "");
+  btn.innerHTML = poShowDeleted ? PO_RESTORE_ICON : PO_TRASH_ICON;
+  btn.title = poShowDeleted ? `Restore PO # ${po.poNo}` : `Delete PO # ${po.poNo} for ${styleNo}`;
+  btn.setAttribute("aria-label", btn.title);
+  btn.addEventListener("click", e => {
+    e.stopPropagation();
+    togglePoDeleted(po, styleNo, !poShowDeleted);
+  });
+  return btn;
+}
+
+/**
+ * One PO in the PO cell: its number, its IHD (the ETA), its status and kind
+ * pill — and, on a flagged one, a delete button (restore, when showing deleted).
+ */
+function createPoEntry(po, styleNo) {
   const row = document.createElement("div");
   row.className = "po-entry";
   const no = document.createElement("span");
@@ -526,10 +611,13 @@ function createPoEntry(po) {
   const eta = document.createElement("span");
   eta.className = "po-entry-eta";
   eta.textContent = formatIhd(po.eta);
-  eta.title = "IHD (the PO's ETA)";
+  eta.title = po.fromReceived ? "Received date (N41's ETA was never updated from 1/1)" : "IHD (the PO's ETA)";
   eta.classList.toggle("is-past", Boolean(po.eta) && po.eta < todayYmd());
-  if (po.mismatch?.length) eta.appendChild(createPoEtaFlag(po));
-  row.append(no, eta, createPoLineChip(po));
+  if (po.flagged?.length && !poShowDeleted) eta.appendChild(createPoEtaFlag(po));
+  // An empty slot when there's no status, so the kind pills line up.
+  const status = (po.statuses && createPoStatus(po)) || Object.assign(document.createElement("span"), { className: "po-status" });
+  row.append(no, eta, status, createPoLineChip(po));
+  if (styleNo && (poShowDeleted || po.flagged?.length)) row.appendChild(createPoEntryAction(po, styleNo));
   return row;
 }
 
@@ -540,7 +628,7 @@ function createPoLinesCell(group, rowSpan) {
   td.rowSpan = rowSpan;
   const list = document.createElement("div");
   list.className = "po-lines";
-  list.append(...group.pos.map(createPoEntry));
+  list.append(...group.pos.map(po => createPoEntry(po, group.styleNo)));
   td.appendChild(list);
   return td;
 }
@@ -572,6 +660,7 @@ function createPoColorRow(group, style, cols, first) {
     if (col === "image") td.appendChild(createStyleThumb(style.styleNo, style.color));
     else if (col === "color") mountSearchHighlightedText(td, style.color);
     else if (col === "status") td.appendChild(createStyleStatusPill(style.status));
+    else if (col === "available") { const pill = createAvailablePill(style.availableDate, style); if (pill) td.appendChild(pill); else setDisplayText(td, EMPTY_DISPLAY); }
     else if (col === "ihd") setDisplayText(td, formatIhd(style.ihd));
     else if (col === "shoot") td.appendChild(createStyleShootCell(style, { suggested: suggestPoReason(group, style) }));
     else if (col === "notes") td.appendChild(createStyleNotesInput(style, { onSaved: refreshStylePaneSummary }));
@@ -609,15 +698,15 @@ function renderPoView() {
   const tbody = document.getElementById("poTableBody");
   if (!tbody) return;
   const cols = [...document.querySelectorAll("#poTable thead th[data-col]")].map(th => th.dataset.col);
-  const groups = poMonth || isPoSearchingAll() ? buildPoGroups() : [];
+  const groups = poMonth || isPoSearchingAll() || poShowDeleted ? buildPoGroups() : [];
   const counter = document.getElementById("poRowCounter");
   if (counter) {
     counter.textContent = (groups.length === 1 ? "1 style" : `${groups.length.toLocaleString()} styles`)
-      + (isPoSearchingAll() ? " · all months" : "");
+      + (poShowDeleted ? " · deleted" : isPoSearchingAll() ? " · all months" : "");
   }
 
   if (!groups.length) {
-    const msg = !months.length
+    const msg = poShowDeleted ? "No deleted POs." : !months.length
       ? (poLinesTableReady ? "No PO data yet — use Import N41 POs in the menu (⋮)." : "Create the n41_po_lines table in Supabase (supabase-schema.sql), then use Import N41 POs in the menu (⋮).")
       : "No styles match the current filters.";
     tbody.innerHTML = `<tr class="state-row"><td colspan="${cols.length}">${escapeHtml(msg)}</td></tr>`;
@@ -752,6 +841,10 @@ function initPurchaseOrders() {
   });
   document.getElementById("poShowCompany")?.addEventListener("change", e => {
     poShowCompany = e.target.checked;
+    renderPoView();
+  });
+  document.getElementById("poShowDeleted")?.addEventListener("change", e => {
+    poShowDeleted = e.target.checked;
     renderPoView();
   });
   document.getElementById("poNeedBtn")?.addEventListener("click", () => {

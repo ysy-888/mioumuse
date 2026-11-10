@@ -222,7 +222,7 @@ async function loadAppData() {
   // N41's PO lines — an add-on too. The PO ETAs
   // then set the IHDs of the styles on them (applyPoIhds).
   let poRows;
-  [poRows] = await Promise.all([loadPoLines(client), loadSamplePhotoLinks(client)]);
+  [poRows] = await Promise.all([loadPoLines(client), loadSamplePhotoLinks(client), loadPoDeleted(client)]);
   setPoLines(poRows);
 
   // The Complete history (styles shot or made in CG).
@@ -244,27 +244,42 @@ let poLinesTableReady = true;
 const PO_LINES_SQL = `create table if not exists n41_po_lines (
   user_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
   po_no text not null, style_no text not null, color text not null default '',
-  po_date date, eta date,
+  po_date date, eta date, status text not null default '', received_date date,
   imported_at timestamptz not null default now(),
   primary key (user_id, po_no, style_no, color)
 );
+alter table n41_po_lines add column if not exists status text not null default '';
+alter table n41_po_lines add column if not exists received_date date;
 alter table n41_po_lines enable row level security;
 drop policy if exists "n41_po_lines: own rows only" on n41_po_lines;
 create policy "n41_po_lines: own rows only" on n41_po_lines
   for all using (user_id = auth.uid()) with check (user_id = auth.uid());`;
 
+/** False until the status / received_date columns are added (supabase-schema.sql) — lines load without them. */
+let poStatusColumnReady = true;
+const PO_STATUS_COLUMNS_SQL = "alter table n41_po_lines add column if not exists status text not null default '';\n"
+  + "alter table n41_po_lines add column if not exists received_date date;";
+
 async function loadPoLines(client) {
   const PAGE = 1000;
   const rows = [];
   for (let from = 0; ; from += PAGE) {
-    const res = await client.from("n41_po_lines").select("po_no,style_no,color,po_date,eta")
+    const fields = "po_no,style_no,color,po_date,eta" + (poStatusColumnReady ? ",status,received_date" : "");
+    const res = await client.from("n41_po_lines").select(fields)
       .order("po_no").order("style_no").order("color")
       .range(from, from + PAGE - 1);
+    if (res.error && poStatusColumnReady && /status|received_date/.test(res.error.message ?? "")) {
+      poStatusColumnReady = false;
+      return loadPoLines(client);
+    }
     if (res.error) {
       poLinesTableReady = false;
       return [];
     }
-    rows.push(...res.data.map(r => ({ poNo: r.po_no, styleNo: r.style_no, color: r.color, poDate: r.po_date ?? "", eta: r.eta ?? "" })));
+    rows.push(...res.data.map(r => ({
+      poNo: r.po_no, styleNo: r.style_no, color: r.color, poDate: r.po_date ?? "", eta: r.eta ?? "",
+      status: r.status ?? "", received: r.received_date ?? "",
+    })));
     if (res.data.length < PAGE) return rows;
   }
 }
@@ -277,6 +292,17 @@ function comparePoLines(a, b) {
 
 /** Take the lines, work out each one's month and kind, and set the IHDs from them. */
 function setPoLines(lines) {
+  // Every line's kind first (so a deleted one still reads right when shown),
+  // then again without the deleted ones, which mustn't count for the rest.
+  computePoKinds(lines);
+  allPoLines = lines.filter(l => !isPoDeleted(l));
+  deletedPoLines = lines.filter(l => isPoDeleted(l));
+  computePoKinds(allPoLines);
+  applyPoIhds();
+}
+
+/** New / Recut / New Color for each line, against the other lines given. */
+function computePoKinds(lines) {
   const byStyle = new Map();
   lines.forEach(l => {
     if (!byStyle.has(l.styleNo)) byStyle.set(l.styleNo, []);
@@ -299,12 +325,77 @@ function setPoLines(lines) {
       onThisPo.push(l.color);
     });
   });
-  allPoLines = lines;
-  applyPoIhds();
 }
 
 function getAllPoLines() {
   return allPoLines;
+}
+
+// ── Deleted POs ──────────────────────────────────────────────────────────────
+//
+// A PO # + Style # can be deleted from the POs page (a flagged one that's
+// wrong or replaced). It's kept in its own table, so importing N41's export
+// again doesn't bring it back, and is left out of the months, IHDs and
+// New / Recut / New Color. "Show deleted POs" lists them to restore.
+
+let deletedPoLines = [];
+/** "PO#\0STYLE#" of each deleted PO. */
+let poDeletedKeys = new Set();
+let poDeletedTableReady = true;
+
+const PO_DELETED_SQL = `create table if not exists n41_po_deleted (
+  user_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
+  po_no text not null, style_no text not null,
+  deleted_at timestamptz not null default now(),
+  primary key (user_id, po_no, style_no)
+);
+alter table n41_po_deleted enable row level security;
+drop policy if exists "n41_po_deleted: own rows only" on n41_po_deleted;
+create policy "n41_po_deleted: own rows only" on n41_po_deleted
+  for all using (user_id = auth.uid()) with check (user_id = auth.uid());`;
+
+function poDeletedKey(poNo, styleNo) {
+  return `${poNo}\u0000${styleNo}`;
+}
+
+function isPoDeleted(line) {
+  return poDeletedKeys.has(poDeletedKey(line.poNo, line.styleNo));
+}
+
+function getDeletedPoLines() {
+  return deletedPoLines;
+}
+
+async function loadPoDeleted(client) {
+  const res = await client.from("n41_po_deleted").select("po_no,style_no");
+  if (res.error) {
+    poDeletedTableReady = false;
+    return;
+  }
+  poDeletedKeys = new Set(res.data.map(r => poDeletedKey(r.po_no, r.style_no)));
+}
+
+/** Delete (or, with `deleted` false, restore) PO # + Style # pairs: [{ poNo, styleNo }]. */
+async function setPosDeleted(entries, deleted) {
+  const client = requireClient();
+  let res;
+  if (deleted) {
+    res = await client.from("n41_po_deleted")
+      .upsert(entries.map(e => ({ po_no: e.poNo, style_no: e.styleNo })), { onConflict: "user_id,po_no,style_no" });
+  } else {
+    for (const e of entries) {
+      res = await client.from("n41_po_deleted").delete().eq("po_no", e.poNo).eq("style_no", e.styleNo);
+      if (res.error) break;
+    }
+  }
+  if (res?.error) {
+    throw /n41_po_deleted/.test(res.error.message ?? "")
+      ? new Error(`Deleting POs needs the n41_po_deleted table — run this in Supabase (SQL Editor):\n\n${PO_DELETED_SQL}`)
+      : res.error;
+  }
+  poDeletedTableReady = true;
+  entries.forEach(e => (deleted ? poDeletedKeys.add : poDeletedKeys.delete).call(poDeletedKeys, poDeletedKey(e.poNo, e.styleNo)));
+  setPoLines([...allPoLines, ...deletedPoLines]);
 }
 
 /** A style + colour's PO lines, oldest first ("" colour: every colour of the style). */
@@ -322,14 +413,23 @@ function getStylePoLines(styleNo, color = "") {
  * a new day starts.
  */
 function applyPoIhds() {
+  const today = todayYmd();
+  // The ETA each line goes by (l.etaFinal): N41's ETA — or, for a Closed PO
+  // still on a 1/1 ETA, the date it was received.
+  allPoLines.forEach(l => {
+    const tentative = !l.eta || isPlaceholderDate(l.eta);
+    l.closed = /^closed$/i.test(l.status ?? "");
+    l.etaFromReceived = l.closed && tentative && Boolean(l.received);
+    l.etaFinal = l.etaFromReceived ? l.received : l.eta;
+    l.tentative = !l.etaFinal || isPlaceholderDate(l.etaFinal);
+  });
   const etas = new Map();
   allPoLines.forEach(l => {
-    if (!l.eta) return;
+    if (!l.etaFinal) return;
     const key = `${l.styleNo}\u0000${l.color}`;
     if (!etas.has(key)) etas.set(key, new Set());
-    etas.get(key).add(l.eta);
+    etas.get(key).add(l.etaFinal);
   });
-  const today = todayYmd();
   allStyles.forEach(style => {
     if (!("ihdSaved" in style)) style.ihdSaved = style.ihd;
     const set = etas.get(`${style.styleNo.trim().toUpperCase()}\u0000${style.color.trim().toUpperCase()}`);
@@ -342,31 +442,66 @@ function applyPoIhds() {
       style.ihdFromPo = false;
     }
   });
-  // Each line's month (POs page). N41's Available is the colour's latest cut,
-  // so only its newest PO goes by Available; older POs go by their ETA.
+  // Each PO's month and each line's flags (POs page). The rules, in one place:
+  //   - Available (Style Master) is a colour's tentative IHD.
+  //   - An ETA is tentative (1/1 of a year) until it's confirmed; confirmed,
+  //     it should fall in the Available month. Closed = received.
+  //   - A PO is filed under one month, all its lines together:
+  //       its confirmed ETA's month (for a Closed PO never updated from 1/1,
+  //       the received date's); else — still tentative — the Available
+  //       month most of its colours share (an Available from before the PO
+  //       date is an old cut's and doesn't count); else the 1/1's month.
+  //   - Flagged on the ETA (l.flags):
+  //       "notUpdated"    Closed, but N41's ETA is still 1/1 (the received
+  //                       date is used instead)
+  //       "closedFuture"  Closed, but the confirmed ETA hasn't come yet
+  //     An Open PO on a tentative ETA is just waiting — not flagged.
+  //   - A colour's Available pill turns amber when its newest PO is still
+  //     Open and filed under another month (style.availMismatch).
+  const lineStyle = l => findStyle(l.styleNo, l.color) ?? (/ST$/.test(l.styleNo) ? findStyle(l.styleNo.slice(0, -2), l.color) : null);
+  const byPo = new Map();
+  allPoLines.forEach(l => {
+    if (!byPo.has(l.poNo)) byPo.set(l.poNo, []);
+    byPo.get(l.poNo).push(l);
+  });
+  byPo.forEach(lines => {
+    const first = lines[0];
+    let month = "";
+    if (!first.tentative) month = first.etaFinal.slice(0, 7);
+    else {
+      const counts = new Map();
+      lines.forEach(l => {
+        const avail = /^(\d{4}-\d{2})/.exec(String(lineStyle(l)?.availableDate ?? ""))?.[1];
+        if (avail && !(l.poDate && avail < l.poDate.slice(0, 7))) counts.set(avail, (counts.get(avail) ?? 0) + 1);
+      });
+      month = [...counts].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))[0]?.[0]
+        ?? (first.etaFinal ? first.etaFinal.slice(0, 7) : "");
+    }
+    lines.forEach(l => {
+      l.month = month;
+      l.flags = [];
+      if (l.etaFromReceived || (l.closed && l.tentative)) l.flags.push("notUpdated");
+      if (l.closed && !l.tentative && !l.etaFromReceived && l.etaFinal > today) l.flags.push("closedFuture");
+    });
+  });
   const newest = new Map(); // Style # + colour → its latest PO line
+  const lineMonths = new Map(); // Style # + colour → ETA → month, for Need to Shoot
   allPoLines.forEach(l => {
     const key = `${l.styleNo}\u0000${l.color}`;
     const cur = newest.get(key);
     if (!cur || comparePoLines(cur, l) < 0) newest.set(key, l);
-  });
-  const lineMonths = new Map(); // Style # + colour → ETA → month, for Need to Shoot
-  allPoLines.forEach(l => {
-    const style = newest.get(`${l.styleNo}\u0000${l.color}`) === l
-      ? findStyle(l.styleNo, l.color) ?? (/ST$/.test(l.styleNo) ? findStyle(l.styleNo.slice(0, -2), l.color) : null)
-      : null;
-    l.month = styleScheduleMonth(style, l.eta, l.poDate);
-    // A real ETA (not 1/1) in another month than the one it's filed under: flagged on the POs page.
-    l.etaMismatch = Boolean(l.eta) && !isPlaceholderDate(l.eta) && Boolean(l.month) && l.month !== l.eta.slice(0, 7);
-    const key = `${l.styleNo}\u0000${l.color}`;
     if (!lineMonths.has(key)) lineMonths.set(key, new Map());
-    lineMonths.get(key).set(l.eta, l.month);
+    lineMonths.get(key).set(l.etaFinal, l.month);
   });
-  // The month of the PO line its IHD came from, so Need to Shoot matches the POs page.
   allStyles.forEach(style => {
-    style.ihdMonth = style.ihdFromPo
-      ? lineMonths.get(`${style.styleNo.trim().toUpperCase()}\u0000${style.color.trim().toUpperCase()}`)?.get(style.ihd) ?? ""
-      : "";
+    const key = `${style.styleNo.trim().toUpperCase()}\u0000${style.color.trim().toUpperCase()}`;
+    // The month of the PO line its IHD came from, so Need to Shoot matches the POs page.
+    style.ihdMonth = style.ihdFromPo ? lineMonths.get(key)?.get(style.ihd) ?? "" : "";
+    const last = newest.get(key) ?? newest.get(`${style.styleNo.trim().toUpperCase()}ST\u0000${style.color.trim().toUpperCase()}`);
+    const avail = /^(\d{4}-\d{2})/.exec(String(style.availableDate ?? ""))?.[1];
+    style.newestPo = last ?? null;
+    // Only while that PO is Open — once it's received, Available has done its job.
+    style.availMismatch = Boolean(last && /^open$/i.test(last.status ?? "") && avail && last.month && last.month !== avail);
   });
 }
 
@@ -385,7 +520,7 @@ function formatIhd(ymd) {
  * colour's Available month, else the month of `date` (an ETA or IHD) — ""
  * with neither. Available is per colour, not per PO, so a recut can carry
  * the month of an earlier cut: one before the PO's own date (`poDate`)
- * doesn't count. A real ETA in another month is flagged (etaMismatch).
+ * doesn't count. (A style on a PO goes by its PO's month — applyPoIhds.)
  */
 function styleScheduleMonth(style, date, poDate = "") {
   const d = fixTwoDigitYear(String(date ?? ""));
@@ -401,6 +536,14 @@ async function mergePoLines(lines, onProgress) {
   const tableError = err => /n41_po_lines/.test(err.message ?? "")
     ? new Error(`Create the n41_po_lines table in Supabase first (SQL Editor):\n\n${PO_LINES_SQL}`)
     : err;
+  // The status / received_date columns have to be there before anything is deleted.
+  const probe = await client.from("n41_po_lines").select("status,received_date").limit(1);
+  if (probe.error) {
+    throw new Error(/status|received_date/.test(probe.error.message ?? "")
+      ? `Add the PO status and received date columns in Supabase first (SQL Editor):\n\n${PO_STATUS_COLUMNS_SQL}`
+      : tableError(probe.error).message);
+  }
+  poStatusColumnReady = true;
   const pos = [...new Set(lines.map(l => l.poNo))];
   const DEL = 200;
   const INS = 1000;
@@ -415,16 +558,17 @@ async function mergePoLines(lines, onProgress) {
   for (let i = 0; i < lines.length; i += INS) {
     const res = await client.from("n41_po_lines").insert(lines.slice(i, i + INS).map(l => ({
       po_no: l.poNo, style_no: l.styleNo, color: l.color,
-      po_date: l.poDate || null, eta: l.eta || null, imported_at: now,
+      po_date: l.poDate || null, eta: l.eta || null, status: l.status ?? "", received_date: l.received || null, imported_at: now,
     })));
     if (res.error) throw tableError(res.error);
     onProgress?.(++step, steps);
   }
   const replaced = new Set(pos);
   poLinesTableReady = true;
+  const keep = ({ poNo, styleNo, color, poDate, eta, status, received }) => ({ poNo, styleNo, color, poDate, eta, status: status ?? "", received: received ?? "" });
   setPoLines([
-    ...allPoLines.filter(l => !replaced.has(l.poNo)).map(({ poNo, styleNo, color, poDate, eta }) => ({ poNo, styleNo, color, poDate, eta })),
-    ...lines.map(({ poNo, styleNo, color, poDate, eta }) => ({ poNo, styleNo, color, poDate, eta })),
+    ...[...allPoLines, ...deletedPoLines].filter(l => !replaced.has(l.poNo)).map(keep),
+    ...lines.map(keep),
   ]);
 }
 
@@ -513,7 +657,7 @@ async function loadAllRows(client, table) {
 /**
  * Wipe every trade show, campaign, banner (images included), and completed
  * task. Cannot be undone. The Styles database is left alone — it comes from
- * the ATS export and is re-imported, not entered by hand.
+ * the Style Master and is re-imported, not entered by hand.
  */
 async function clearAllData() {
   const client = requireClient();
@@ -823,7 +967,7 @@ async function deleteCampaign(id) {
 
 // ── Styles ───────────────────────────────────────────────────────────────────
 //
-// Imported from the N41 ATS export (js/style-import.js). One record per
+// Imported from the N41 Style Master (js/style-import.js). One record per
 // Style # + Color; importing again updates what changed and adds what's new.
 
 let allStyles = [];
@@ -848,12 +992,12 @@ function styleRowToStyle(row) {
     season: String(row.season ?? ""),
     category: String(row.category ?? ""),
     description: String(row.description ?? ""),
-    // From the ATS export (CSV): N41's available date as "YYYY-MM" (shown
+    // From the Style Master (CSV): N41's available date as "YYYY-MM" (shown
     // as JUL26), its memo, and the received quantity ("" when there's none).
     availableDate: String(row.available_date ?? ""),
     memo: String(row.memo ?? ""),
     receivedQty: row.received_qty == null || row.received_qty === "" ? "" : String(Number(row.received_qty)),
-    // In-house date — entered in the app, not part of the ATS export.
+    // In-house date — entered in the app, not part of the Style Master.
     ihd: normalizeYmd(row.ihd),
     // Also entered in the app; the import leaves it alone.
     notes: String(row.notes ?? ""),
@@ -869,7 +1013,7 @@ function styleRowToStyle(row) {
 /**
  * Note: IHD isn't in here on purpose. An import upserts these columns only,
  * and Supabase leaves the columns it isn't sent alone — so re-importing the
- * ATS export never wipes an IHD typed into the app.
+ * Style Master never wipes an IHD typed into the app.
  */
 function styleToRow(style) {
   return {

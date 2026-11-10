@@ -488,10 +488,10 @@ Links live in the `task_links` table (see `supabase-schema.sql`).
 
 ## Styles database
 
-The **Styles** tab holds every Style # + Color from the N41 style export.
-**Import CSV** (header menu ⋮) reads the export in the browser (SheetJS,
-loaded only when importing) — the file itself is never uploaded. The style
-CSV (headings in row 1: style, color, status, availableDate…):
+The **Styles** tab holds every Style # + Color from N41's Style Master.
+**Import CSV** (header menu ⋮) reads it in the browser (SheetJS, loaded
+only when importing) — the file itself is never uploaded. The Style Master
+(.csv or .xlsx, headings in row 1: style, color, status, availableDate…):
 
 | Column | Field |
 |---|---|
@@ -517,9 +517,8 @@ rules as the Magento tab's Available column — *Available*, *Not available*
 (why not in the tooltip) or *Not on Magento*. Last time's Magento catalog
 shows at once; a fresh check runs once per visit.
 
-The older ATS report (.xlsx) still imports: Status B, Season D, Category F,
-Style # H, Color I, Description L, read from row 8 down. Either way, any row
-without a Style # is skipped. Before anything is saved, every
+Only the Style Master is read — the old ATS report isn't accepted any more.
+Any row without a Style # is skipped. Before anything is saved, every
 change is listed under three tabs — the count boxes across the top (the file and a search box sit in the window's header):
 
 - **Update** — a Style # + Color already there whose fields changed, each
@@ -556,7 +555,7 @@ MM/DD/YY, and the first click selects the whole date, so it can be copied
 or pasted over. A typed or pasted date (10/28/26, 10/28/2026, 2026-10-28,
 10/28 for this year, or bare digits: 1028, 102826, 10282026) saves on Enter or when you leave the cell, and Esc
 undoes it. The calendar button picks a date, and ✕ (on hover) clears it.
-It isn't part of the ATS export, and re-importing never touches it.
+It isn't part of the Style Master, and re-importing never touches it.
 
 The table filters from its **Category**, **Season**, **N41 Status** and
 **IHD** headers (COMPANY, CANCEL and INACTIVE start unticked under N41 Status). The
@@ -695,11 +694,39 @@ the other (click one for full size). Esc or ✕ closes it.
 
 ### POs
 
-The **POs** page (under Photoshoots) shows N41's PO lines a month at a time,
-by the colour's **Available** month (the ETA's month when it has none). An
-ETA that's been set (not N41's 1/1 placeholder) but falls in another month
-gets a small amber flag beside it; hover for the colours and months. Each style has a row with its Style # and description, then the
-colours on its POs that month under it (photo, shoot buttons, N41 status),
+The **POs** page (under Photoshoots) shows N41's PO lines a month at a time.
+How the dates fit together:
+
+- A style colour's **Available** month (Style Master) is its tentative IHD.
+- A PO's **ETA** is 1/1 of a year until it's confirmed (shown as "–");
+  confirmed, it should fall in the Available month.
+- **Closed** means the PO was received.
+
+A PO is filed under **one month**, all of its styles and colours together:
+
+- a confirmed ETA → that ETA's month;
+- a **Closed** PO still on a 1/1 ETA → the date it was received
+  (`first_rcv_date`), shown as its ETA;
+- an Open PO still on 1/1 → the Available month most of its colours share
+  (an Available from before the PO date belongs to an older cut and doesn't
+  count), else the 1/1's month.
+
+A small amber **flag** by the ETA (hover for why) marks a Closed PO whose
+N41 ETA was never updated from 1/1, and a Closed PO whose ETA is still in
+the future. An Open PO on a 1/1 ETA is just waiting and isn't flagged.
+
+A colour's **Available** pill turns **amber** (POs, Styles, the style pane)
+when its newest PO is still **Open** and filed under another month — hover
+for the PO and its ETA. Once the PO is received, it goes back to grey.
+
+A flagged PO has a **delete** (bin) button at the end of its line. Deleting
+a PO # for a style hides it from the POs page, its month counts, the IHDs and
+New / Recut / New Color; it's kept in its own table (`n41_po_deleted`), so
+importing N41's POs again doesn't bring it back. Tick **Show deleted POs** to
+list them (every month) and restore one.
+
+Each style has a row with its Style # and description, then the
+colours on its POs that month under it (photo, Available pill, shoot buttons, N41 status),
 with its POs in a box down the first column: **PO #**, its IHD (the ETA) and
 a **New** / **Recut** / **New Color** pill (**Recut + NC** when a PO has
 both; hover for the PO date and colours). Filter by **New** / **Recut** /
@@ -711,20 +738,23 @@ hidden unless **Show Company POs** is ticked.
 description, status), each style with all of its POs; the menu beside the
 search box switches to **This month** to search just the month picked.
 
-**Importing:** menu ⋮ → **Import N41 POs** and pick N41's **P.O Detail by
-Vendor** export (.xlsx). Only these columns are read, found by their headings
-(the heading row may repeat on each page):
+**Importing:** menu ⋮ → **Import N41 POs** and pick N41's PO export
+(`po.xls`, headings in row 1). It's the only layout read; these columns are
+used, found by their headings (the letters if a heading moves):
 
-| Column | Field |
-|---|---|
-| D | PO # |
-| F | PO Date |
-| H | ETA |
-| I | Style |
-| J | Color |
+| Column | Heading | Field |
+|---|---|---|
+| A | dstatus | Status — Open / Closed (received) |
+| B | pono | PO # |
+| D | eta | ETA |
+| E | style | Style # |
+| F | color | Color |
+| — | po_date | PO date (orders the POs for New / Recut / New Color) |
+| — | first_rcv_date | Received date — the ETA of a Closed PO never updated from 1/1 |
 
-Totals and page headings are skipped. An ETA typed with a wrong year (4021
-for 2021) gets the year nearest its PO date. The POs in the file replace the
+An ETA typed with a wrong year (4021 for 2021) gets the year nearest its PO
+date. Each PO shows its status (**Open**, **Closed**, or **Part closed** when
+its colours differ) beside its ETA. The POs in the file replace the
 saved ones and every other PO is kept, in the `n41_po_lines` table (see
 `supabase-schema.sql`). The cost sheet and the old N41 PO report
 (`po_lines`, `po_colors`) aren't used any more.

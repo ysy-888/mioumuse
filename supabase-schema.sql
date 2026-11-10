@@ -451,9 +451,29 @@ create table if not exists n41_po_lines (
   color text not null default '',
   po_date date,
   eta date,
+  status text not null default '',  -- Open / Closed (received), from N41's PO export
   imported_at timestamptz not null default now(),
   primary key (user_id, po_no, style_no, color)
 );
+alter table n41_po_lines add column if not exists status text not null default '';
+-- When a Closed PO was received (first_rcv_date) — its ETA if N41's was never updated from 1/1.
+alter table n41_po_lines add column if not exists received_date date;
+
+-- POs deleted on the POs page (a PO # + Style #). Kept apart from n41_po_lines
+-- so importing N41's export again doesn't bring them back.
+create table if not exists n41_po_deleted (
+  user_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
+  po_no text not null,
+  style_no text not null,
+  deleted_at timestamptz not null default now(),
+  primary key (user_id, po_no, style_no)
+);
+
+alter table n41_po_deleted enable row level security;
+
+drop policy if exists "n41_po_deleted: own rows only" on n41_po_deleted;
+create policy "n41_po_deleted: own rows only" on n41_po_deleted
+  for all using (user_id = auth.uid()) with check (user_id = auth.uid());
 
 alter table n41_po_lines enable row level security;
 
