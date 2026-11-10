@@ -730,8 +730,12 @@ colours on its POs that month under it (photo, Available pill, shoot buttons, N4
 with its POs in a box down the first column: **PO #**, its IHD (the ETA) and
 a **New** / **Recut** / **New Color** pill (**Recut + NC** when a PO has
 both; hover for the PO date and colours). Filter by **New** / **Recut** /
-**New Color**, by **Has photos** / **No photos** (needs the image folder
-linked). Colours with N41 status COMPANY — and POs with only those — are
+**New Color**, by **All** / **Has photos** / **No photos** (needs the image
+folder linked). **No photos** lists every colour without a model photo; tick **Show same
+style** to also list the colours of those styles that already have one. **Export PDF**
+(menu ⋮) prints the month as it's showing — one row per colour with its
+photo, PO # · ETA and status, type, Available, N41 status and shoot status.
+Colours with N41 status COMPANY — and POs with only those — are
 hidden unless **Show Company POs** is ticked.
 
 **Search** looks through every month's POs (Style #, PO #, colour,

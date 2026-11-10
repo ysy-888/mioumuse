@@ -13,6 +13,7 @@
  *   a photoshoot    CSV or PDF: its details and every style in it, in order
  *   (PDFs show each style's shoot type as the three icons, its reason lit)
  *   Platforms       PDF: the banners showing, with their images
+ *   POs             PDF: the month's colours as showing, with their POs
  *   header menu     Export CSV / PDF follow the page you're on
  */
 
@@ -76,6 +77,17 @@ const REPORT_CSS = `
   td.nowrap { white-space: nowrap; }
   td.check { width: 34px; text-align: center; font-size: 15px; color: #8b929c; }
   .warn { color: #c81e1e; font-weight: 700; }
+  .sub-note { color: #8b929c; font-size: 9px; }
+  /* A scheduled shoot on the POs report: the app's purple Studio pill, two lines. */
+  .pill.scheduled.two-line { background: #ece6fb; color: #5a3aa8; border-radius: 6px; padding: 2px 8px; line-height: 1.25; text-align: center; }
+  .pill.two-line span { font-weight: 500; }
+  .po-line { display: inline-flex; align-items: center; gap: 4px; width: 80px; padding: 1px 7px; border-radius: 9px; background: #d3efe2; color: #0b6648; font-size: 9.5px; font-weight: 600; white-space: nowrap; }
+  .po-line-icons { display: inline-flex; gap: 2px; }
+  .po-line-icons svg { display: block; width: 10px; height: 10px; }
+  .po-line[data-kind="newColor"] { background: #d4edf2; color: #0e687a; }
+  .po-line[data-kind="recut"] { background: #dce6f7; color: #2b559a; }
+  .available-pill { display: inline-block; padding: 1px 6px; border-radius: 5px; background: #f1f3f5; box-shadow: inset 0 0 0 1px #e3e6ea; color: #4b5563; font-size: 9.5px; font-weight: 600; letter-spacing: 0.04em; white-space: nowrap; }
+  .available-pill.is-mismatch { background: #fef3c7; box-shadow: inset 0 0 0 1px #f5c56b; color: #92400e; }
   .pill { display: inline-block; padding: 1px 7px; border-radius: 9px; background: #eef0f3; font-size: 9.5px; font-weight: 600; white-space: nowrap; }
   .pill.needed { background: #fdf0d5; color: #8a5a00; }
   .pill.scheduled { background: #e1ecfb; color: #1f56a5; }
@@ -127,10 +139,11 @@ async function loadReportThumbs(rows) {
  * columns: [{ label, cell(row) → { text, html?, className? } }]
  * rows:    whatever `cell` reads; each needs styleNo / color for its photo
  * noun:    what a row is, for the count at the top
+ * landscape: lay the page sideways (POs, which has more columns)
  * metaInHeader: the meta fields sit on the right of the header, in place of
  *          the "Generated" date and row count (shoot and Need to Shoot)
  */
-async function printReport({ fileTitle, title, subtitle = "", meta = [], notes = "", columns, rows, photos, footnote = "", noun = "style", metaInHeader = false }) {
+async function printReport({ fileTitle, title, subtitle = "", meta = [], notes = "", columns, rows, photos, footnote = "", noun = "style", metaInHeader = false, landscape = false }) {
   if (!rows.length) {
     showIndicator("Nothing to export", "error");
     return;
@@ -154,7 +167,7 @@ async function printReport({ fileTitle, title, subtitle = "", meta = [], notes =
 
   const generated = `${formatReportDate(todayYmd())} ${new Date().toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}`;
   const metaHtml = meta.length ? `<div class="meta">${meta.map(([k, v]) => `<div><b>${escapeReportHtml(k)}</b><span>${escapeReportHtml(v)}</span></div>`).join("")}</div>` : "";
-  const html = `<!doctype html><html><head><meta charset="utf-8"><title>${escapeReportHtml(fileTitle)}</title><style>${REPORT_CSS}</style></head><body>
+  const html = `<!doctype html><html><head><meta charset="utf-8"><title>${escapeReportHtml(fileTitle)}</title><style>${REPORT_CSS}${landscape ? "@page { size: letter landscape; }" : ""}</style></head><body>
     <header>
       <div><div class="brand">${escapeReportHtml(APP_NAME)}</div><h1>${escapeReportHtml(title)}</h1>${subtitle ? `<div class="sub">${escapeReportHtml(subtitle)}</div>` : ""}</div>
       ${metaInHeader ? metaHtml : `<div class="generated">Generated ${escapeReportHtml(generated)}<br>${rows.length} ${rows.length === 1 ? noun : `${noun}s`}</div>`}
@@ -370,6 +383,79 @@ function exportShootPdf(id) {
   });
 }
 
+// ── POs ──────────────────────────────────────────────────────────────────────
+
+/**
+ * The POs page as it's showing — the month picked (or every month when
+ * searching them all, or the deleted POs), filters and search applied —
+ * one row per colour with the PO(s) it's on.
+ */
+function exportPoPdf() {
+  const groups = poMonth || isPoSearchingAll() || poShowDeleted ? buildPoGroups() : [];
+  const rows = [];
+  groups.forEach(g => {
+    const posOf = color => g.pos.filter(po => po.colors.includes(color.trim().toUpperCase()));
+    g.colors.forEach(s => rows.push({ group: g, style: s, styleNo: s.styleNo, color: s.color, pos: posOf(s.color) }));
+    // On a PO but not in the style database.
+    g.missingColors.forEach(c => rows.push({ group: g, style: null, styleNo: g.styleNo, color: c, pos: posOf(c) }));
+  });
+  const scope = poShowDeleted ? "Deleted POs" : isPoSearchingAll() ? "All months" : formatPoMonth(poMonth);
+  const poCount = new Set(groups.flatMap(g => g.pos.map(po => po.poNo))).size;
+  // Only a shoot it's scheduled for or was shot in — waiting on Need to Shoot
+  // just repeats the Type, and having photos needs no note.
+  const status = r => {
+    const st = describeShootStatus(r.styleNo, r.color);
+    if (!st || st.tone === "needed") return "";
+    if (st.tone === "scheduled") {
+      // "Scheduled" over "Wed 11/11" (+N when it's on more than one shoot).
+      const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(st.shoots[0]?.date ?? "");
+      const day = m ? `${new Date(+m[1], m[2] - 1, +m[3]).toLocaleDateString("en-US", { weekday: "short" })} ${+m[2]}/${+m[3]}` : "No date";
+      const more = st.shoots.length > 1 ? ` +${st.shoots.length - 1}` : "";
+      return `<span class="pill scheduled two-line">Scheduled<br><span>${escapeReportHtml(day + more)}</span></span>`;
+    }
+    return `<span class="pill ${st.tone}">${escapeReportHtml(st.label)}</span>`;
+  };
+  // The app's own pills: the PO type and Available (amber when it doesn't match).
+  const kindPill = r => {
+    const kind = poColorKind(r.group, { color: r.color });
+    return PO_KIND_LABELS[kind] ? `<span class="po-line" data-kind="${kind}">${poKindPillHtml(kind, PO_KIND_LABELS[kind])}</span>` : "";
+  };
+  const availPill = r => r.style?.availableDate
+    ? `<span class="available-pill${r.style.availMismatch ? " is-mismatch" : ""}">${escapeReportHtml(formatMonYY(r.style.availableDate))}</span>`
+    : "–";
+  printReport({
+    fileTitle: `POs ${poShowDeleted ? "deleted" : isPoSearchingAll() ? "all months" : poMonth} ${todayYmd()}`,
+    title: "POs",
+    subtitle: scope,
+    meta: [
+      ["Styles", String(groups.length)],
+      ["Colors", String(rows.length)],
+      ["POs", String(poCount)],
+    ],
+    metaInHeader: true,
+    landscape: true,
+    photos: reportHasPhotos(),
+    rows,
+    noun: "color",
+    columns: [
+      { label: "Style #", cell: r => ({ text: r.styleNo, className: "strong" }) },
+      { label: "Color", cell: r => ({ text: r.color, className: "nowrap" }) },
+      { label: "Description", cell: r => ({ text: r.style?.description ?? "" }) },
+      {
+        label: "PO # · ETA",
+        cell: r => ({
+          html: r.pos.map(po => `${escapeReportHtml(po.poNo)} · ${!po.eta || isPlaceholderDate(po.eta) ? "–" : escapeReportHtml(formatReportDate(po.eta))}${po.statuses.size ? ` <span class="sub-note">${escapeReportHtml(po.statuses.size > 1 ? "Part closed" : [...po.statuses][0])}</span>` : ""}`).join("<br>"),
+          className: "nowrap",
+        }),
+      },
+      { label: "Type", cell: r => ({ html: kindPill(r), className: "nowrap" }) },
+      { label: "Available", cell: r => ({ html: availPill(r), className: "nowrap" }) },
+      { label: "N41", cell: r => ({ text: r.style?.status ?? "", className: "nowrap" }) },
+      { label: "Shoot", cell: r => ({ html: status(r) }) },
+    ],
+  });
+}
+
 // ── Styles and banners (for the header menu) ─────────────────────────────────
 
 function exportStylesCsv() {
@@ -427,7 +513,9 @@ function exportCurrentViewCsv() {
 function initExports() {
   document.getElementById("headerMenuExportPdf")?.addEventListener("click", () => {
     closeHeaderMenu();
-    if (getCurrentAppView() === "needToShoot") exportNeedPdf();
+    const view = getCurrentAppView();
+    if (view === "needToShoot") exportNeedPdf();
+    else if (view === "pos") exportPoPdf();
     else exportBannersPdf();
   });
   document.getElementById("shootMenuExportCsv")?.addEventListener("click", () => {

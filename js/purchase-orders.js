@@ -28,6 +28,8 @@
 let poMonth = "";
 let poTypeFilter = "all"; // "all" | "new" | "recut" | "newColor"
 let poPhotoFilter = "all"; // "all" | "with" | "without" — needs the image folder
+// With "without": also list styles where another colour already has photos.
+let poSameStyle = false;
 let poSuggestedOnly = false; // just the colours Add suggested would add
 let poNeedOnly = false; // just the colours waiting on Need to Shoot (not yet shot)
 let poShowCompany = false; // colours with N41 status COMPANY are hidden unless ticked
@@ -35,6 +37,21 @@ let poShowDeleted = false; // list the deleted POs (every month) to restore them
 let poSearchScope = "all"; // "all" months, or just this "month"
 
 const PO_KIND_LABELS = { new: "New", recut: "Recut", newColor: "New Color" };
+
+// The type pill's icon: New and New Color share the shoot icons (a T-shirt,
+// a paint bucket); Recut is a pair of scissors.
+const PO_RECUT_ICON = '<svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M20 4 8.12 15.88"/><path d="M14.47 14.48 20 20"/><path d="M8.12 8.12 12 12"/></svg>';
+
+function poKindIcon(kind) {
+  if (kind === "recut") return PO_RECUT_ICON;
+  return shootReasonIcon(kind === "new" ? "newStyle" : "newColor").replace(/width="15" height="15"/, 'width="11" height="11"');
+}
+
+/** Icon(s) and label inside a type pill (the page and the PDF). */
+function poKindPillHtml(kind, label) {
+  const icons = kind === "mixed" ? poKindIcon("recut") + poKindIcon("newColor") : poKindIcon(kind);
+  return `<span class="po-line-icons">${icons}</span><span>${escapeHtml(label)}</span>`;
+}
 
 // ── Reading N41's PO export ──────────────────────────────────────────────────
 
@@ -458,7 +475,11 @@ function buildPoGroups() {
       g.colors = g.colors.filter(s => poColorKind(g, s) === poTypeFilter);
       g.pos = g.pos.filter(po => po.kinds.has(poTypeFilter));
     }
-    if (photos !== "all") g.colors = g.colors.filter(s => hasStyleImages(s.styleNo, s.color) === (photos === "with"));
+    // No photos: every colour without a model photo. Show same style keeps the
+    // photographed colours too, for the styles that have one without.
+    if (photos === "without" && poSameStyle) {
+      if (!g.colors.some(s => !hasStyleImages(s.styleNo, s.color))) g.colors = [];
+    } else if (photos !== "all") g.colors = g.colors.filter(s => hasStyleImages(s.styleNo, s.color) === (photos === "with"));
     if (suggestedOnly) g.colors = g.colors.filter(s => suggestPoReason(g, s));
     if (poNeedOnly) g.colors = g.colors.filter(s => { const e = getShootListEntry(s.styleNo, s.color); return e && !e.shotShootId; });
   });
@@ -523,7 +544,7 @@ function createPoLineChip(po) {
   const chip = document.createElement("span");
   chip.className = "po-line";
   chip.dataset.kind = kind;
-  chip.textContent = label;
+  chip.innerHTML = poKindPillHtml(kind, label);
   chip.title = `PO ${po.poNo} · ${kind === "mixed" ? "Recut + New Color" : label} · PO date ${po.poDate ? formatMdy(po.poDate) : EMPTY_DISPLAY} · ETA ${formatIhd(po.eta)}`;
   if (po.colors) chip.title += `\nColours: ${po.colors.join(", ")}`;
   return chip;
@@ -683,6 +704,10 @@ function renderPoView() {
     btn.disabled = !photosKnown && btn.dataset.photos !== "all";
     btn.title = btn.getAttribute("aria-label") + (btn.disabled ? " — link the image folder (Styles → menu ⋮) to filter by photos" : "");
   });
+  const sameStyle = document.getElementById("poSameStyleCheck");
+  if (sameStyle) sameStyle.hidden = !(photosKnown && poPhotoFilter === "without");
+  const sameStyleBox = document.getElementById("poSameStyle");
+  if (sameStyleBox) sameStyleBox.checked = poSameStyle;
   const suggested = document.getElementById("poSuggestedBtn");
   if (suggested) {
     suggested.classList.toggle("active", photosKnown && poSuggestedOnly);
@@ -824,6 +849,10 @@ function initPurchaseOrders() {
       poPhotoFilter = btn.dataset.photos;
       renderPoView();
     });
+  });
+  document.getElementById("poSameStyle")?.addEventListener("change", e => {
+    poSameStyle = e.target.checked;
+    renderPoView();
   });
   let searchTimer = 0;
   document.getElementById("poSearchInput")?.addEventListener("input", () => {

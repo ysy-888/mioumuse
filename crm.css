@@ -4174,6 +4174,7 @@ span.dash-event { cursor: pointer; /* clicking selects the day */ }
   gap: 6px 18px;
 }
 
+.form-check[hidden] { display: none; }
 .form-check {
   position: relative;
   display: inline-flex;
@@ -7544,7 +7545,7 @@ th.th-select { text-align: center; cursor: default; padding-left: 4px; padding-r
 #poTable { width: max-content; margin: 0; }
 body:has(#stylePane:not([hidden])) #posTableWrap > .table-scroll-y { margin-right: 540px; }
 .po-table .col-color  { width: 200px; }
-.po-table .col-po     { width: 384px; }
+.po-table .col-po     { width: 394px; }
 .po-group-row td {
   padding-top: 10px;
   padding-bottom: 10px;
@@ -7581,7 +7582,7 @@ body:has(#stylePane:not([hidden])) #posTableWrap > .table-scroll-y { margin-righ
   background: #f6f7f9;
 }
 /* One PO in the PO cell: number, IHD (its ETA), kind pill — in columns. */
-.po-entry { display: grid; grid-template-columns: 86px 62px 64px 92px 22px; align-items: center; gap: 6px; font-size: 12px; }
+.po-entry { display: grid; grid-template-columns: 86px 62px 64px 102px 22px; align-items: center; gap: 6px; font-size: 12px; }
 /* Delete (a flagged PO) / restore (when showing deleted): quiet until hovered. */
 .po-entry-action {
   display: inline-flex; align-items: center; justify-content: center;
@@ -7598,27 +7599,30 @@ body:has(#stylePane:not([hidden])) #posTableWrap > .table-scroll-y { margin-righ
 .po-entry-no > span { color: var(--text); font-size: 12px; font-weight: 700; font-variant-numeric: tabular-nums; }
 .po-entry-eta { font-variant-numeric: tabular-nums; }
 .po-entry-eta.is-past { color: var(--text-muted); }
-/* The kind pill: every one the same width, filled with a soft shade —
-   New a deeper magenta, New Color the paler one, Recut teal-blue; a PO
-   with both blends Recut into New Color. */
+/* The kind pill: every one the same width, an icon then the label, in one
+   blue-green family — New green, New Color teal, Recut blue; a PO with both
+   blends Recut into New Color. */
 .po-line {
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
   box-sizing: border-box;
-  width: 92px;
-  padding: 1px 6px;
+  width: 102px;
+  padding: 1px 8px;
   border-radius: 9px;
-  background: #ecc6ea;
-  color: #7a1c78;
+  background: #d3efe2;
+  color: #0b6648;
   font-size: 10.5px;
   font-weight: 600;
-  text-align: center;
   white-space: nowrap;
   overflow: hidden;
-  text-overflow: ellipsis;
 }
-.po-line[data-kind="recut"] { background: #dfeef6; color: #1d6f9e; }
-.po-line[data-kind="newColor"] { background: #f5e3f4; color: #9d2c9b; }
-.po-line[data-kind="mixed"] { background: linear-gradient(90deg, #dfeef6, #f5e3f4); color: #5b3f8c; }
+.po-line > span:last-child { overflow: hidden; text-overflow: ellipsis; }
+.po-line-icons { display: inline-flex; gap: 1px; flex-shrink: 0; }
+.po-line-icons svg { display: block; width: 11px; height: 11px; }
+.po-line[data-kind="newColor"] { background: #d4edf2; color: #0e687a; }
+.po-line[data-kind="recut"] { background: #dce6f7; color: #2b559a; }
+.po-line[data-kind="mixed"] { background: linear-gradient(90deg, #dce6f7, #d4edf2); color: #1d5e88; }
 /* An IHD set from PO ETAs: shown, not typed in. */
 .cell-date-po { font-variant-numeric: tabular-nums; cursor: help; }
 .cell-date-po.is-past { color: var(--text-muted); }
@@ -9249,7 +9253,8 @@ body:has(#stylePane:not([hidden])) .shoot-dock { margin-right: 540px; }
 /* ── Sample photos (js/sample-photos.js) ──
    A style with no model photos yet: its sample stands in, tagged "Sample";
    with no sample either, the empty box takes a dragged-in image. */
-.style-thumb.is-sample { border-style: dashed; border-color: #c9a227; }
+/* The "Sample" band in the TOP pill's colours. */
+.style-thumb.is-sample { border-style: dashed; border-color: #f2c94c; }
 .style-thumb.is-sample::before {
   content: "Sample";
   position: absolute;
@@ -9258,8 +9263,9 @@ body:has(#stylePane:not([hidden])) .shoot-dock { margin-right: 540px; }
   bottom: 0;
   z-index: 1;
   padding: 1px 0;
-  background: rgba(201, 162, 39, 0.88);
-  color: #fff;
+  background: #fde68a;
+  border-top: 1px solid #f2c94c;
+  color: #7a5200;
   font-family: var(--font);
   font-size: 7.5px;
   font-weight: 700;
