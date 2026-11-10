@@ -8244,6 +8244,8 @@ tr:hover .shoot-picker.is-unpicked,
 
 .mg-products-table { min-width: 2130px; }
 .mg-products-table .col-available  { width: 150px; min-width: 140px; }
+.mg-products-table .col-n41avail   { width: 110px; min-width: 100px; }
+.mg-products-table .col-n41qty     { width: 76px;  min-width: 64px; }
 .mg-products-table .col-stock      { width: 120px; min-width: 110px; }
 .mg-products-table .col-color      { width: 120px; min-width: 100px; }
 .mg-products-table .col-image      { width: 64px;  min-width: 64px; }

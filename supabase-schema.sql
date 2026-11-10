@@ -272,6 +272,14 @@ alter table styles add column if not exists received_qty numeric;
 alter table styles add column if not exists top_date text not null default '';
 alter table styles add column if not exists top_po text not null default '';
 
+-- From N41's ATS report (Import ATS): on hand, WIP, on order and available to
+-- sell for each Style # + Color, and when that report was imported.
+alter table styles add column if not exists n41_oh numeric;
+alter table styles add column if not exists n41_wip numeric;
+alter table styles add column if not exists n41_oo numeric;
+alter table styles add column if not exists n41_ats numeric;
+alter table styles add column if not exists ats_at timestamptz;
+
 -- ── Magento groups (Magento tab → Import groups) ────────────────────────────
 --
 -- Which Simple items belong to each Grouped product, exactly as Magento has

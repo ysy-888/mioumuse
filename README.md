@@ -67,6 +67,7 @@ reference in index.html so the URLs change on every deploy.
 | `js/photoshoots.js` | The Photoshoots and Need to Shoot pages — the shoots list, the Need to Shoot list, the shoot side pane, shoot status badges |
 | `js/complete.js` | The Complete page — the history of styles shot (photoshoot) or made in CG, filtered by how |
 | `js/production-import.js` | Import Production Sheet — reads the production .xlsx and marks each Style # + Color with a TOP date as TOP |
+| `js/ats-import.js` | Import ATS — N41's ATS report → each Style # + Color's OH / WIP / OO / ATS |
 | `js/purchase-orders.js` | The POs page — importing N41's PO export, New / Recut / New Color, the month list (counts of styles without photos, auto-archiving), POs by ETA month with each colour and its shoot buttons |
 | `js/photoshoot-form.js` | Create / edit photoshoot modal |
 | `js/magento-sales.js` | Magento → Orders and Customers (read-only): lists with Status / Group filters, date quick filters, search, sort, paging; the order / customer pane |
@@ -872,7 +873,13 @@ Need to Shoot's default order is IHD, soonest first (no IHD on top).
   - Campaigns, Trade Shows: **Export CSV**, that page's records and tasks.
   - Platforms: **Export PDF**.
   - Need to Shoot: **Export CSV** and **Export PDF**, the list.
-  - POs: **Import N41 POs** and **Import Production Sheet**.
+  - POs: **Import N41 POs**, **Import Production Sheet** and **Export PDF**.
+  - Styles and Magento → Products: **Import ATS** — N41's ATS report (.xls):
+    F style + G color find the Style # + Color; K onhand, L wip, M onorder
+    and N ats are saved as OH / WIP / OO / ATS (styles not in the report keep
+    theirs). Products shows them as **OH**, **WIP**, **OO** and **N41 ATS**
+    beside **N41 Available** (the Style Master's month); Grouped items leave
+    them blank.
   - Styles: **Import CSV**, **Import Production Sheet**, **Export CSV** (the filtered styles), **Update
     History**, and the image folder's Link / Reconnect / Rescan and Unlink.
   - Magento → Products, Orders, Customers: **Export CSV**. Products: every

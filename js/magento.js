@@ -361,10 +361,12 @@ function formatMgSalable(product) {
 
 /** ATS (Salable Qty): green above 0, red at 0 or below. */
 function createMgAtsCell(product) {
-  const value = product.type === "grouped" ? null : mgSalable.get(product.sku);
   const el = document.createElement("span");
-  el.textContent = formatMgSalable(product);
-  if (typeof value === "number") el.className = `mg-ats ${value > 0 ? "is-pos" : "is-neg"}`;
+  // A Grouped item: blank. 0: a dash.
+  if (product.type === "grouped") return el;
+  const value = mgSalable.get(product.sku);
+  el.textContent = value === 0 ? EMPTY_DISPLAY : formatMgSalable(product);
+  if (typeof value === "number" && value !== 0) el.className = `mg-ats ${value > 0 ? "is-pos" : "is-neg"}`;
   return el;
 }
 
@@ -769,6 +771,45 @@ function createMgCategoryChips(product) {
   return wrap;
 }
 
+// ── N41 figures: the Style Master's Available and the ATS report ─────────────
+//
+// A Simple item's SKU is STYLE#-COLOR (or STYLE#ST-COLOR); a Grouped item
+// shows nothing in these columns.
+
+const MG_N41_QTY = { n41Oh: "oh", n41Wip: "wip", n41Oo: "oo", n41Ats: "ats" };
+
+/** The Styles database colours behind a product: one for an item, all of them for a group. */
+function mgProductStyles(product) {
+  const sku = String(product.sku ?? "").trim().toUpperCase();
+  if (product.type === "grouped") return getPoStyleColors(sku);
+  const color = String(product.color ?? "").trim().toUpperCase();
+  if (color && sku.endsWith(`-${color}`)) {
+    const style = findStyle(sku.slice(0, -color.length - 1), color) ?? findStyle(sku.slice(0, -color.length - 1).replace(/ST$/, ""), color);
+    if (style) return [style];
+  }
+  // No colour to go by: try each dash as the split.
+  for (let i = sku.indexOf("-"); i > 0; i = sku.indexOf("-", i + 1)) {
+    const styleNo = sku.slice(0, i);
+    const c = sku.slice(i + 1);
+    const style = findStyle(styleNo, c) ?? findStyle(styleNo.replace(/ST$/, ""), c);
+    if (style) return [style];
+  }
+  return [];
+}
+
+function createMgN41AvailPill(product) {
+  if (product.type === "grouped") return null;
+  const style = mgProductStyles(product)[0];
+  return style?.availableDate ? createAvailablePill(style.availableDate, style) : null;
+}
+
+/** The item's figure; blank for a Grouped item, "–" for 0 or before the ATS report is imported. */
+function formatMgN41Qty(product, field) {
+  if (product.type === "grouped") return "";
+  const value = mgProductStyles(product)[0]?.[field];
+  return value === null || value === undefined || value === 0 ? EMPTY_DISPLAY : value.toLocaleString();
+}
+
 function renderMgProducts() {
   updateMgCounter();
   renderMgPager();
@@ -832,7 +873,14 @@ function renderMgProducts() {
         td.appendChild(createMgAtsCell(product));
       } else if (col === "stockStatus") td.appendChild(createMgStockControl(product));
       else if (col === "preOrderDate") td.textContent = formatMgDate(product.preOrderDate);
-      else if (col === "available") td.appendChild(createMgAvailCell(product));
+      else if (col === "available") { if (product.type !== "grouped") td.appendChild(createMgAvailCell(product)); }
+      else if (col === "n41Avail") {
+        const pill = createMgN41AvailPill(product);
+        if (pill) td.appendChild(pill);
+      } else if (MG_N41_QTY[col]) {
+        td.className = "mg-num";
+        td.textContent = formatMgN41Qty(product, MG_N41_QTY[col]);
+      }
       else if (col === "visibility") td.textContent = MG_VISIBILITY[product.visibility] ?? EMPTY_DISPLAY;
       else if (col === "updatedAt") td.textContent = formatMgDate(product.updatedAt);
       if (col === "name" && product.name) td.title = product.name;

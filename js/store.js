@@ -984,6 +984,10 @@ function styleKey(styleNo, color) {
   return `${styleNo}\u0000${color}`;
 }
 
+function numOrNull(v) {
+  return v === null || v === undefined || v === "" || isNaN(Number(v)) ? null : Number(v);
+}
+
 function styleRowToStyle(row) {
   return {
     styleNo: String(row.style_no ?? ""),
@@ -1005,6 +1009,12 @@ function styleRowToStyle(row) {
     // ("YYYY-MM-DD", "" = no TOP yet) and on which PO.
     topDate: normalizeYmd(row.top_date),
     topPo: String(row.top_po ?? ""),
+    // From N41's ATS report (Import ATS): null until it's been imported.
+    oh: numOrNull(row.n41_oh),
+    wip: numOrNull(row.n41_wip),
+    oo: numOrNull(row.n41_oo),
+    ats: numOrNull(row.n41_ats),
+    atsAt: String(row.ats_at ?? ""),
     updatedAt: String(row.updated_at ?? ""),
     deletedAt: String(row.deleted_at ?? ""),
   };
@@ -1161,6 +1171,32 @@ async function saveStyleTops(tops, onProgress) {
       if (style) { style.topDate = t.topDate; style.topPo = t.topPo; }
     });
     onProgress?.(Math.min(i + BATCH, tops.length), tops.length);
+  }
+}
+
+/**
+ * Save the ATS report's figures: [{ styleNo, color, oh, wip, oo, ats }], each
+ * an existing style. Only those columns (and ats_at) are sent.
+ */
+async function saveStyleAts(rows, onProgress) {
+  const BATCH = 500;
+  const client = requireClient();
+  const at = new Date().toISOString();
+  for (let i = 0; i < rows.length; i += BATCH) {
+    const batch = rows.slice(i, i + BATCH);
+    const res = await client.from("styles").upsert(
+      batch.map(r => ({ style_no: r.styleNo, color: r.color, n41_oh: r.oh, n41_wip: r.wip, n41_oo: r.oo, n41_ats: r.ats, ats_at: at })),
+      { onConflict: "user_id,style_no,color" },
+    );
+    if (res.error && /n41_(oh|wip|oo|ats)|ats_at/.test(res.error.message ?? "")) {
+      throw new Error("ATS needs the n41_oh, n41_wip, n41_oo, n41_ats and ats_at columns. Run the styles SQL in supabase-schema.sql first.");
+    }
+    throwIfError(res);
+    batch.forEach(r => {
+      const style = findStyle(r.styleNo, r.color);
+      if (style) Object.assign(style, { oh: r.oh, wip: r.wip, oo: r.oo, ats: r.ats, atsAt: at });
+    });
+    onProgress?.(Math.min(i + BATCH, rows.length), rows.length);
   }
 }
 
