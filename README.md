@@ -78,6 +78,7 @@ reference in index.html so the URLs change on every deploy.
 | `js/column-filter.js` | Header filters (the PO app's design): click a column's funnel to tick which values show — used for IHD by month and the Magento products table |
 | `js/shortcuts.js` | Keyboard shortcuts on table pages: ← / → turn pages, Space jumps to search |
 | `js/row-quick-select.js` | Quick select: click / Ctrl / Shift / drag to pick rows on tables with tick boxes, Space ticks them |
+| `js/pane-dismiss.js` | Side panes app-wide: a click outside closes the open one; closing slides it out |
 | `js/copy-menu.js` | Right-click → Copy: style numbers (Styles, Need to Shoot, the shoot pane) and Magento product names |
 | `js/table-view.js` | Header menu → Table view: show / hide and reorder any table's columns, saved as that table's default to your account (`table_views`) |
 | `js/table-pager.js` | Paging for Styles and Need to Shoot: the footer's First / Prev / Next / Last and rows per page (remembered per table) |

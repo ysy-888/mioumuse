@@ -158,6 +158,73 @@ body { padding-left: var(--sidebar-width); }
 .app-sidenav-item.active svg { opacity: 1; }
 .app-sidenav-item[hidden] { display: none; }
 
+/* Collapse button, beside the logo. */
+.app-sidebar-collapse {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 30px;
+  height: 30px;
+  margin-left: auto;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.app-sidebar-collapse:hover { background: var(--row-hover); color: var(--text); }
+.app-sidebar-brand .app-logo { min-width: 0; }
+.app-sidebar-brand { gap: 8px; padding-right: 12px; }
+
+/* Collapsed: icons only; the name shows in a tip on hover (js/app-shell.js). */
+@media (min-width: 901px) {
+  body.is-nav-collapsed { --sidebar-width: 60px; }
+  body.is-nav-collapsed .app-sidebar { overflow-x: hidden; }
+  body.is-nav-collapsed .app-sidebar-brand { justify-content: center; padding: 0; }
+  body.is-nav-collapsed .app-sidebar-brand .app-logo { display: none; }
+  body.is-nav-collapsed .app-sidebar-collapse { margin-left: 0; }
+  body.is-nav-collapsed .app-sidebar-collapse svg { transform: scaleX(-1); }
+  body.is-nav-collapsed .app-sidenav { padding: 4px 10px 16px; }
+  body.is-nav-collapsed .app-sidenav-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+  body.is-nav-collapsed .app-sidenav-item { justify-content: center; padding: 9px 0; }
+  body.is-nav-collapsed .app-sidenav-group {
+    height: 1px;
+    margin: 10px 4px;
+    padding: 0;
+    overflow: hidden;
+    font-size: 0;
+    background: var(--border);
+  }
+}
+
+/* Hover tip for the collapsed menu, dressed like the menu itself. */
+.app-sidenav-tip {
+  position: fixed;
+  z-index: 160;
+  padding: 7px 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.08);
+  font-family: var(--font);
+  font-size: 13.5px;
+  font-weight: 500;
+  color: var(--text);
+  white-space: nowrap;
+  pointer-events: none;
+  transform: translateY(-50%);
+}
+.app-sidenav-tip[hidden] { display: none; }
+
 /* Page title, with where it sits above it. */
 .app-page-heading {
   display: flex;
@@ -220,6 +287,7 @@ body { padding-left: var(--sidebar-width); }
     background: rgba(0, 0, 0, 0.25);
   }
   .app-header .app-nav-toggle { display: inline-flex; }
+  .app-sidebar-collapse { display: none; }
 }
 
 
@@ -5786,6 +5854,17 @@ span.dash-event { cursor: pointer; /* clicking selects the day */ }
   to   { opacity: 1; transform: none; }
 }
 
+/* Closing: a stand-in slides out and fades (js/pane-dismiss.js). */
+.item-pane.is-pane-ghost {
+  pointer-events: none;
+  animation: item-pane-out 170ms ease-in forwards;
+}
+
+@keyframes item-pane-out {
+  from { opacity: 1; transform: none; }
+  to   { opacity: 0; transform: translateX(24px); }
+}
+
 .item-pane-header {
   display: flex;
   align-items: center;
@@ -8832,15 +8911,29 @@ tr:hover .shoot-picker.is-unpicked,
 
 /* Product pane */
 .mg-pane { width: 600px; }
+/* Every gallery image, side by side; scrolls across when there are more. */
 .mg-pane-preview {
   display: flex;
-  justify-content: center;
+  gap: 10px;
   padding: 14px 16px;
+  overflow-x: auto;
+  scroll-snap-type: x proximity;
+  scroll-padding: 0 16px;
   background: #fafafa;
   border-bottom: 1px solid var(--border);
 }
+.mg-pane-preview.is-single { justify-content: center; }
 .mg-pane-preview[hidden] { display: none; }
-.mg-pane-preview img { max-height: 220px; max-width: 100%; border-radius: 6px; object-fit: contain; }
+.mg-pane-image {
+  flex-shrink: 0;
+  display: block;
+  scroll-snap-align: start;
+  border-radius: 6px;
+  overflow: hidden;
+  background: var(--surface);
+  cursor: zoom-in;
+}
+.mg-pane-image img { display: block; height: 380px; width: auto; max-width: 540px; object-fit: contain; }
 .mg-pane-form { padding: 14px 16px 18px; }
 .mg-pane-form.is-loading { opacity: 0.6; }
 /* Read-only until the field's edit icon is clicked: a light box, even when

@@ -89,7 +89,7 @@ import { AsyncLocalStorage } from "node:async_hooks";
  * copy running in Supabase is older than the app expects. Bump it (and
  * MG_HELPER_VERSION in js/magento.js) whenever this file changes.
  */
-const HELPER_VERSION = "2026-11-10.1";
+const HELPER_VERSION = "2026-11-10.2";
 
 /**
  * Where a request's time went: each Magento call is counted and timed, per
@@ -453,6 +453,14 @@ function detail(p: any, colors: Map<string, string>) {
     shortDescription: customAttr(p, "short_description") ?? "",
     metaTitle: customAttr(p, "meta_title") ?? "",
     metaDescription: customAttr(p, "meta_description") ?? "",
+    // Every image in its gallery, in order; hidden ones left out.
+    images: (p.media_gallery_entries ?? [])
+      // deno-lint-ignore no-explicit-any
+      .filter((m: any) => m.file && m.media_type !== "external-video" && !m.disabled)
+      // deno-lint-ignore no-explicit-any
+      .sort((a: any, b: any) => (a.position ?? 0) - (b.position ?? 0))
+      // deno-lint-ignore no-explicit-any
+      .map((m: any) => String(m.file)),
   };
 }
 

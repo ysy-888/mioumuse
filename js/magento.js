@@ -77,7 +77,7 @@ let mgSalableWarned = false;
 let mgTableRenderWaiting = false;
 
 /** The helper version this app expects (HELPER_VERSION in supabase/functions/magento). */
-const MG_HELPER_VERSION = "2026-11-10.1";
+const MG_HELPER_VERSION = "2026-11-10.2";
 
 /** Per action, the last call's timing: { roundTripMs, totalMs, authMs, magentoCalls, magentoMs, slowest… }. */
 const mgTimings = {};
@@ -1101,6 +1101,27 @@ async function openMagentoPane(sku) {
   renderMagentoPane();
 }
 
+const mgProductRows = () => [...document.querySelectorAll("#mgProductsBody tr[data-sku]")];
+
+/** ↑ / ↓: open the product above or below in the table, keeping it in view. */
+async function moveMagentoPane(dir) {
+  const rows = mgProductRows();
+  const i = rows.findIndex(tr => tr.dataset.sku === mgPane?.saved.sku);
+  const next = rows[i < 0 ? 0 : i + dir];
+  if (!next) return;
+  const sku = next.dataset.sku;
+  const opening = openMagentoPane(sku);
+  // The table redraws as the pane opens: find the new row, and pick it.
+  const tr = mgPane?.saved.sku === sku && mgProductRows().find(el => el.dataset.sku === sku);
+  if (tr) {
+    tr.scrollIntoView({ block: "nearest" });
+    useQuickBody(tr.parentElement);
+    setQuickRows([tr]);
+    quickAnchor = tr;
+  }
+  await opening;
+}
+
 function closeMagentoPane({ force = true } = {}) {
   if (!mgPane) return true;
   if (!force && isMgPaneDirty() && !confirm("Discard your unsaved changes to this product?")) return false;
@@ -1131,6 +1152,39 @@ function isMgPaneDirty() {
   return Object.keys(getMgPaneChanges()).length > 0;
 }
 
+/**
+ * Every image in the product's gallery, side by side and scrolling across;
+ * the list's one image until the full product has loaded. Each opens full
+ * size in a new tab. Redrawn only when the images change, so they don't flicker.
+ */
+function renderMgPaneImages(product) {
+  const preview = document.getElementById("mgPanePreview");
+  if (!preview) return;
+  const files = product.images?.length ? product.images : [product.image];
+  const urls = [...new Set(files.map(image => getMgImageUrl({ image })).filter(Boolean))];
+  const key = urls.join("\n");
+  if (preview.dataset.key !== key) {
+    preview.dataset.key = key;
+    preview.replaceChildren(...urls.map((url, i) => {
+      const link = document.createElement("a");
+      link.className = "mg-pane-image";
+      link.href = url;
+      link.target = "_blank";
+      link.rel = "noopener";
+      link.title = "Open full size";
+      const img = document.createElement("img");
+      img.src = url;
+      img.alt = urls.length > 1 ? `${product.name} — image ${i + 1}` : product.name;
+      img.loading = i < 3 ? "eager" : "lazy";
+      link.appendChild(img);
+      return link;
+    }));
+    preview.scrollLeft = 0;
+  }
+  preview.classList.toggle("is-single", urls.length === 1);
+  preview.hidden = !urls.length;
+}
+
 function renderMagentoPane() {
   if (!mgPane) return;
   const { draft, saved } = mgPane;
@@ -1147,17 +1201,7 @@ function renderMagentoPane() {
   status.disabled = Boolean(mgPane.loading);
   document.getElementById("mgPaneHeaderSlot").replaceChildren(status);
 
-  const preview = document.getElementById("mgPanePreview");
-  const url = getMgImageUrl(saved);
-  if (url) {
-    const img = document.createElement("img");
-    img.src = url;
-    img.alt = saved.name;
-    preview.replaceChildren(img);
-  } else {
-    preview.replaceChildren();
-  }
-  preview.hidden = !url;
+  renderMgPaneImages(saved);
 
   const form = document.getElementById("mgPaneForm");
   form.classList.toggle("is-loading", Boolean(mgPane.loading));
@@ -1656,6 +1700,20 @@ function initMagento() {
     const tr = e.target.closest("tr[data-sku]");
     if (tr) openMagentoPane(tr.dataset.sku);
   });
+
+  // ↑ ↓ while the pane is open: the product above or below, as on the style
+  // pages. Caught first, so the row highlight (js/row-quick-select.js) and
+  // the page shortcuts don't take it.
+  document.addEventListener("keydown", e => {
+    if (!mgPane || (e.key !== "ArrowUp" && e.key !== "ArrowDown")) return;
+    if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
+    if (getCurrentAppView() !== "magento" || mgSubview !== "products") return;
+    if (document.querySelector(".modal-backdrop.open")) return;
+    if (e.target.closest?.("input, textarea, select, [contenteditable='true']")) return;
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    moveMagentoPane(e.key === "ArrowUp" ? -1 : 1);
+  }, true);
 
   document.getElementById("mgSelectAll")?.addEventListener("change", e => {
     mgPage.items.forEach(p => {

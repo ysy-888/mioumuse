@@ -62,6 +62,7 @@ async function bootApp() {
   initExports();
   initCopyMenu();
   initRowQuickSelect();
+  initPaneDismiss();
   initShortcuts();
   initCalendar();
   // Last: rearranges the headers every table above has set up.

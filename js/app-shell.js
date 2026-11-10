@@ -177,6 +177,69 @@ function initNavMenus() {
   // Narrow screens: the menu button slides it in; a click outside shuts it.
   document.getElementById("appNavToggle")?.addEventListener("click", () => setAppNavOpen(!document.body.classList.contains("is-nav-open")));
   document.getElementById("appSidebarBackdrop")?.addEventListener("click", () => setAppNavOpen(false));
+  initNavCollapse();
+}
+
+// ── Collapsed menu: icons only, with the name in a tip on hover ─────────────
+
+const NAV_COLLAPSED_KEY = "navCollapsed";
+
+function isNavCollapsed() {
+  return document.body.classList.contains("is-nav-collapsed")
+    && window.matchMedia("(min-width: 901px)").matches;
+}
+
+function setNavCollapsed(collapsed) {
+  document.body.classList.toggle("is-nav-collapsed", collapsed);
+  const btn = document.getElementById("appSidebarCollapse");
+  if (btn) {
+    const label = collapsed ? "Expand menu" : "Collapse menu";
+    btn.setAttribute("aria-label", label);
+    btn.setAttribute("aria-expanded", String(!collapsed));
+    btn.dataset.tip = label;
+  }
+  hideNavTip();
+  try { localStorage.setItem(NAV_COLLAPSED_KEY, collapsed ? "1" : "0"); } catch { /* storage off */ }
+  // Tables sized to the window refit to the wider page.
+  window.dispatchEvent(new Event("resize"));
+}
+
+function showNavTip(target) {
+  const tip = document.getElementById("appSidenavTip");
+  if (!tip || !isNavCollapsed()) return;
+  const text = target.dataset.tip || target.querySelector(".app-sidenav-label")?.textContent.trim();
+  if (!text) return;
+  const box = target.getBoundingClientRect();
+  tip.textContent = text;
+  tip.style.left = `${box.right + 10}px`;
+  tip.style.top = `${box.top + box.height / 2}px`;
+  tip.hidden = false;
+}
+
+function hideNavTip() {
+  const tip = document.getElementById("appSidenavTip");
+  if (tip) tip.hidden = true;
+}
+
+function initNavCollapse() {
+  const sidebar = document.getElementById("appSidebar");
+  let saved = false;
+  try { saved = localStorage.getItem(NAV_COLLAPSED_KEY) === "1"; } catch { /* storage off */ }
+  if (saved) document.body.classList.add("is-nav-collapsed");
+  setNavCollapsed(saved);
+
+  document.getElementById("appSidebarCollapse")?.addEventListener("click", () => setNavCollapsed(!document.body.classList.contains("is-nav-collapsed")));
+
+  const tipTarget = el => el?.closest?.(".app-sidenav-item, .app-sidebar-collapse");
+  sidebar?.addEventListener("mouseover", e => {
+    const target = tipTarget(e.target);
+    if (target) showNavTip(target); else hideNavTip();
+  });
+  sidebar?.addEventListener("mouseleave", hideNavTip);
+  sidebar?.addEventListener("focusin", e => { const t = tipTarget(e.target); if (t) showNavTip(t); });
+  sidebar?.addEventListener("focusout", hideNavTip);
+  sidebar?.addEventListener("scroll", hideNavTip);
+  sidebar?.addEventListener("click", hideNavTip);
 }
 
 // ── Header menu ──────────────────────────────────────────────────────────────
