@@ -89,7 +89,7 @@ import { AsyncLocalStorage } from "node:async_hooks";
  * copy running in Supabase is older than the app expects. Bump it (and
  * MG_HELPER_VERSION in js/magento.js) whenever this file changes.
  */
-const HELPER_VERSION = "2026-11-05.1";
+const HELPER_VERSION = "2026-11-10.1";
 
 /**
  * Where a request's time went: each Magento call is counted and timed, per
@@ -356,6 +356,28 @@ function findPreOrderCode() {
     return null;
   });
   return preOrderLookup;
+}
+
+/**
+ * sku → Pre-Order Date for every product that has one — for the catalog
+ * index, so the app can sort and filter by it. Only those products are read.
+ */
+async function catalogPreOrderDates(): Promise<Map<string, string>> {
+  const code = await findPreOrderCode();
+  if (!code) return new Map();
+  try {
+    const items = await allProductPages(page => new URLSearchParams({
+      "searchCriteria[filter_groups][0][filters][0][field]": code,
+      "searchCriteria[filter_groups][0][filters][0][value]": "1",
+      "searchCriteria[filter_groups][0][filters][0][condition_type]": "notnull",
+      "searchCriteria[pageSize]": "1000",
+      "searchCriteria[currentPage]": String(page),
+      fields: "items[sku,custom_attributes],total_count",
+    }), 1000, 2);
+    return new Map(items.map(p => [String(p.sku), preOrderDate(p)] as [string, string]).filter(([, d]) => d));
+  } catch {
+    return new Map(); // the rest of the index is fine without it
+  }
 }
 
 /** "YYYY-MM-DD" or "" — by the code found, else any code that looks like it. */
@@ -1658,13 +1680,14 @@ const actions: Record<string, (p: any) => Promise<unknown>> = {
   async catalogIndex() {
     // Products and stock side by side — but only two product pages at a
     // time, so the store has room left for the table's own requests.
-    const [products, stockResult] = await Promise.all([
+    const [products, stockResult, preOrders] = await Promise.all([
       allProductPages(page => new URLSearchParams({
         "searchCriteria[pageSize]": "1000",
         "searchCriteria[currentPage]": String(page),
         fields: "items[id,sku,type_id,status,visibility,name,price,updated_at,extension_attributes[category_links[category_id]]],total_count",
       }), 1000, 2),
       catalogStock(),
+      catalogPreOrderDates(),
     ]);
     const { stockFrom, byId, bySku } = stockResult;
 
@@ -1685,6 +1708,7 @@ const actions: Record<string, (p: any) => Promise<unknown>> = {
           String(p.updated_at ?? ""),
           // deno-lint-ignore no-explicit-any
           (p.extension_attributes?.category_links ?? []).map((l: any) => String(l.category_id)).join(","),
+          preOrders.get(String(p.sku)) ?? "",
         ];
       }),
     };

@@ -33,7 +33,9 @@ const MG_TYPES = {
 };
 
 /** Columns the header sorts by (Magento's names live in the Edge Function). */
-const MG_SORTABLE = new Set(["name", "sku", "type", "price", "status", "visibility", "updatedAt"]);
+// The last nine sort here, not in Magento (js/magento-availability.js MG_LOCAL_COLS).
+const MG_SORTABLE = new Set(["name", "sku", "type", "price", "status", "visibility", "updatedAt",
+  "n41Avail", "n41Oh", "n41Wip", "n41Oo", "n41Ats", "qty", "salableQty", "stockStatus", "preOrderDate"]);
 
 let mgSubview = "products";
 let mgLoadedOnce = false;
@@ -75,7 +77,7 @@ let mgSalableWarned = false;
 let mgTableRenderWaiting = false;
 
 /** The helper version this app expects (HELPER_VERSION in supabase/functions/magento). */
-const MG_HELPER_VERSION = "2026-11-05.1";
+const MG_HELPER_VERSION = "2026-11-10.1";
 
 /** Per action, the last call's timing: { roundTripMs, totalMs, authMs, magentoCalls, magentoMs, slowest… }. */
 const mgTimings = {};
@@ -649,7 +651,8 @@ function pickMgSummary(p) {
  * Simple item whose Grouped item is on another page stays where it sorts.
  */
 function arrangeMgRows(items) {
-  if (mgQuery.type !== null) return items.map(product => ({ product, role: null }));
+  // Sorted by a figure (OH, Qty…): just as sorted, items not pulled under their groups.
+  if (mgQuery.type !== null || isMgLocalSort()) return items.map(product => ({ product, role: null }));
   const bySku = new Map(items.map(p => [p.sku, p]));
   // Simple items that have their Grouped item on this page.
   const underParent = new Set();
@@ -1589,6 +1592,13 @@ function initMagento() {
       onChange: applyMgHeaderFilters,
       // Category names are long and nested — give them room.
       width: col === "categories" ? 380 : null,
+    });
+  });
+  // N41 Available, OH … Pre-Order Date: filtered here (js/magento-availability.js).
+  MG_LOCAL_COLS.forEach(col => {
+    initColumnFilter("mgProductsTable", col, {
+      options: () => mgLocalFilterOptions(col),
+      onChange: () => setMgQuery({}),
     });
   });
   document.querySelectorAll("#mgStatusFilters .filter-btn").forEach(btn => {

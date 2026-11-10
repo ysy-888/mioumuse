@@ -879,7 +879,10 @@ Need to Shoot's default order is IHD, soonest first (no IHD on top).
     and N ats are saved as OH / WIP / OO / ATS (styles not in the report keep
     theirs). Products shows them as **OH**, **WIP**, **OO** and **N41 ATS**
     beside **N41 Available** (the Style Master's month); Grouped items leave
-    them blank.
+    them blank. N41 Available, OH, WIP, OO, N41 ATS, Qty, ATS, Stock Status
+    and Pre-Order Date sort and filter in the app, from the catalog index
+    (Pre-Order Date needs the magento function redeployed); sorted by one of
+    them, items aren't pulled under their groups, and blanks go last.
   - Styles: **Import CSV**, **Import Production Sheet**, **Export CSV** (the filtered styles), **Update
     History**, and the image folder's Link / Reconnect / Rescan and Unlink.
   - Magento → Products, Orders, Customers: **Export CSV**. Products: every

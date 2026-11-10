@@ -53,13 +53,15 @@ let mgCatalogSalableRun = 0;
  * and categories — then the app can filter and sort by itself (mgLocalSkus).
  */
 function mgIndexFromRows(rows) {
-  return new Map((rows ?? []).map(([sku, type, status, visibility, qty, inStock, name, price, updatedAt, categoryIds]) =>
+  return new Map((rows ?? []).map(([sku, type, status, visibility, qty, inStock, name, price, updatedAt, categoryIds, preOrderDate]) =>
     [sku, {
       type, status, visibility, qty, inStock,
       name: name ?? null,
       price: price ?? null,
       updatedAt: updatedAt ?? "",
       categoryIds: categoryIds ? String(categoryIds).split(",") : [],
+      // undefined from a helper older than Pre-Order Date in the index.
+      preOrderDate,
     }]));
 }
 
@@ -181,6 +183,7 @@ function absorbMgProduct(p) {
     price: p.price ?? now.price ?? null,
     updatedAt: p.updatedAt ?? now.updatedAt ?? "",
     categoryIds: p.categoryIds ?? now.categoryIds ?? [],
+    preOrderDate: p.preOrderDate ?? now.preOrderDate,
   });
 }
 
@@ -294,11 +297,95 @@ function createMgAvailCell(product) {
 
 // ── Filters ──────────────────────────────────────────────────────────────────
 
+// ── N41 and stock columns: sorted and filtered here, from the catalog ────────
+//
+// N41 Available, OH, WIP, OO, N41 ATS (the Styles database, by SKU), Qty,
+// ATS (Salable Qty), Stock Status and Pre-Order Date. Magento can't sort or
+// filter by them, so — like Available — the SKUs are picked here and only
+// that page is loaded. Grouped items have none of these but Stock Status:
+// a filter on the others leaves them out, and they sort last.
+
+const MG_LOCAL_COLS = ["n41Avail", "n41Oh", "n41Wip", "n41Oo", "n41Ats", "qty", "salableQty", "stockStatus", "preOrderDate"];
+
+/** A product's value in one of those columns (null when blank). */
+function mgLocalValue(col, sku, r = mgIndex?.get(sku)) {
+  if (!r) return null;
+  if (col === "stockStatus") return r.inStock ?? null;
+  if (r.type === "grouped") return null;
+  if (col === "qty") return r.qty ?? null;
+  if (col === "salableQty") return mgSalable.get(sku) ?? null;
+  if (col === "preOrderDate") return r.preOrderDate || null;
+  const style = mgProductStyles({ sku, type: r.type })[0]; // js/magento.js
+  if (!style) return null;
+  if (col === "n41Avail") return /^\d{4}-\d{2}/.exec(style.availableDate ?? "")?.[0] ?? null;
+  return style[MG_N41_QTY[col]] ?? null;
+}
+
+/** Its filter choice: a month, In / Out of Stock, or above / at / below 0. */
+function mgLocalFilterKey(col, v) {
+  if (col === "stockStatus") return v === true ? "in" : v === false ? "out" : "unknown";
+  if (col === "n41Avail" || col === "preOrderDate") return v ? String(v).slice(0, 7) : "";
+  return v === null || v === 0 ? "zero" : v > 0 ? "pos" : "neg";
+}
+
+const MG_LOCAL_BUCKETS = { pos: "Above 0", zero: "– (0 or blank)", neg: "Below 0", in: "In Stock", out: "Out of Stock", unknown: "Not known" };
+
+/** The choices for a column's filter — only values some product has, with how many. */
+function mgLocalFilterOptions(col) {
+  if (!mgIndex) return [];
+  const counts = new Map();
+  mgIndex.forEach((r, sku) => {
+    if (r.type === "grouped" && col !== "stockStatus") return;
+    const key = mgLocalFilterKey(col, mgLocalValue(col, sku, r));
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  });
+  const dated = col === "n41Avail" || col === "preOrderDate";
+  const keys = dated
+    ? [...counts.keys()].sort((a, b) => (a === "") - (b === "") || a.localeCompare(b))
+    : Object.keys(MG_LOCAL_BUCKETS).filter(k => counts.has(k));
+  return keys.map(key => ({
+    key,
+    label: dated ? (key ? formatMonYY(key) : col === "n41Avail" ? "No month" : "No date") : MG_LOCAL_BUCKETS[key],
+    count: counts.get(key),
+  }));
+}
+
+function mgLocalFilters() {
+  return MG_LOCAL_COLS.map(col => [col, getColumnFilterSelection("mgProductsTable", col)]).filter(([, keys]) => keys);
+}
+
+function passesMgLocalFilters(sku) {
+  const r = mgIndex?.get(sku);
+  return mgLocalFilters().every(([col, keys]) => {
+    if (!r || (r.type === "grouped" && col !== "stockStatus")) return false;
+    return keys.includes(mgLocalFilterKey(col, mgLocalValue(col, sku, r)));
+  });
+}
+
+function isMgLocalSort() {
+  return MG_LOCAL_COLS.includes(mgQuery.sort);
+}
+
+/** Sort SKUs by one of those columns; blanks last whichever way it runs. */
+function sortMgSkusLocally(skus) {
+  const col = mgQuery.sort;
+  const dir = mgQuery.dir === "DESC" ? -1 : 1;
+  const values = new Map(skus.map(sku => [sku, mgLocalValue(col, sku)]));
+  const blank = v => v === null || v === undefined || v === "";
+  return [...skus].sort((x, y) => {
+    const a = values.get(x);
+    const b = values.get(y);
+    if (blank(a) || blank(b)) return blank(a) - blank(b) || x.localeCompare(y);
+    return dir * (a < b ? -1 : a > b ? 1 : 0) || x.localeCompare(y);
+  });
+}
+
 function hasMgClientFilter() {
-  return Boolean(mgAvailFilter || mgFlaggedOnly);
+  return Boolean(mgAvailFilter || mgFlaggedOnly || isMgLocalSort() || mgLocalFilters().length);
 }
 
 function passesMgClientFilter(sku) {
+  if (!passesMgLocalFilters(sku)) return false;
   if (mgFlaggedOnly && !isMgFlagged(sku)) return false;
   if (mgAvailFilter) {
     const { available } = mgAvailability(sku);
@@ -358,14 +445,18 @@ async function mgFilteredSkus() {
   if (!mgIndex) await loadMgIndex();
   if (mgAvailFilter && !mgIndex) throw new Error(`Availability can't be checked: ${mgIndexError || "the catalog didn't load"}`);
   // A full catalog answers it here — no calls to Magento at all.
-  if (mgIndexIsFull()) return mgLocalSkus().filter(passesMgClientFilter);
+  if (mgIndexIsFull()) {
+    const skus = mgLocalSkus().filter(passesMgClientFilter);
+    return isMgLocalSort() ? sortMgSkusLocally(skus) : skus;
+  }
   // Otherwise (an older helper's catalog) Magento lists the SKUs.
   const { page, pageSize, ...rest } = mgQuery;
   const key = JSON.stringify(rest);
   if (mgSkuListCache.key !== key || !mgSkuListCache.skus) {
     mgSkuListCache = { key, skus: await callMagento("skuList", rest) };
   }
-  return mgSkuListCache.skus.filter(passesMgClientFilter);
+  const skus = mgSkuListCache.skus.filter(passesMgClientFilter);
+  return isMgLocalSort() ? sortMgSkusLocally(skus) : skus;
 }
 
 /** One page of products by SKU, in the order given. */

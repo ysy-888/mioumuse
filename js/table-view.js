@@ -122,6 +122,23 @@ function applyTableView(tableId) {
   ];
   headRow.replaceChildren(...shown.map(c => c.th));
   if (colgroup && state.hasCols) colgroup.replaceChildren(...shown.map(c => c.colEl));
+  fitTableMinWidth(table);
+}
+
+/**
+ * A table with data-flex-min fills its width, its auto column (Categories)
+ * taking what's left — but never less than data-flex-min px: the table's
+ * min-width is the showing columns' widths plus that, so below it the table
+ * scrolls sideways instead.
+ */
+function fitTableMinWidth(table) {
+  if (!table?.dataset.flexMin) return;
+  let sum = Number(table.dataset.flexMin) || 0;
+  table.querySelectorAll("colgroup col").forEach(col => {
+    const w = parseFloat(getComputedStyle(col).width);
+    if (!isNaN(w)) sum += w;
+  });
+  table.style.minWidth = `${Math.round(sum)}px`;
 }
 
 /** Redraw whatever is on screen, now that its columns have moved. */
