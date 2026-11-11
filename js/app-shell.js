@@ -180,66 +180,70 @@ function initNavMenus() {
   initNavCollapse();
 }
 
-// ── Collapsed menu: icons only, with the name in a tip on hover ─────────────
+// ── Collapsed menu: icons only; hover to see the whole menu ────────────────
+//
+// Collapsed, the menu is a strip of icons. Resting the pointer on it slides
+// the full menu out over the page; picking a page (or moving away) slides it
+// back. The page itself stays where it is.
 
 const NAV_COLLAPSED_KEY = "navCollapsed";
+const NAV_PEEK_DELAY_MS = 120; // passing over on the way somewhere doesn't open it
+
+let navPeekTimer = 0;
+let navPeekHeld = false; // just picked a page: stay shut until the pointer leaves
 
 function isNavCollapsed() {
   return document.body.classList.contains("is-nav-collapsed")
     && window.matchMedia("(min-width: 901px)").matches;
 }
 
+function setNavPeek(open) {
+  clearTimeout(navPeekTimer);
+  document.body.classList.toggle("is-nav-peek", open && isNavCollapsed());
+}
+
 function setNavCollapsed(collapsed) {
   document.body.classList.toggle("is-nav-collapsed", collapsed);
+  setNavPeek(false);
   const btn = document.getElementById("appSidebarCollapse");
   if (btn) {
-    const label = collapsed ? "Expand menu" : "Collapse menu";
+    const label = collapsed ? "Keep the menu open" : "Collapse menu";
     btn.setAttribute("aria-label", label);
     btn.setAttribute("aria-expanded", String(!collapsed));
-    btn.dataset.tip = label;
+    btn.title = label;
   }
-  hideNavTip();
   try { localStorage.setItem(NAV_COLLAPSED_KEY, collapsed ? "1" : "0"); } catch { /* storage off */ }
   // Tables sized to the window refit to the wider page.
   window.dispatchEvent(new Event("resize"));
-}
-
-function showNavTip(target) {
-  const tip = document.getElementById("appSidenavTip");
-  if (!tip || !isNavCollapsed()) return;
-  const text = target.dataset.tip || target.querySelector(".app-sidenav-label")?.textContent.trim();
-  if (!text) return;
-  const box = target.getBoundingClientRect();
-  tip.textContent = text;
-  tip.style.left = `${box.right + 10}px`;
-  tip.style.top = `${box.top + box.height / 2}px`;
-  tip.hidden = false;
-}
-
-function hideNavTip() {
-  const tip = document.getElementById("appSidenavTip");
-  if (tip) tip.hidden = true;
 }
 
 function initNavCollapse() {
   const sidebar = document.getElementById("appSidebar");
   let saved = false;
   try { saved = localStorage.getItem(NAV_COLLAPSED_KEY) === "1"; } catch { /* storage off */ }
-  if (saved) document.body.classList.add("is-nav-collapsed");
   setNavCollapsed(saved);
 
   document.getElementById("appSidebarCollapse")?.addEventListener("click", () => setNavCollapsed(!document.body.classList.contains("is-nav-collapsed")));
 
-  const tipTarget = el => el?.closest?.(".app-sidenav-item, .app-sidebar-collapse");
-  sidebar?.addEventListener("mouseover", e => {
-    const target = tipTarget(e.target);
-    if (target) showNavTip(target); else hideNavTip();
+  sidebar?.addEventListener("mouseenter", () => {
+    if (!isNavCollapsed() || navPeekHeld) return;
+    clearTimeout(navPeekTimer);
+    navPeekTimer = setTimeout(() => setNavPeek(true), NAV_PEEK_DELAY_MS);
   });
-  sidebar?.addEventListener("mouseleave", hideNavTip);
-  sidebar?.addEventListener("focusin", e => { const t = tipTarget(e.target); if (t) showNavTip(t); });
-  sidebar?.addEventListener("focusout", hideNavTip);
-  sidebar?.addEventListener("scroll", hideNavTip);
-  sidebar?.addEventListener("click", hideNavTip);
+  sidebar?.addEventListener("mouseleave", () => {
+    navPeekHeld = false;
+    setNavPeek(false);
+  });
+  // Tabbing into it opens it too; tabbing out shuts it.
+  sidebar?.addEventListener("focusin", e => { if (e.target.matches(":focus-visible")) setNavPeek(true); });
+  sidebar?.addEventListener("focusout", e => { if (!sidebar.contains(e.relatedTarget)) setNavPeek(false); });
+  // A page picked: shut at once, and stay shut while the pointer is still on it.
+  sidebar?.addEventListener("click", e => {
+    if (!isNavCollapsed() || !e.target.closest(".app-sidenav-item")) return;
+    navPeekHeld = true;
+    setNavPeek(false);
+    e.target.closest(".app-sidenav-item").blur();
+  });
 }
 
 // ── Header menu ──────────────────────────────────────────────────────────────

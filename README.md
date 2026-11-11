@@ -74,6 +74,8 @@ reference in index.html so the URLs change on every deploy.
 | `js/magento-n41.js` | Magento → Orders against N41: Import N41 Sales Orders, N41 Status, the Closed on N41 filter, tick orders and cancel them on Magento |
 | `js/magento-groups.js` | ⋮ menu on Magento Products → Import Groups: reads a Magento product export's `associated_skus` and saves the exact group links; the "Not in group" flag |
 | `js/magento.js` | Magento tab — live products (filters, sort, paging, status switch, bulk changes, edit pane) and categories (rename, active, jump to products) |
+| `js/magento-photos.js` | Simple product pane photos (Grouped products have none of their own): every gallery photo; add (upload or drop), make main, hide / show, delete, drag to reorder — each saved to Magento at once |
+| `js/magento-group-order.js` | Grouped product pane: its Simple items as a numbered list; drag to reorder (saved to Magento and the imported groups) — the first item's photo leads on the storefront |
 | `supabase/functions/magento/` | Edge Function the app calls for Magento; holds the store address and token (secrets `MAGENTO_BASE_URL`, `MAGENTO_ACCESS_TOKEN`) |
 | `js/column-filter.js` | Header filters (the PO app's design): click a column's funnel to tick which values show — used for IHD by month and the Magento products table |
 | `js/shortcuts.js` | Keyboard shortcuts on table pages: ← / → turn pages, Space jumps to search |

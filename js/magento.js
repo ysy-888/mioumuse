@@ -77,7 +77,7 @@ let mgSalableWarned = false;
 let mgTableRenderWaiting = false;
 
 /** The helper version this app expects (HELPER_VERSION in supabase/functions/magento). */
-const MG_HELPER_VERSION = "2026-11-10.2";
+const MG_HELPER_VERSION = "2026-11-10.3";
 
 /** Per action, the last call's timing: { roundTripMs, totalMs, authMs, magentoCalls, magentoMs, slowest… }. */
 const mgTimings = {};
@@ -1152,39 +1152,6 @@ function isMgPaneDirty() {
   return Object.keys(getMgPaneChanges()).length > 0;
 }
 
-/**
- * Every image in the product's gallery, side by side and scrolling across;
- * the list's one image until the full product has loaded. Each opens full
- * size in a new tab. Redrawn only when the images change, so they don't flicker.
- */
-function renderMgPaneImages(product) {
-  const preview = document.getElementById("mgPanePreview");
-  if (!preview) return;
-  const files = product.images?.length ? product.images : [product.image];
-  const urls = [...new Set(files.map(image => getMgImageUrl({ image })).filter(Boolean))];
-  const key = urls.join("\n");
-  if (preview.dataset.key !== key) {
-    preview.dataset.key = key;
-    preview.replaceChildren(...urls.map((url, i) => {
-      const link = document.createElement("a");
-      link.className = "mg-pane-image";
-      link.href = url;
-      link.target = "_blank";
-      link.rel = "noopener";
-      link.title = "Open full size";
-      const img = document.createElement("img");
-      img.src = url;
-      img.alt = urls.length > 1 ? `${product.name} — image ${i + 1}` : product.name;
-      img.loading = i < 3 ? "eager" : "lazy";
-      link.appendChild(img);
-      return link;
-    }));
-    preview.scrollLeft = 0;
-  }
-  preview.classList.toggle("is-single", urls.length === 1);
-  preview.hidden = !urls.length;
-}
-
 function renderMagentoPane() {
   if (!mgPane) return;
   const { draft, saved } = mgPane;
@@ -1235,10 +1202,11 @@ function renderMagentoPane() {
     if (grouped) {
       groupField.hidden = false;
       label.replaceChildren("Simple items", createMgChildCount(saved));
-      list.replaceChildren(...(saved.childSkus ?? []).map(chip));
+      renderMgGroupOrder(list, saved); // js/magento-group-order.js
     } else if (saved.groupSku || saved.unlinkedGroup) {
       groupField.hidden = false;
       label.textContent = "Group";
+      delete list.dataset.key;
       list.replaceChildren(saved.groupSku ? chip(saved.groupSku) : createMgUnlinkedFlag(saved));
     } else {
       groupField.hidden = true;

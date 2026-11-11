@@ -47,6 +47,8 @@ async function bootApp() {
   initBannerForm();
   initMailchimp();
   initMagento();
+  initMgPhotos();
+  initMgGroupOrder();
   initMgEvents();
   initColumnFilterPopover();
   initStylesView();

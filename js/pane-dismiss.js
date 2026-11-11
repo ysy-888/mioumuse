@@ -27,7 +27,6 @@ const PANE_KEEP_OPEN = [
   ".cal-filter-menu",
   "#shootMenu",
   ".dashboard-day-pane",
-  ".app-sidenav-tip",
 ].join(", ");
 
 const PANE_CLOSE_MS = 170;

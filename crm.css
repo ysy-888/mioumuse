@@ -178,52 +178,54 @@ body { padding-left: var(--sidebar-width); }
 .app-sidebar-brand .app-logo { min-width: 0; }
 .app-sidebar-brand { gap: 8px; padding-right: 12px; }
 
-/* Collapsed: icons only; the name shows in a tip on hover (js/app-shell.js). */
+/* Collapsed: a strip of icons. Hovering it slides the whole menu out over
+   the page; picking a page slides it back (js/app-shell.js). Everything
+   keeps its place in both, so only the width moves and the names fade. */
 @media (min-width: 901px) {
   body.is-nav-collapsed { --sidebar-width: 60px; }
-  body.is-nav-collapsed .app-sidebar { overflow-x: hidden; }
-  body.is-nav-collapsed .app-sidebar-brand { justify-content: center; padding: 0; }
-  body.is-nav-collapsed .app-sidebar-brand .app-logo { display: none; }
-  body.is-nav-collapsed .app-sidebar-collapse { margin-left: 0; }
-  body.is-nav-collapsed .app-sidebar-collapse svg { transform: scaleX(-1); }
-  body.is-nav-collapsed .app-sidenav { padding: 4px 10px 16px; }
-  body.is-nav-collapsed .app-sidenav-label {
+  body.is-nav-collapsed .app-sidebar {
+    width: 60px;
+    overflow-x: hidden;
+    transition: width 0.18s ease, box-shadow 0.18s ease;
+  }
+  body.is-nav-collapsed.is-nav-peek .app-sidebar {
+    width: 216px;
+    box-shadow: 8px 0 24px rgba(15, 23, 42, 0.12);
+  }
+  body.is-nav-collapsed .app-sidebar-brand { position: relative; }
+  body.is-nav-collapsed .app-sidebar-brand .app-logo { flex-shrink: 0; width: 150px; }
+  body.is-nav-collapsed .app-sidebar-collapse {
     position: absolute;
-    width: 1px;
-    height: 1px;
-    overflow: hidden;
-    clip: rect(0 0 0 0);
-    white-space: nowrap;
+    top: 13px;
+    left: 15px;
+    margin: 0;
+    transition: left 0.18s ease;
   }
-  body.is-nav-collapsed .app-sidenav-item { justify-content: center; padding: 9px 0; }
-  body.is-nav-collapsed .app-sidenav-group {
+  body.is-nav-collapsed.is-nav-peek .app-sidebar-collapse { left: 174px; }
+  body.is-nav-collapsed .app-sidebar-collapse svg { transform: scaleX(-1); }
+  body.is-nav-collapsed .app-sidenav { width: 216px; padding: 4px 12px 16px; }
+  body.is-nav-collapsed .app-sidenav-item { width: auto; }
+  body.is-nav-collapsed:not(.is-nav-peek) .app-sidenav-item { width: 36px; }
+  /* Names, the logo and group headings fade; a group shows as a short line. */
+  body.is-nav-collapsed .app-sidenav-label,
+  body.is-nav-collapsed .app-sidebar-brand .app-logo,
+  body.is-nav-collapsed .app-sidenav-group { transition: opacity 0.14s ease, color 0.14s ease; }
+  body.is-nav-collapsed:not(.is-nav-peek) .app-sidenav-label,
+  body.is-nav-collapsed:not(.is-nav-peek) .app-sidebar-brand .app-logo { opacity: 0; }
+  body.is-nav-collapsed .app-sidenav-group { position: relative; }
+  body.is-nav-collapsed:not(.is-nav-peek) .app-sidenav-group { color: transparent; }
+  body.is-nav-collapsed .app-sidenav-group::before {
+    content: "";
+    position: absolute;
+    left: 4px;
+    width: 28px;
+    bottom: 11px;
     height: 1px;
-    margin: 10px 4px;
-    padding: 0;
-    overflow: hidden;
-    font-size: 0;
     background: var(--border);
+    transition: opacity 0.14s ease;
   }
+  body.is-nav-collapsed.is-nav-peek .app-sidenav-group::before { opacity: 0; }
 }
-
-/* Hover tip for the collapsed menu, dressed like the menu itself. */
-.app-sidenav-tip {
-  position: fixed;
-  z-index: 160;
-  padding: 7px 12px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--surface);
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.08);
-  font-family: var(--font);
-  font-size: 13.5px;
-  font-weight: 500;
-  color: var(--text);
-  white-space: nowrap;
-  pointer-events: none;
-  transform: translateY(-50%);
-}
-.app-sidenav-tip[hidden] { display: none; }
 
 /* Page title, with where it sits above it. */
 .app-page-heading {
@@ -8925,15 +8927,98 @@ tr:hover .shoot-picker.is-unpicked,
 .mg-pane-preview.is-single { justify-content: center; }
 .mg-pane-preview[hidden] { display: none; }
 .mg-pane-image {
+  position: relative;
   flex-shrink: 0;
   display: block;
   scroll-snap-align: start;
   border-radius: 6px;
   overflow: hidden;
   background: var(--surface);
-  cursor: zoom-in;
 }
+.mg-pane-image a { display: block; cursor: zoom-in; }
 .mg-pane-image img { display: block; height: 380px; width: auto; max-width: 540px; object-fit: contain; }
+
+/* Editing (js/magento-photos.js): the main photo ringed, hidden ones faded,
+   tools on hover, and where a dragged photo will land. */
+.mg-pane-preview.is-editable .mg-pane-image[draggable="true"] { cursor: grab; }
+.mg-pane-image.is-main { box-shadow: 0 0 0 2px var(--text); }
+.mg-pane-image.is-hidden img { opacity: 0.4; }
+.mg-pane-image.is-dragging { opacity: 0.35; }
+.mg-pane-image.is-drop-before { box-shadow: -4px 0 0 var(--accent); }
+.mg-pane-image.is-drop-after { box-shadow: 4px 0 0 var(--accent); }
+
+.mg-photo-badges {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  display: flex;
+  gap: 4px;
+  pointer-events: none;
+}
+.mg-photo-badge {
+  padding: 2px 8px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.92);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+}
+.mg-photo-badge.is-main { background: var(--text); color: #fff; }
+
+.mg-photo-tools {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: flex;
+  gap: 4px;
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+.mg-pane-image:hover .mg-photo-tools,
+.mg-pane-image:focus-within .mg-photo-tools { opacity: 1; }
+.mg-photo-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.94);
+  color: var(--text);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.16);
+  cursor: pointer;
+}
+.mg-photo-btn:hover { background: #fff; }
+.mg-photo-btn[data-photo-action="delete"]:hover { color: var(--danger); }
+
+.mg-photo-add {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 180px;
+  height: 380px;
+  border: 1.5px dashed var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  font-family: var(--font);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-muted);
+  cursor: pointer;
+  scroll-snap-align: start;
+}
+.mg-photo-add small { font-size: 11.5px; font-weight: 400; }
+.mg-photo-add:hover { border-color: var(--text-muted); color: var(--text); }
+.mg-pane-preview.is-file-over { background: var(--accent-light); outline: 2px dashed var(--accent); outline-offset: -6px; }
+.mg-pane-preview.is-busy { cursor: progress; }
+.mg-pane-preview.is-busy .mg-pane-image,
+.mg-pane-preview.is-busy .mg-photo-add { opacity: 0.6; pointer-events: none; }
 .mg-pane-form { padding: 14px 16px 18px; }
 .mg-pane-form.is-loading { opacity: 0.6; }
 /* Read-only until the field's edit icon is clicked: a light box, even when
@@ -8959,7 +9044,47 @@ tr:hover .shoot-picker.is-unpicked,
 .mg-pane-static { display: block; padding: 7px 10px; font-size: 13px; line-height: 18px; color: var(--text); }
 .mg-pane-group-list,
 .mg-pane-cat-chips { padding: 5px 8px; }
-.mg-pane-group-list.is-stacked { flex-direction: column; align-items: flex-start; }
+.mg-pane-group-list.is-stacked { flex-direction: column; align-items: stretch; }
+
+/* A Grouped product's items, numbered; drag to reorder (js/magento-group-order.js). */
+.mg-group-order { display: flex; flex-direction: column; gap: 2px; margin: 0; padding: 0; list-style: none; }
+.mg-group-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 6px;
+  border-radius: 5px;
+  background: transparent;
+}
+.mg-group-order.is-sortable .mg-group-item { cursor: grab; }
+.mg-group-order.is-sortable .mg-group-item:hover { background: var(--surface); box-shadow: 0 0 0 1px var(--border); }
+.mg-group-item.is-dragging { opacity: 0.4; }
+.mg-group-item.is-drop-before { box-shadow: inset 0 2px 0 var(--accent); }
+.mg-group-item.is-drop-after { box-shadow: inset 0 -2px 0 var(--accent); }
+.mg-group-item.is-disabled .mg-sku,
+.mg-group-item.is-disabled .mg-group-thumb { opacity: 0.55; }
+.mg-group-num { width: 16px; flex-shrink: 0; font-size: 12px; font-weight: 600; color: var(--text-muted); text-align: right; }
+.mg-group-grip { display: inline-flex; flex-shrink: 0; color: var(--text-muted); }
+.mg-group-thumb {
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  border-radius: 4px;
+  overflow: hidden;
+  background: #eee;
+}
+.mg-group-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.mg-group-tag {
+  padding: 1px 7px;
+  border-radius: 10px;
+  background: #eef0f3;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+.mg-group-tag.is-lead { background: var(--text); color: #fff; }
+.mg-pane-group-list.is-busy { opacity: 0.6; pointer-events: none; }
+.mg-group-empty { font-size: 13px; color: var(--text-muted); }
 .mg-pane-qty-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; min-width: 0; }
 .mg-pane-qty-pair[hidden] { display: none; }
 .item-pane-title .mg-avail-cell { flex-shrink: 0; }

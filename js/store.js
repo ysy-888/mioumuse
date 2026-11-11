@@ -735,6 +735,12 @@ async function saveN41OrderRows(orders) {
   return importedAt;
 }
 
+/** One group's items in a new order (after it's saved to Magento). */
+async function saveMagentoGroupOrder(groupSku, childSkus) {
+  const client = requireClient();
+  throwIfError(await client.from("magento_groups").update({ child_skus: childSkus }).eq("group_sku", groupSku));
+}
+
 async function replaceMagentoGroupRows(groups) {
   const client = requireClient();
   const importedAt = new Date().toISOString();

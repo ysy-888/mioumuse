@@ -89,7 +89,7 @@ import { AsyncLocalStorage } from "node:async_hooks";
  * copy running in Supabase is older than the app expects. Bump it (and
  * MG_HELPER_VERSION in js/magento.js) whenever this file changes.
  */
-const HELPER_VERSION = "2026-11-10.2";
+const HELPER_VERSION = "2026-11-10.3";
 
 /**
  * Where a request's time went: each Magento call is counted and timed, per
@@ -186,6 +186,7 @@ async function mgCall(path: string, init: RequestInit, scope: string) {
   } catch {
     // An HTML error page from the web server rather than Magento.
     if (res.status === 414) throw new UserError("The request to Magento was too long for its web server (414).", 502);
+    if (res.status === 413) throw new UserError("Magento's web server wouldn't take a file that big (413). Try a smaller photo.", 502);
     if (!res.ok) throw new UserError(`Magento answered ${res.status} without JSON — check MAGENTO_BASE_URL.`, 502);
   }
   if (!res.ok) {
@@ -453,16 +454,75 @@ function detail(p: any, colors: Map<string, string>) {
     shortDescription: customAttr(p, "short_description") ?? "",
     metaTitle: customAttr(p, "meta_title") ?? "",
     metaDescription: customAttr(p, "meta_description") ?? "",
-    // Every image in its gallery, in order; hidden ones left out.
-    images: (p.media_gallery_entries ?? [])
-      // deno-lint-ignore no-explicit-any
-      .filter((m: any) => m.file && m.media_type !== "external-video" && !m.disabled)
-      // deno-lint-ignore no-explicit-any
-      .sort((a: any, b: any) => (a.position ?? 0) - (b.position ?? 0))
-      // deno-lint-ignore no-explicit-any
-      .map((m: any) => String(m.file)),
+    ...productMedia(p),
   };
 }
+
+// ── Product photos ───────────────────────────────────────────────────────────
+//
+// The gallery as Magento keeps it: each photo's id, file (under
+// catalog/product), label, position, hidden flag and roles. "Main" is the
+// three roles a listing uses — Base, Small and Thumbnail.
+
+const MAIN_IMAGE_ROLES = ["image", "small_image", "thumbnail"];
+const PHOTO_TYPES: Record<string, string> = { "image/jpeg": "jpg", "image/png": "png", "image/gif": "gif", "image/webp": "webp" };
+
+// deno-lint-ignore no-explicit-any
+function galleryEntries(p: any) {
+  return (p.media_gallery_entries ?? [])
+    // deno-lint-ignore no-explicit-any
+    .filter((m: any) => m.file && m.media_type !== "external-video")
+    // deno-lint-ignore no-explicit-any
+    .sort((a: any, b: any) => (a.position ?? 0) - (b.position ?? 0));
+}
+
+/** The gallery, and the photo a listing shows. */
+// deno-lint-ignore no-explicit-any
+function productMedia(p: any) {
+  // deno-lint-ignore no-explicit-any
+  const gallery = galleryEntries(p).map((m: any) => ({
+    id: String(m.id),
+    file: String(m.file),
+    label: m.label ?? "",
+    position: Number(m.position ?? 0),
+    disabled: Boolean(m.disabled),
+    types: Array.isArray(m.types) ? m.types.map(String) : [],
+  }));
+  return {
+    gallery,
+    // deno-lint-ignore no-explicit-any
+    images: gallery.filter((m: any) => !m.disabled).map((m: any) => m.file),
+    image: customAttr(p, "thumbnail") || customAttr(p, "small_image") || customAttr(p, "image") || "",
+  };
+}
+
+/** One photo as Magento wants it back on a save: every field, changes applied. */
+// deno-lint-ignore no-explicit-any
+function photoEntry(m: any, changes: Record<string, unknown> = {}) {
+  return {
+    entry: {
+      id: Number(m.id),
+      media_type: m.media_type ?? "image",
+      label: m.label ?? "",
+      position: Number(m.position ?? 0),
+      disabled: Boolean(m.disabled),
+      types: Array.isArray(m.types) ? m.types : [],
+      file: m.file,
+      ...changes,
+    },
+  };
+}
+
+// deno-lint-ignore no-explicit-any
+function findPhoto(p: any, id: unknown) {
+  // deno-lint-ignore no-explicit-any
+  const m = (p.media_gallery_entries ?? []).find((e: any) => String(e.id) === String(id));
+  if (!m) throw new UserError("That photo isn't on this product anymore. Close and reopen it.", 404);
+  return m;
+}
+
+const photoPath = (sku: string, id?: unknown) =>
+  `/products/${encodeURIComponent(sku)}/media${id === undefined ? "" : `/${encodeURIComponent(String(id))}`}`;
 
 /**
  * searchCriteria as query parameters. Filters in one group are OR'd, groups
@@ -2035,6 +2095,120 @@ const actions: Record<string, (p: any) => Promise<unknown>> = {
     if (!sku) throw new UserError("Which product?");
     const [p, colors] = await Promise.all([getProduct(sku), getColorNames(), findPreOrderCode()]);
     return addSalable((await addStock([detail(p, colors)]))[0]);
+  },
+
+  /**
+   * Add a photo: { sku, name, mime, data (base64), main }. It goes last; the
+   * first photo a product gets, or one sent as main, becomes its main photo.
+   */
+  async photoAdd({ sku, name, mime, data, main }) {
+    if (!sku) throw new UserError("Which product?");
+    const ext = PHOTO_TYPES[String(mime)];
+    if (!ext) throw new UserError("Photos can be JPG, PNG, GIF or WebP.");
+    if (typeof data !== "string" || !data) throw new UserError("The photo didn't come through. Try again.");
+    const p = await getProduct(sku);
+    const entries = galleryEntries(p);
+    // deno-lint-ignore no-explicit-any
+    const position = entries.reduce((max: number, m: any) => Math.max(max, Number(m.position ?? 0)), 0) + 1;
+    const base = String(name ?? "photo").replace(/\.[^.]*$/, "").replace(/[^A-Za-z0-9_-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 60) || "photo";
+    await mg(photoPath(sku), {
+      method: "POST",
+      body: JSON.stringify({
+        entry: {
+          media_type: "image",
+          label: "",
+          position,
+          disabled: false,
+          types: main || !entries.length ? MAIN_IMAGE_ROLES : [],
+          content: { base64_encoded_data: data, type: mime, name: `${base}.${ext}` },
+        },
+      }),
+    }, "all");
+    return productMedia(await getProduct(sku));
+  },
+
+  /** Change one photo: { sku, id, main?, disabled?, label? }. */
+  async photoUpdate({ sku, id, main, disabled, label }) {
+    if (!sku) throw new UserError("Which product?");
+    const m = findPhoto(await getProduct(sku), id);
+    const changes: Record<string, unknown> = {};
+    if (main) changes.types = [...new Set([...(m.types ?? []), ...MAIN_IMAGE_ROLES])];
+    if (typeof disabled === "boolean") changes.disabled = disabled;
+    if (typeof label === "string") changes.label = label.slice(0, 255);
+    await mg(photoPath(sku, id), { method: "PUT", body: JSON.stringify(photoEntry(m, changes)) }, "all");
+    return productMedia(await getProduct(sku));
+  },
+
+  /** Put the photos in this order: { sku, ids }. Only the ones that moved are saved. */
+  async photoReorder({ sku, ids }) {
+    if (!sku) throw new UserError("Which product?");
+    const order: string[] = Array.isArray(ids) ? ids.map(String) : [];
+    const p = await getProduct(sku);
+    const moved = order
+      .map((id, i) => ({ m: findPhoto(p, id), position: i + 1 }))
+      .filter(({ m, position }) => Number(m.position ?? 0) !== position);
+    await eachLimited(moved, 4, ({ m, position }) =>
+      mg(photoPath(sku, m.id), { method: "PUT", body: JSON.stringify(photoEntry(m, { position })) }, "all"));
+    return productMedia(await getProduct(sku));
+  },
+
+  /**
+   * A Grouped product's Simple items in this order: { sku, childSkus }. The
+   * storefront leads with the first item's photo, so this sets which shows.
+   *
+   * Read and saved in the "all" scope, where Magento keeps a group's disabled
+   * items too — saving the links in a store view would drop those. Every item
+   * Magento has is sent back with its own qty: the ones asked for in that
+   * order, any others after them. Items it doesn't have aren't added. Then
+   * it's read back, and any item that went missing is reported.
+   */
+  async groupReorder({ sku, childSkus }) {
+    if (!sku) throw new UserError("Which product?");
+    const wanted: string[] = Array.isArray(childSkus) ? [...new Set(childSkus.map(String))] : [];
+    if (wanted.length < 2) throw new UserError("A group needs 2 or more items to put in order.");
+    const s = encodeURIComponent(sku);
+    // deno-lint-ignore no-explicit-any
+    const associated = (p: any) => (p?.product_links ?? [])
+      // deno-lint-ignore no-explicit-any
+      .filter((l: any) => l.link_type === "associated")
+      // deno-lint-ignore no-explicit-any
+      .sort((a: any, b: any) => (a.position ?? 0) - (b.position ?? 0));
+    const [all, store] = await Promise.all([mg(`/products/${s}`, {}, "all"), getProduct(sku)]);
+    if (all?.type_id !== "grouped") throw new UserError(`${sku} isn't a Grouped product.`);
+    // deno-lint-ignore no-explicit-any
+    const links = new Map<string, any>();
+    // deno-lint-ignore no-explicit-any
+    [...associated(all), ...associated(store)].forEach((l: any) => {
+      const key = String(l.linked_product_sku);
+      if (!links.has(key)) links.set(key, l);
+    });
+    const order = [...wanted.filter(c => links.has(c)), ...[...links.keys()].filter(c => !wanted.includes(c))];
+    if (order.length < 2) throw new UserError("Magento has fewer than 2 items in this group — import a fresh product export.");
+    const items = order.map((child, i) => {
+      const l = links.get(child);
+      return {
+        sku,
+        link_type: "associated",
+        linked_product_sku: child,
+        linked_product_type: l.linked_product_type ?? "simple",
+        position: i + 1,
+        extension_attributes: { qty: Number(l.extension_attributes?.qty ?? 0) },
+      };
+    });
+    await mg(`/products/${s}/links`, { method: "POST", body: JSON.stringify({ items }) }, "all");
+
+    const after = associated(await mg(`/products/${s}`, {}, "all")).map((l: { linked_product_sku: string }) => String(l.linked_product_sku));
+    const lost = associated(all).map((l: { linked_product_sku: string }) => String(l.linked_product_sku)).filter((c: string) => !after.includes(c));
+    if (lost.length) throw new UserError(`Magento saved the order but dropped ${lost.join(", ")} from the group — add ${lost.length === 1 ? "it" : "them"} back in Magento.`);
+    return { childSkus: after, skipped: wanted.filter(c => !links.has(c)) };
+  },
+
+  /** Delete a photo for good: { sku, id }. */
+  async photoDelete({ sku, id }) {
+    if (!sku) throw new UserError("Which product?");
+    findPhoto(await getProduct(sku), id);
+    await mg(photoPath(sku, id), { method: "DELETE" }, "all");
+    return productMedia(await getProduct(sku));
   },
 
   /** Salable Quantity for a page of SKUs, asked for after the page shows. */
