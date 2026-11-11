@@ -41,6 +41,8 @@ let emailSaved = new Map();
 let emailDraft = null;
 let emailSettingsLoaded = false;
 let emailRenderTimer = 0;
+/** The preview's colours: "light" (the default) or "dark", as a reader on dark mode sees it. */
+let emailScheme = "light";
 
 // ── Reading a template ───────────────────────────────────────────────────────
 
@@ -381,6 +383,7 @@ function renderEmailPreview() {
   // Its own images load from its folder.
   const base = new URL(template.file.replace(/[^/]+$/, ""), location.href).href;
   html = html.replace(/<head([^>]*)>/i, `<head$1><base href="${base}" target="_blank">`);
+  html = forceEmailColorScheme(html, emailScheme);
   frames.forEach(frame => {
     frame.onload = () => {
       const doc = frame.contentDocument;
@@ -396,6 +399,29 @@ function renderEmailPreview() {
       doc.querySelectorAll("img").forEach(img => img.addEventListener("load", () => sizeEmailFrame(frame), { once: true }));
     };
     frame.srcdoc = html;
+  });
+}
+
+/**
+ * The preview in light or dark whatever this computer is set to: the
+ * template's prefers-color-scheme rules are switched on or off outright.
+ * Only the preview — the exported HTML keeps them, so each reader's own
+ * mail app still picks.
+ */
+function forceEmailColorScheme(html, scheme) {
+  const dark = scheme === "dark";
+  html = html
+    .replace(/@media\s*\(\s*prefers-color-scheme\s*:\s*dark\s*\)/gi, dark ? "@media all" : "@media not all")
+    .replace(/@media\s*\(\s*prefers-color-scheme\s*:\s*light\s*\)/gi, dark ? "@media not all" : "@media all");
+  const pin = `<style>:root{color-scheme:${scheme} !important;}</style>`;
+  return /<\/head>/i.test(html) ? html.replace(/<\/head>/i, `${pin}</head>`) : pin + html;
+}
+
+function syncEmailSchemeButtons() {
+  document.querySelectorAll("#emailSchemeButtons .filter-btn").forEach(btn => {
+    const on = btn.dataset.scheme === emailScheme;
+    btn.classList.toggle("active", on);
+    btn.setAttribute("aria-pressed", String(on));
   });
 }
 
@@ -812,6 +838,14 @@ function confirmLeaveEmail() {
 }
 
 function initEmailView() {
+  document.querySelectorAll("#emailSchemeButtons .filter-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      emailScheme = btn.dataset.scheme;
+      syncEmailSchemeButtons();
+      renderEmailPreview();
+    });
+  });
+  syncEmailSchemeButtons();
   const stage = document.getElementById("emailPreviewStage");
   if (stage && "ResizeObserver" in window) new ResizeObserver(() => fitEmailPreview()).observe(stage);
   document.getElementById("emailCopyBtn")?.addEventListener("click", copyEmailHtml);
