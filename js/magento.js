@@ -1081,7 +1081,7 @@ async function openMagentoPane(sku) {
   const row = mgPage.items.find(p => p.sku === sku);
   // Show what the list already knows while the full product loads.
   const seed = { ...row, sku, description: "", shortDescription: "", metaTitle: "", metaDescription: "", weight: null };
-  mgPane = { saved: seed, draft: structuredClone(seed), loading: true };
+  mgPane = makeMgPaneState(seed, true);
   mgPaneCategorySearch = "";
   pane.hidden = false;
   pane.querySelector(".item-pane-body")?.scrollTo({ top: 0 });
@@ -1091,7 +1091,7 @@ async function openMagentoPane(sku) {
   try {
     const full = applyMgGroups(await callMagento("product", { sku }));
     if (mgPane?.saved.sku !== sku) return;
-    mgPane = { saved: full, draft: structuredClone(full), loading: false };
+    mgPane = makeMgPaneState(full, false);
     mgSalable.set(sku, full.salableQty ?? null);
   } catch (err) {
     if (mgPane?.saved.sku !== sku) return;
@@ -1132,6 +1132,13 @@ function closeMagentoPane({ force = true } = {}) {
   return true;
 }
 
+/** The pane's state: what Magento has, the draft being edited, and the group's order. */
+function makeMgPaneState(saved, loading) {
+  const state = { saved, draft: structuredClone(saved), loading };
+  seedMgGroupOrder(state); // js/magento-group-order.js
+  return state;
+}
+
 /** The fields that differ from what Magento has — all that's sent on save. */
 function getMgPaneChanges() {
   if (!mgPane || mgPane.loading) return {};
@@ -1145,6 +1152,8 @@ function getMgPaneChanges() {
   const before = [...(saved.categoryIds ?? [])].sort().join(",");
   const after = [...(draft.categoryIds ?? [])].sort().join(",");
   if (before !== after) changes.categoryIds = draft.categoryIds;
+  // The group's order (a Grouped product's items, or the group a Simple item is in).
+  if ((saved.groupOrder ?? []).join("|") !== (draft.groupOrder ?? []).join("|")) changes.groupOrder = draft.groupOrder;
   return changes;
 }
 
@@ -1187,12 +1196,6 @@ function renderMagentoPane() {
   // in — or, when its SKU matches a group it isn't in, that flag.
   const groupField = document.getElementById("mgPaneGroupField");
   if (groupField) {
-    const chip = sku => {
-      const el = document.createElement("span");
-      el.className = "mg-cat-chip mg-sku";
-      el.textContent = sku;
-      return el;
-    };
     const label = document.getElementById("mgPaneGroupLabel");
     const list = document.getElementById("mgPaneGroupList");
     const grouped = saved.type === "grouped";
@@ -1202,12 +1205,15 @@ function renderMagentoPane() {
     if (grouped) {
       groupField.hidden = false;
       label.replaceChildren("Simple items", createMgChildCount(saved));
-      renderMgGroupOrder(list, saved); // js/magento-group-order.js
+      renderMgGroupOrder(list); // js/magento-group-order.js
     } else if (saved.groupSku || saved.unlinkedGroup) {
       groupField.hidden = false;
       label.textContent = "Group";
-      delete list.dataset.key;
-      list.replaceChildren(saved.groupSku ? chip(saved.groupSku) : createMgUnlinkedFlag(saved));
+      if (saved.groupSku) renderMgGroupPlace(list, saved); // its place in the group
+      else {
+        delete list.dataset.key;
+        list.replaceChildren(createMgUnlinkedFlag(saved));
+      }
     } else {
       groupField.hidden = true;
     }
@@ -1318,18 +1324,38 @@ async function saveMagentoPane() {
   mgPane.saving = true;
   mgPane.error = "";
   syncMgPaneFooter();
+  // The group's order goes through its own call, to the Grouped product.
+  const { groupOrder, ...fields } = changes;
+  const groupSku = mgPane.saved.groupOrderSku;
+  let saved = mgPane.saved;
   try {
-    const saved = applyMgGroups(await callMagento("update", { sku, changes }));
-    absorbMgProduct(saved);
-    forgetMgSkuList();
-    if (mgPane?.saved.sku === sku) mgPane = { saved, draft: structuredClone(saved), loading: false };
-    mgSalable.set(sku, saved.salableQty ?? null);
-    const row = mgPage.items.find(p => p.sku === sku);
-    if (row) Object.assign(row, pickMgSummary(saved));
+    if (Object.keys(fields).length) {
+      saved = applyMgGroups(await callMagento("update", { sku, changes: fields }));
+      absorbMgProduct(saved);
+      forgetMgSkuList();
+      mgSalable.set(sku, saved.salableQty ?? null);
+      const row = mgPage.items.find(p => p.sku === sku);
+      if (row) Object.assign(row, pickMgSummary(saved));
+    }
+    let note = "";
+    if (groupOrder && groupSku) {
+      const result = await callMagento("groupReorder", { sku: groupSku, childSkus: groupOrder });
+      await applyMgGroupOrder(groupSku, groupOrder);
+      if (saved.type === "grouped") saved = { ...saved, childSkus: [...groupOrder] };
+      note = describeMgGroupSkipped(result?.skipped ?? []);
+    }
+    if (mgPane?.saved.sku === sku) mgPane = makeMgPaneState(saved, false);
     renderMgProducts();
     renderMagentoPane();
-    showIndicator(`${sku} saved to Magento`, "success");
+    showIndicator(`${sku} saved to Magento${note}`, note ? "" : "success");
   } catch (err) {
+    // The fields saved but the order didn't: keep the order as unsaved.
+    if (groupOrder && saved !== mgPane?.saved && mgPane?.saved.sku === sku) {
+      mgPane = makeMgPaneState(saved, false);
+      mgPane.draft.groupOrder = [...groupOrder];
+      renderMgProducts();
+      renderMagentoPane();
+    }
     if (mgPane?.saved.sku === sku) {
       mgPane.saving = false;
       mgPane.error = err.message || "Couldn't save.";

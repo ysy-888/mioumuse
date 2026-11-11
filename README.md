@@ -75,7 +75,7 @@ reference in index.html so the URLs change on every deploy.
 | `js/magento-groups.js` | ⋮ menu on Magento Products → Import Groups: reads a Magento product export's `associated_skus` and saves the exact group links; the "Not in group" flag |
 | `js/magento.js` | Magento tab — live products (filters, sort, paging, status switch, bulk changes, edit pane) and categories (rename, active, jump to products) |
 | `js/magento-photos.js` | Simple product pane photos (Grouped products have none of their own): every gallery photo; add (upload or drop), make main, hide / show, delete, drag to reorder — each saved to Magento at once |
-| `js/magento-group-order.js` | Grouped product pane: its Simple items as a numbered list; drag to reorder (saved to Magento and the imported groups) — the first item's photo leads on the storefront |
+| `js/magento-group-order.js` | A group's order in the product pane — a Grouped product's Simple items as a numbered, draggable list (each SKU opens its pane), a Simple item's "2 of 3" place; saved with Save to Magento (Magento's group positions, then the imported groups) |
 | `supabase/functions/magento/` | Edge Function the app calls for Magento; holds the store address and token (secrets `MAGENTO_BASE_URL`, `MAGENTO_ACCESS_TOKEN`) |
 | `js/column-filter.js` | Header filters (the PO app's design): click a column's funnel to tick which values show — used for IHD by month and the Magento products table |
 | `js/shortcuts.js` | Keyboard shortcuts on table pages: ← / → turn pages, Space jumps to search |

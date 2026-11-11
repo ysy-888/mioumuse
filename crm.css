@@ -9083,7 +9083,32 @@ tr:hover .shoot-picker.is-unpicked,
   color: var(--text-muted);
 }
 .mg-group-tag.is-lead { background: var(--text); color: #fff; }
-.mg-pane-group-list.is-busy { opacity: 0.6; pointer-events: none; }
+/* An SKU that opens its own pane. */
+.mg-pane-link {
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+.mg-pane-link:hover { color: var(--accent); text-decoration: underline; }
+.mg-group-item.is-disabled .mg-pane-link { color: var(--text-muted); }
+/* A Simple item's place in its group: "2 of 3". */
+.mg-group-place {
+  margin-left: auto;
+  padding: 2px 22px 2px 8px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background-color: var(--surface);
+  font-family: var(--font);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+  cursor: pointer;
+}
+.mg-group-place:disabled { cursor: default; color: var(--text-muted); }
+.mg-group-place-text { margin-left: auto; font-size: 12px; color: var(--text-muted); }
 .mg-group-empty { font-size: 13px; color: var(--text-muted); }
 .mg-pane-qty-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; min-width: 0; }
 .mg-pane-qty-pair[hidden] { display: none; }
