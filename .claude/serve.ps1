@@ -1,10 +1,11 @@
 # Minimal static file server for previewing this app locally.
+param([int]$Port = 8787)
 $root = (Resolve-Path "$PSScriptRoot\..").Path
 $listener = New-Object System.Net.HttpListener
-$listener.Prefixes.Add("http://localhost:8787/")
+$listener.Prefixes.Add("http://localhost:$Port/")
 $listener.Start()
-Write-Host "serving $root on http://localhost:8787/"
-$types = @{ ".html" = "text/html"; ".js" = "text/javascript"; ".css" = "text/css"; ".svg" = "image/svg+xml"; ".json" = "application/json" }
+Write-Host "serving $root on http://localhost:$Port/"
+$types = @{ ".html" = "text/html"; ".js" = "text/javascript"; ".css" = "text/css"; ".svg" = "image/svg+xml"; ".json" = "application/json"; ".png" = "image/png"; ".jpg" = "image/jpeg" }
 while ($listener.IsListening) {
   $ctx = $listener.GetContext()
   $path = [System.Uri]::UnescapeDataString($ctx.Request.Url.AbsolutePath)

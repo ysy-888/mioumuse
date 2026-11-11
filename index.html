@@ -6,7 +6,7 @@
 <title>MIOU MUSE</title>
 <link rel="icon" href="favicon.png?v=2" type="image/png" />
 <link rel="apple-touch-icon" href="favicon.png?v=2" />
-<link rel="stylesheet" href="crm.css?v=20261110-1700" />
+<link rel="stylesheet" href="crm.css?v=20261111-2342" />
 </head>
 <body>
 
@@ -32,6 +32,10 @@
     </button>
     <button type="button" class="app-sidenav-item" id="navTabPlatforms" data-view="platforms">
       <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg><span class="app-sidenav-label">Platforms</span>
+    </button>
+
+    <button type="button" class="app-sidenav-item" id="navTabEmail" data-view="email">
+      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4z"/></svg><span class="app-sidenav-label">E-Mail</span>
     </button>
 
     <div class="app-sidenav-group">Photoshoots</div>
@@ -84,6 +88,8 @@
     <nav class="app-breadcrumbs" id="appBreadcrumbs" aria-label="Breadcrumb" hidden></nav>
     <h1 class="app-page-title" id="appPageTitle">Home</h1>
   </div>
+  <!-- The page's search box moves here, centred (js/header-search.js). -->
+  <div class="header-search" id="headerSearch"></div>
   <div class="header-right">
     <button type="button" class="btn btn-primary btn-icon" id="refreshBtn" aria-label="Refresh">
       <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path d="M1 4v6h6M23 20v-6h-6"/><path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4-4.64 4.36A9 9 0 0 1 3.51 15"/></svg>
@@ -94,6 +100,10 @@
       </button>
       <div id="headerMenuDropdown" class="header-menu-dropdown" hidden role="menu">
         <!-- Each item with data-pages shows only on those pages (syncHeaderMenu, js/app-shell.js). -->
+        <button type="button" class="header-menu-item" id="headerMenuAddHoliday" role="menuitem" data-pages="home">
+          <svg class="header-menu-item-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/><path d="M12 13v5M9.5 15.5h5"/></svg>
+          <span>Add Holiday</span>
+        </button>
         <button type="button" class="header-menu-item" id="headerMenuImportStyles" role="menuitem" data-pages="styles">
           <svg class="header-menu-item-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M17 8l-5-5-5 5"/><path d="M12 3v12"/></svg>
           <span>Import CSV</span>
@@ -508,6 +518,21 @@
   </div>
 </div>
 
+<!-- ── E-Mail toolbar ────────────────────────────────────────── -->
+<div id="emailToolbar" class="toolbar" hidden>
+  <div class="toolbar-filter-cluster"></div>
+  <div class="toolbar-end">
+    <button type="button" class="btn" id="emailDownloadBtn" title="Download the email as an .html file">
+      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+      Download
+    </button>
+    <button type="button" class="btn btn-primary" id="emailCopyBtn" title="Copy the email's HTML for Mailchimp (Code your own)">
+      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+      Copy HTML
+    </button>
+  </div>
+</div>
+
 <div id="appMain" class="app-main">
 
   <!-- ── Campaigns list ──────────────────────────────────────── -->
@@ -840,6 +865,41 @@
       </tbody>
     </table>
     </div>
+  </div>
+
+  <!-- ── E-Mail: templates down the left, the preview, the edit panel ── -->
+  <!-- js/email.js. Templates are files in email-templates/. -->
+  <div id="emailWrap" class="po-view-content po-layout email-layout" hidden>
+    <nav class="po-months" id="emailTemplateList" aria-label="Email templates"></nav>
+    <!-- Desktop and mobile side by side, scaled down together to fit. -->
+    <div class="email-preview" id="emailPreviewStage">
+      <div class="email-notice" id="emailNotice" role="status" hidden></div>
+      <div class="email-preview-fit" id="emailPreviewFit">
+        <div class="email-preview-pair" id="emailPreviewPair">
+          <figure class="email-device email-device--desktop">
+            <figcaption>Desktop</figcaption>
+            <iframe class="email-preview-frame" data-device="desktop" title="Email preview, desktop" sandbox="allow-same-origin allow-popups allow-popups-to-escape-sandbox"></iframe>
+          </figure>
+          <figure class="email-device email-device--mobile">
+            <figcaption>Mobile</figcaption>
+            <iframe class="email-preview-frame" data-device="mobile" title="Email preview, mobile" sandbox="allow-same-origin allow-popups allow-popups-to-escape-sandbox"></iframe>
+          </figure>
+        </div>
+      </div>
+    </div>
+    <aside class="email-edit" aria-label="Edit email">
+      <div class="email-edit-head">
+        <h2>Edit</h2>
+        <button type="button" class="btn-link email-reset" id="emailResetBtn" title="Back to the template's own links and products">Reset to template</button>
+      </div>
+      <p class="email-edit-hint">Click any button or photo in the preview to jump to its link.</p>
+      <div class="email-edit-body" id="emailEditBody"></div>
+      <div class="email-edit-foot">
+        <span class="email-save-state" id="emailSaveState"></span>
+        <button type="button" class="btn" id="emailRevertBtn" disabled>Revert</button>
+        <button type="button" class="btn btn-primary email-save-btn" id="emailSaveBtn" disabled>Save</button>
+      </div>
+    </aside>
   </div>
 
   <!-- ── POs: N41's PO lines by ETA month ─────────────────── -->
@@ -1324,18 +1384,20 @@
     <div class="dashboard-main">
       <section class="dashboard-panel dashboard-calendar-panel">
         <div class="dashboard-panel-header dashboard-cal-header">
-          <!-- Left: filter (collapsed to one button) and the month on screen.
-               Centre: ‹ today › . Right: Month / Week. -->
+          <!-- Left: the month on screen with ‹ today › beside it.
+               Right: filter (collapsed to one button) and Month / Week. -->
           <div class="dashboard-cal-legend">
-            <div class="cal-filter-bar" id="calFilterBar"></div>
             <span class="dashboard-cal-title" id="calTitle">—</span>
+            <div class="dashboard-cal-nav">
+              <button type="button" class="btn btn-page" id="calPrev" title="Previous" aria-label="Previous">‹</button>
+              <button type="button" class="btn cal-today-btn" id="calToday">Today</button>
+              <button type="button" class="btn btn-page" id="calNext" title="Next" aria-label="Next">›</button>
+            </div>
           </div>
-          <div class="dashboard-cal-nav">
-            <button type="button" class="btn btn-page" id="calPrev" title="Previous" aria-label="Previous">‹</button>
-            <button type="button" class="btn cal-today-btn" id="calToday">Today</button>
-            <button type="button" class="btn btn-page" id="calNext" title="Next" aria-label="Next">›</button>
+          <div class="dashboard-cal-controls">
+            <div class="cal-filter-bar" id="calFilterBar"></div>
+            <div class="cal-view-group" id="calViewToggle" role="group" aria-label="Calendar view"></div>
           </div>
-          <div class="cal-view-group" id="calViewToggle" role="group" aria-label="Calendar view"></div>
         </div>
         <div class="dashboard-cal" id="calGrid"></div>
       </section>
@@ -1585,6 +1647,40 @@
       <span class="modal-footer-message" id="tradeShowFormMessage"></span>
       <button type="button" class="btn" id="tradeShowFormCancelBtn">Cancel</button>
       <button type="button" class="btn btn-primary" id="tradeShowFormSaveBtn">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Holiday form (add / edit, js/holidays.js) ─────────────── -->
+<div id="holidayFormOverlay" class="modal-backdrop">
+  <div class="modal-card company-form-card holiday-form-card" role="dialog" aria-modal="true" aria-labelledby="holidayFormTitle">
+    <div class="modal-header">
+      <h3 id="holidayFormTitle">Add holiday</h3>
+      <button type="button" class="btn-close" id="holidayFormCloseBtn" aria-label="Close">✕</button>
+    </div>
+
+    <form id="holidayForm" class="modal-body company-form-body" novalidate>
+      <label class="form-field form-field--full">
+        <span class="form-label">Holiday <span class="form-required">*</span></span>
+        <input type="text" class="form-input" id="holidayFormName" autocomplete="off" placeholder="e.g. Thanksgiving" />
+      </label>
+
+      <label class="form-field">
+        <span class="form-label">Start date <span class="form-required">*</span></span>
+        <input type="date" class="form-input" id="holidayFormStart" required />
+      </label>
+
+      <label class="form-field">
+        <span class="form-label">End date <span class="form-required">*</span></span>
+        <input type="date" class="form-input" id="holidayFormEnd" required />
+      </label>
+    </form>
+
+    <div class="modal-footer">
+      <button type="button" class="btn btn-danger holiday-delete-btn" id="holidayFormDeleteBtn" hidden>Delete</button>
+      <span class="modal-footer-message" id="holidayFormMessage"></span>
+      <button type="button" class="btn" id="holidayFormCancelBtn">Cancel</button>
+      <button type="button" class="btn btn-primary" id="holidayFormSaveBtn">Save</button>
     </div>
   </div>
 </div>
@@ -2027,50 +2123,53 @@
   </div>
 </div>
 
-<script src="js/config.js?v=20261110-1700"></script>
+<script src="js/config.js?v=20261111-2342"></script>
 <!-- Needs SUPABASE_URL/KEY from config.js and the CDN client above. -->
-<script src="js/auth.js?v=20261110-1700"></script>
-<script src="js/util.js?v=20261110-1700"></script>
-<script src="js/dates.js?v=20261110-1700"></script>
-<script src="js/store.js?v=20261110-1700"></script>
-<script src="js/tasks.js?v=20261110-1700"></script>
-<script src="js/app-shell.js?v=20261110-1700"></script>
-<script src="js/table-pager.js?v=20261110-1700"></script>
-<script src="js/record-list.js?v=20261110-1700"></script>
-<script src="js/item-pane.js?v=20261110-1700"></script>
-<script src="js/campaign-form.js?v=20261110-1700"></script>
-<script src="js/trade-show-form.js?v=20261110-1700"></script>
-<script src="js/banners.js?v=20261110-1700"></script>
-<script src="js/banner-form.js?v=20261110-1700"></script>
-<script src="js/mailchimp.js?v=20261110-1700"></script>
-<script src="js/style-import.js?v=20261110-1700"></script>
-<script src="js/column-filter.js?v=20261110-1700"></script>
-<script src="js/styles.js?v=20261110-1700"></script>
-<script src="js/style-images.js?v=20261110-1700"></script>
-<script src="js/sample-photos.js?v=20261110-1700"></script>
-<script src="js/photoshoots.js?v=20261110-1700"></script>
-<script src="js/complete.js?v=20261110-1700"></script>
-<script src="js/photoshoot-form.js?v=20261110-1700"></script>
-<script src="js/purchase-orders.js?v=20261110-1700"></script>
-<script src="js/production-import.js?v=20261110-1700"></script>
-<script src="js/ats-import.js?v=20261110-1700"></script>
-<script src="js/style-pane.js?v=20261110-1700"></script>
-<script src="js/magento.js?v=20261110-1700"></script>
-<script src="js/magento-availability.js?v=20261110-1700"></script>
-<script src="js/magento-photos.js?v=20261110-1700"></script>
-<script src="js/magento-group-order.js?v=20261110-1700"></script>
-<script src="js/magento-sales.js?v=20261110-1700"></script>
-<script src="js/magento-n41.js?v=20261110-1700"></script>
-<script src="js/magento-events.js?v=20261110-1700"></script>
-<script src="js/trade-show-import.js?v=20261110-1700"></script>
-<script src="js/magento-groups.js?v=20261110-1700"></script>
-<script src="js/table-view.js?v=20261110-1700"></script>
-<script src="js/exports.js?v=20261110-1700"></script>
-<script src="js/copy-menu.js?v=20261110-1700"></script>
-<script src="js/row-quick-select.js?v=20261110-1700"></script>
-<script src="js/pane-dismiss.js?v=20261110-1700"></script>
-<script src="js/shortcuts.js?v=20261110-1700"></script>
-<script src="js/calendar.js?v=20261110-1700"></script>
-<script src="js/main.js?v=20261110-1700"></script>
+<script src="js/auth.js?v=20261111-2342"></script>
+<script src="js/util.js?v=20261111-2342"></script>
+<script src="js/dates.js?v=20261111-2342"></script>
+<script src="js/store.js?v=20261111-2342"></script>
+<script src="js/tasks.js?v=20261111-2342"></script>
+<script src="js/app-shell.js?v=20261111-2342"></script>
+<script src="js/table-pager.js?v=20261111-2342"></script>
+<script src="js/record-list.js?v=20261111-2342"></script>
+<script src="js/item-pane.js?v=20261111-2342"></script>
+<script src="js/campaign-form.js?v=20261111-2342"></script>
+<script src="js/trade-show-form.js?v=20261111-2342"></script>
+<script src="js/banners.js?v=20261111-2342"></script>
+<script src="js/banner-form.js?v=20261111-2342"></script>
+<script src="js/mailchimp.js?v=20261111-2342"></script>
+<script src="js/style-import.js?v=20261111-2342"></script>
+<script src="js/column-filter.js?v=20261111-2342"></script>
+<script src="js/styles.js?v=20261111-2342"></script>
+<script src="js/style-images.js?v=20261111-2342"></script>
+<script src="js/sample-photos.js?v=20261111-2342"></script>
+<script src="js/photoshoots.js?v=20261111-2342"></script>
+<script src="js/complete.js?v=20261111-2342"></script>
+<script src="js/photoshoot-form.js?v=20261111-2342"></script>
+<script src="js/purchase-orders.js?v=20261111-2342"></script>
+<script src="js/production-import.js?v=20261111-2342"></script>
+<script src="js/ats-import.js?v=20261111-2342"></script>
+<script src="js/style-pane.js?v=20261111-2342"></script>
+<script src="js/magento.js?v=20261111-2342"></script>
+<script src="js/magento-availability.js?v=20261111-2342"></script>
+<script src="js/magento-photos.js?v=20261111-2342"></script>
+<script src="js/magento-group-order.js?v=20261111-2342"></script>
+<script src="js/magento-sales.js?v=20261111-2342"></script>
+<script src="js/magento-n41.js?v=20261111-2342"></script>
+<script src="js/magento-events.js?v=20261111-2342"></script>
+<script src="js/trade-show-import.js?v=20261111-2342"></script>
+<script src="js/magento-groups.js?v=20261111-2342"></script>
+<script src="js/table-view.js?v=20261111-2342"></script>
+<script src="js/exports.js?v=20261111-2342"></script>
+<script src="js/copy-menu.js?v=20261111-2342"></script>
+<script src="js/row-quick-select.js?v=20261111-2342"></script>
+<script src="js/pane-dismiss.js?v=20261111-2342"></script>
+<script src="js/shortcuts.js?v=20261111-2342"></script>
+<script src="js/header-search.js?v=20261111-2342"></script>
+<script src="js/calendar.js?v=20261111-2342"></script>
+<script src="js/holidays.js?v=20261111-2342"></script>
+<script src="js/email.js?v=20261111-2342"></script>
+<script src="js/main.js?v=20261111-2342"></script>
 </body>
 </html>

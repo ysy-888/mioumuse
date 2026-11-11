@@ -340,7 +340,7 @@ or inactive, or **View products** to see the products in it.
 placed (your local time), customer (Guest when they didn't sign in), email,
 status, items, total, ship-to, payment and shipping. Filter by **Status**
 (the header funnel — only statuses in use, with counts) and when placed
-(All / Today / 7 / 30 days); search order #, name or email; sort by a
+(All / Today / 7 / 30 days); search order #, name, email or company; sort by a
 column; page through. Click an order for its items (shipped, canceled,
 refunded), totals, billing and shipping addresses, shipments with tracking
 numbers, and its comment history. Each item shows a thumbnail (its group's

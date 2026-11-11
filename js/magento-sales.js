@@ -11,7 +11,7 @@
  * order opens; from an order its customer does; Back returns.
  *
  * Orders: Status header filter (only statuses in use, with counts), Placed
- * quick filter (All / Today / 7 / 30 days), search by order #, name, email.
+ * quick filter (All / Today / 7 / 30 days), search by order #, name, email, company.
  * Customers: Group header filter, Joined quick filter, search by name, email, company.
  *
  * Needs the integration's Sales → Operations → Orders (+ Shipments for

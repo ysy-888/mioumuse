@@ -58,6 +58,7 @@ async function bootApp() {
   initComplete();
   initPhotoshootForm();
   initPurchaseOrders();
+  initEmailView();
   initProductionImport();
   initAtsImport();
   initStylePane();
@@ -66,7 +67,9 @@ async function bootApp() {
   initRowQuickSelect();
   initPaneDismiss();
   initShortcuts();
+  initHeaderSearch();
   initCalendar();
+  initHolidayForm();
   // After every table has wired its sorting: a menu on each header that sorts.
   initSortMenus();
   // Last: rearranges the headers every table above has set up.

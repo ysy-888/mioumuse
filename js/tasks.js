@@ -418,7 +418,7 @@ function describeShootCardLine(shoot) {
  * these are. `tasks` narrows the rows — the Overdue tab passes just the
  * missed ones.
  */
-function createScheduleCard(item, { showName = true, onChange, tasks } = {}) {
+function createScheduleCard(item, { showName = true, onChange, tasks, emptyText } = {}) {
   const complete = isItemComplete(item);
   const card = document.createElement("div");
   card.className = "payroll-run schedule-card" + (complete ? " is-complete" : "");
@@ -460,7 +460,7 @@ function createScheduleCard(item, { showName = true, onChange, tasks } = {}) {
   if (rows.length === 0) {
     const empty = document.createElement("span");
     empty.className = "schedule-card-empty";
-    empty.textContent = item.type === ITEM_TYPE_PHOTOSHOOT ? describeShootCardLine(item.record) : "No tasks yet.";
+    empty.textContent = item.type === ITEM_TYPE_PHOTOSHOOT ? describeShootCardLine(item.record) : (emptyText ?? "No tasks yet.");
     tasksWrap.appendChild(empty);
   }
   card.appendChild(tasksWrap);

@@ -77,7 +77,7 @@ let mgSalableWarned = false;
 let mgTableRenderWaiting = false;
 
 /** The helper version this app expects (HELPER_VERSION in supabase/functions/magento). */
-const MG_HELPER_VERSION = "2026-11-10.3";
+const MG_HELPER_VERSION = "2026-11-11.1";
 
 /** Per action, the last call's timing: { roundTripMs, totalMs, authMs, magentoCalls, magentoMs, slowest… }. */
 const mgTimings = {};
@@ -506,11 +506,12 @@ function renderMagentoSubview() {
     search.placeholder = {
       products: "Search SKU or name",
       categories: "Search categories",
-      orders: "Search order #, name or email",
+      orders: "Search order #, name, email or company",
       customers: "Search name, email or company",
       events: "Search events",
     }[view];
     search.value = products ? mgQuery.search : view === "categories" ? mgCategorySearch : view === "events" ? mgEventsQuery.search : MG_SALES[view].query.search;
+    syncHeaderSearch();
   }
   if (!products) closeMagentoPane();
   // An order or customer pane belongs to its own list.

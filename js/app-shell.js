@@ -5,13 +5,13 @@
  * (lists), "platforms" (banners), "styles" (the style database),
  * "photoshoots" (the shoots), "needToShoot" (styles waiting for one), "complete"
  * (styles shot or made in CG), "pos"
- * (N41's PO lines by ETA month), and "magento" (the store's
- * products and categories, live). A record opens in a side pane over
+ * (N41's PO lines by ETA month), "magento" (the store's
+ * products and categories, live), and "email" (the email templates). A record opens in a side pane over
  * whichever view is showing (js/item-pane.js, js/banners.js,
  * js/photoshoots.js, js/magento.js), not as a view of its own.
  */
 
-const APP_VIEWS = ["home", "campaigns", "tradeShows", "platforms", "styles", "photoshoots", "needToShoot", "complete", "pos", "magento"];
+const APP_VIEWS = ["home", "campaigns", "tradeShows", "platforms", "styles", "photoshoots", "needToShoot", "complete", "pos", "magento", "email"];
 
 let currentAppView = "home";
 
@@ -44,6 +44,8 @@ function switchAppView(view) {
   if (!APP_VIEWS.includes(view)) return;
   // An unsaved Magento edit isn't dropped without asking.
   if (currentAppView !== view && !closeMagentoPane({ force: false })) return;
+  // So isn't an unsaved email (js/email.js).
+  if (currentAppView !== view && !confirmLeaveEmail()) return;
 
   if (!navigatingBack && currentAppView !== view) {
     appViewHistory.push(currentAppView);
@@ -79,6 +81,8 @@ function switchAppView(view) {
     posToolbar: view === "pos",
     posTableWrap: view === "pos",
     magentoToolbar: view === "magento",
+    emailToolbar: view === "email",
+    emailWrap: view === "email",
     calendarWrap: view === "home",
   };
   Object.entries(panes).forEach(([id, visible]) => {
@@ -100,6 +104,7 @@ function switchAppView(view) {
   if (view === "complete") renderCompleteView();
   if (view === "pos") renderPoView();
   if (view === "magento") enterMagentoView();
+  if (view === "email") renderEmailView();
   // The photoshoot and Magento tables show and hide with their page, but
   // none of them belongs anywhere else.
   if (view !== "photoshoots") leaveShootsPage();
@@ -119,7 +124,7 @@ function switchAppView(view) {
 
 // ── Left menu, page title, breadcrumbs ──────────────────────────────────────
 //
-// Home, then three groups — Marketing (Campaigns, Trade Shows, Platforms),
+// Home, then three groups — Marketing (Campaigns, Trade Shows, Platforms, E-Mail),
 // Photoshoots (Styles, Need to Shoot, Complete, POs, Photoshoots), Magento (Products,
 // Categories, Orders, Customers). The page you're on is filled in the menu,
 // named in the header, with Home › group above it.

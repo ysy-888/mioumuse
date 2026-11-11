@@ -45,6 +45,22 @@ let calFilterSelection = new Set(CAL_KINDS);
  */
 let calShowCompleted = false;
 
+/**
+ * Chip look: "solid" (events a solid block, tasks a lighter shade) or
+ * "classic" (pale events, white tasks edged in colour). Remembered in this
+ * browser only — it's a viewing preference.
+ */
+const CAL_CHIP_STYLE_KEY = "calChipStyle";
+let calChipStyle = (() => {
+  try { return localStorage.getItem(CAL_CHIP_STYLE_KEY) === "classic" ? "classic" : "solid"; } catch { return "solid"; }
+})();
+
+function setCalChipStyle(style) {
+  calChipStyle = style;
+  try { localStorage.setItem(CAL_CHIP_STYLE_KEY, style); } catch { /* not remembered */ }
+  renderCalFilterBar();
+}
+
 function areTasksHiddenAsCompleted(item) {
   return !calShowCompleted && isItemComplete(item);
 }
@@ -86,6 +102,8 @@ function selectCalGroup(taskIds, item) {
     closeCalItemPane(item); // clears the highlight too
     return;
   }
+  // The item's pane takes the day pane's place — they'd show the same work.
+  if (calSelectedYmd) closeCalDayPane();
   // Open first: opening one pane closes the other, which clears the highlight.
   openCalItemPane(item);
   calSelectedTaskIds = new Set(taskIds);
@@ -114,10 +132,6 @@ function applyCalGroupSelection() {
   document.querySelectorAll("#calGrid .dash-event[data-task-id]").forEach(chip => {
     chip.classList.toggle("is-group-selected", calSelectedTaskIds.has(chip.dataset.taskId));
   });
-  // Re-flow every cell: a chip that just became selected has to surface out
-  // of the overflow, and one that just stopped being selected drops back in.
-  document.querySelectorAll("#calGrid .dash-cal-cell.has-events").forEach(applyCalCellOverflow);
-
   document.querySelectorAll(".payroll-run.is-selectable").forEach(card => {
     card.classList.toggle("is-selected", isCalGroupSelected(card.groupTaskIds ?? []));
   });
@@ -221,6 +235,19 @@ function setCalTitle(year, month) {
   if (!el) return;
   el.textContent = new Date(year, month, 1)
     .toLocaleString(undefined, { month: "long", year: "numeric" });
+  applyCalMonthFocus();
+}
+
+/**
+ * In the scrolling month grid, days outside the month named in the title
+ * step back, so the month you're reading stands out from its neighbours.
+ */
+function applyCalMonthFocus() {
+  if (!calScrollEl || !calCursor) return;
+  const key = `${calCursor.year}-${calCursor.month}`;
+  calScrollEl.querySelectorAll(".dash-cal-body > .dash-cal-cell").forEach(cell => {
+    cell.classList.toggle("is-other-month", cell.dataset.month !== key);
+  });
 }
 
 /** The Sunday that opens the week on screen. */
@@ -376,17 +403,121 @@ function createCalEventChip(entry) {
     : CAL_TASK_SHORT_LABELS[entry.kind] ?? entry.label;
   chip.appendChild(meta);
 
-  // Open the day, then select the item this chip belongs to.
+  // A chip selects just what it is — an event bar its whole event, a task
+  // that one task — and opens the item's pane. Never the day under it.
   chip.addEventListener("click", e => {
     e.stopPropagation();
-    if (calSelectedYmd !== entry.dueDate) selectCalDay(entry.dueDate);
-    selectCalGroup(getItemGroupIds(entry.item), entry.item);
-    renderCalDayPane();
+    selectCalGroup(isDayEntry(entry) ? getItemGroupIds(entry.item) : [entry.id], entry.item);
   });
   return chip;
 }
 
-function buildCalCell(date, byDate, today) {
+// ── Multi-day bars ───────────────────────────────────────────────────────────
+//
+// A show, a campaign or a holiday that runs several days in a row is drawn as
+// one connected bar, like a wall calendar: each week row gives every bar a
+// lane (a fixed slot under the date), and a day the bar doesn't cover keeps
+// that slot empty so the bars line up across the row. Tasks follow below.
+
+/** Which bar a value belongs to: an item's days, or a holiday. */
+function getCalBarKey(value) {
+  return value.item ? `i|${value.item.type}|${value.item.id}` : `h|${value.id}`;
+}
+
+/** Does the bar named `key` cover `dayYmd`? (after the filters) */
+function calBarCovers(key, dayYmd, byDate) {
+  if (key.startsWith("h|")) return getHolidaysOn(dayYmd).some(h => `h|${h.id}` === key);
+  return (byDate.get(dayYmd) ?? []).some(e => isDayEntry(e) && getCalBarKey(e) === key);
+}
+
+/**
+ * Lanes for one week row: lanes[l][i] is what sits in lane l on day i
+ * ({ key, value, start, end } — the run it belongs to), or null. Runs that
+ * start earlier come first, then longer ones, then holidays, then by name.
+ */
+function buildCalWeekLanes(ymds, byDate) {
+  const bars = new Map(); // key → { label, days: value per day index }
+  ymds.forEach((dayYmd, i) => {
+    const values = [
+      ...getHolidaysOn(dayYmd),
+      ...(byDate.get(dayYmd) ?? []).filter(isDayEntry),
+    ];
+    values.forEach(value => {
+      const key = getCalBarKey(value);
+      if (!bars.has(key)) bars.set(key, { label: value.item ? value.item.chipLabel : value.name, days: [] });
+      bars.get(key).days[i] = value;
+    });
+  });
+
+  // Each bar's runs of consecutive days within the row.
+  const runs = [];
+  bars.forEach((bar, key) => {
+    let run = null;
+    for (let i = 0; i < ymds.length; i++) {
+      if (!bar.days[i]) continue;
+      if (run && run.end === i - 1) run.end = i;
+      else { run = { key, bar, start: i, end: i }; runs.push(run); }
+    }
+  });
+  runs.sort((a, b) =>
+    a.start - b.start ||
+    (b.end - b.start) - (a.end - a.start) ||
+    (a.key.startsWith("h|") ? 0 : 1) - (b.key.startsWith("h|") ? 0 : 1) ||
+    a.bar.label.localeCompare(b.bar.label));
+
+  const lanes = [];
+  runs.forEach(run => {
+    let lane = lanes.findIndex(row => row.slice(run.start, run.end + 1).every(slot => !slot));
+    if (lane === -1) { lane = lanes.length; lanes.push(Array(ymds.length).fill(null)); }
+    for (let i = run.start; i <= run.end; i++) {
+      lanes[lane][i] = { key: run.key, value: run.bar.days[i], start: run.start, end: run.end };
+    }
+  });
+  return lanes;
+}
+
+/** One lane's piece of a bar on day `i`, shaped to join its neighbours. */
+function createCalBarChip(slot, i, ymds, byDate) {
+  const dayYmd = ymds[i];
+  const chip = slot.key.startsWith("h|")
+    ? createCalHolidayChip(slot.value)
+    : createCalEventChip(slot.value);
+
+  // Every piece of the bar answers to hover together (initCalendar).
+  chip.dataset.bar = slot.key;
+
+  const day = parseYmd(dayYmd);
+  const joinsLeft = i > slot.start || calBarCovers(slot.key, ymd(addDays(day, -1)), byDate);
+  const joinsRight = i < slot.end || calBarCovers(slot.key, ymd(addDays(day, 1)), byDate);
+  if (joinsLeft || joinsRight) chip.classList.add("is-span");
+  if (joinsLeft) chip.classList.add("is-join-left");
+  if (joinsRight) chip.classList.add("is-join-right");
+  // The row's first piece carries the name, written across the whole run.
+  if (i === slot.start) {
+    chip.classList.add("is-span-head");
+    chip.style.setProperty("--span-days", String(slot.end - i + 1));
+  }
+  return chip;
+}
+
+/** Keeps an empty lane's height, so the bars below it stay lined up. */
+function createCalLaneGap() {
+  const gap = document.createElement("span");
+  gap.className = "dash-event dash-cal-lane-gap";
+  gap.setAttribute("aria-hidden", "true");
+  gap.textContent = "\u00a0";
+  return gap;
+}
+
+/** The seven cells of one week row, starting on `weekStart` (a Sunday). */
+function buildCalWeekCells(weekStart, byDate, today) {
+  const dates = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
+  const ymds = dates.map(date => ymd(date));
+  const lanes = buildCalWeekLanes(ymds, byDate);
+  return dates.map((date, i) => buildCalCell(date, byDate, today, { lanes, i, ymds }));
+}
+
+function buildCalCell(date, byDate, today, week) {
   const cellYmd = ymd(date);
   const cell = document.createElement("div");
   cell.className = "dash-cal-cell";
@@ -395,31 +526,46 @@ function buildCalCell(date, byDate, today) {
   if (cellYmd === today) cell.classList.add("is-today");
   if (cellYmd === calSelectedYmd) cell.classList.add("is-selected");
 
-  const num = document.createElement("span");
-  num.className = "dash-cal-date";
-  num.textContent = `${date.getMonth() + 1}/${date.getDate()}`;
+  if (cellYmd < today) cell.classList.add("is-past");
+  cell.dataset.month = `${date.getFullYear()}-${date.getMonth()}`;
+
+  // The day number on its own; the 1st also names its month, and today says so.
+  const dateRow = document.createElement("span");
+  dateRow.className = "dash-cal-date";
   if (date.getDate() === 1) {
     cell.classList.add("is-month-start");
-    calMonthAnchors[`${date.getFullYear()}-${date.getMonth()}`] = cell;
+    calMonthAnchors[cell.dataset.month] = cell;
+    const monthLabel = document.createElement("span");
+    monthLabel.className = "dash-cal-month";
+    monthLabel.textContent = date.toLocaleString(undefined, { month: "short" });
+    dateRow.appendChild(monthLabel);
   }
-  cell.appendChild(num);
+  const num = document.createElement("span");
+  num.className = "dash-cal-num";
+  num.textContent = String(date.getDate());
+  dateRow.appendChild(num);
+  if (cellYmd === today) {
+    const todayLabel = document.createElement("span");
+    todayLabel.className = "dash-cal-today-label";
+    todayLabel.textContent = "Today";
+    dateRow.appendChild(todayLabel);
+  }
+  cell.appendChild(dateRow);
+
+  if (getHolidaysOn(cellYmd).length) cell.classList.add("is-holiday");
 
   const entries = byDate.get(cellYmd) ?? [];
 
-  // How many tasks are still open on this day, at a glance.
-  const openCount = entries.filter(entry => !isDayEntry(entry) && !entry.done).length;
-  if (openCount > 0) {
-    const badge = document.createElement("span");
-    badge.className = "dash-cal-open-count";
-    badge.textContent = String(openCount);
-    badge.title = `${openCount} still open`;
-    cell.appendChild(badge);
+  // The bars first, each in its lane (an empty lane keeps its height, up to
+  // the last bar on this day), then the day's tasks.
+  const { lanes, i } = week;
+  let lastLane = -1;
+  lanes.forEach((row, lane) => { if (row[i]) lastLane = lane; });
+  for (let lane = 0; lane <= lastLane; lane++) {
+    const slot = lanes[lane][i];
+    cell.appendChild(slot ? createCalBarChip(slot, i, week.ymds, byDate) : createCalLaneGap());
   }
-
-  // Every chip is rendered; which ones actually show is decided by
-  // applyCalCellOverflow, so selecting a show can reveal one that was
-  // sitting inside "+N more" without rebuilding the grid.
-  entries.forEach(entry => cell.appendChild(createCalEventChip(entry)));
+  entries.filter(entry => !isDayEntry(entry)).forEach(entry => cell.appendChild(createCalEventChip(entry)));
 
   if (entries.length > 0) {
     const more = document.createElement("span");
@@ -430,41 +576,32 @@ function buildCalCell(date, byDate, today) {
     cell.classList.add("has-events");
     cell.addEventListener("click", () => selectCalDay(cellYmd));
     applyCalCellOverflow(cell);
+  } else {
+    // An empty day has nothing to open, so clicking it puts the open one away.
+    cell.addEventListener("click", () => {
+      if (calSelectedYmd) closeCalDayPane();
+    });
   }
 
   return cell;
 }
 
 /**
- * Order a cell's chips and decide which are visible: selected before
- * unselected, and within each, still-open before done. Selected chips are
- * always shown; the rest fill the room up to CAL_MAX_EVENTS, and the counter
- * only appears when it would hide more than one.
+ * Decide which of a cell's chips show. They keep their order — bars in their
+ * lanes, then tasks — whatever is selected. The first CAL_MAX_EVENTS slots
+ * show (an empty lane counts, so bars stay lined up), and the counter only
+ * appears when it would hide more than one.
  */
 function applyCalCellOverflow(cell) {
-  const chips = [...cell.querySelectorAll(".dash-event")];
-  if (chips.length === 0) return;
-
-  const isSelected = chip => calSelectedTaskIds.has(chip.dataset.taskId);
-  const rank = chip => (isSelected(chip) ? 0 : 2) + (chip.classList.contains("is-done") ? 1 : 0);
-
-  const ordered = chips
-    .map((chip, i) => ({ chip, i, rank: rank(chip) }))
-    .sort((a, b) => a.rank - b.rank || a.i - b.i)
-    .map(entry => entry.chip);
+  const slots = [...cell.querySelectorAll(".dash-event")];
+  if (slots.length === 0) return;
 
   // Week cells are tall and scroll on their own, so nothing is capped there.
-  const cap = calViewMode === "week"
-    ? ordered.length
-    : Math.max(CAL_MAX_EVENTS, chips.filter(isSelected).length);
-  const collapse = ordered.length > cap + 1;
+  const cap = calViewMode === "week" ? slots.length : CAL_MAX_EVENTS;
+  const collapse = slots.length > cap + 1;
+  slots.forEach((slot, i) => { slot.hidden = collapse && i >= cap; });
 
-  ordered.forEach((chip, i) => {
-    chip.style.order = String(i);
-    chip.hidden = collapse && i >= cap;
-  });
-
-  const hidden = ordered.filter(chip => chip.hidden).length;
+  const hidden = slots.filter(slot => slot.hidden && !slot.classList.contains("dash-cal-lane-gap")).length;
   const more = cell.querySelector(".dash-cal-more");
   if (more) {
     more.hidden = hidden === 0;
@@ -509,10 +646,7 @@ function renderCalendarWeekGrid() {
 
   const body = document.createElement("div");
   body.className = "dash-cal-body dash-cal-body--week";
-  const start = getCalWeekStart();
-  for (let i = 0; i < 7; i++) {
-    body.appendChild(buildCalCell(addDays(start, i), byDate, today));
-  }
+  body.append(...buildCalWeekCells(getCalWeekStart(), byDate, today));
   wrap.appendChild(body);
 
   grid.replaceChildren(wrap);
@@ -543,13 +677,15 @@ function renderCalendarGrid() {
   const body = document.createElement("div");
   body.className = "dash-cal-body";
   const { start, end } = getCalRange();
-  for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-    body.appendChild(buildCalCell(new Date(d), byDate, today));
+  // The range runs Sunday to Saturday, so it splits into whole weeks.
+  for (let d = new Date(start); d <= end; d = addDays(d, 7)) {
+    body.append(...buildCalWeekCells(d, byDate, today));
   }
   scroll.appendChild(body);
   grid.appendChild(scroll);
 
   calScrollEl = scroll;
+  applyCalMonthFocus();
   scroll.addEventListener("scroll", onCalScroll, { passive: true });
   sizeCalRows();
   scrollCalToDate(getCalTopYmd(), { instant: true });
@@ -594,6 +730,7 @@ function buildDayPaneEntries(dayYmd) {
 
     entries.push({
       item,
+      dayTasks,
       taskIds: getItemGroupIds(item),
       // A day with no task due has nothing to finish, so it stays open —
       // except a shoot, which is finished when it's marked complete.
@@ -659,7 +796,7 @@ function renderCalDayPane() {
   const open = entries.filter(entry => !entry.done);
   const done = entries.filter(entry => entry.done);
 
-  // What's left to do on this day, matching the badge on the calendar cell.
+  // What's left to do on this day.
   const openTaskCount = entries.reduce((n, entry) => n + entry.openCount, 0);
   const count = document.getElementById("calDayPaneCount");
   if (count) count.textContent = openTaskCount ? String(openTaskCount) : "";
@@ -681,7 +818,8 @@ function renderCalDayPane() {
   }
 
   body.replaceChildren(...shown.map(entry => {
-    const card = createScheduleCard(entry.item);
+    // Only what's due on this day, not the item's whole task list.
+    const card = createScheduleCard(entry.item, { tasks: entry.dayTasks, emptyText: "No tasks due this day." });
     attachCalGroupSelection(card, entry.taskIds, entry.item);
     return card;
   }));
@@ -790,8 +928,13 @@ function renderCalFilterBar() {
     calShowCompleted = !calShowCompleted;
     applyCalFilterChange();
   }, "cal-filter-btn--completed");
+  const classicChips = makeCalFilterBtn("Classic chips", calChipStyle === "classic", () => {
+    setCalChipStyle(calChipStyle === "classic" ? "solid" : "classic");
+  }, "cal-filter-btn--chips");
+  classicChips.title = "Pale events and white, colour-edged tasks";
 
-  menu.append(all, ...kinds, showCompleted);
+  menu.append(all, ...kinds, showCompleted, classicChips);
+  document.getElementById("calGrid")?.classList.toggle("is-classic-chips", calChipStyle === "classic");
   bar.replaceChildren(trigger, menu);
 
   renderCalViewToggle();
@@ -921,6 +1064,22 @@ function initCalendar() {
   document.getElementById("calToday")?.addEventListener("click", goToCalToday);
 
   document.getElementById("calDayPaneClose")?.addEventListener("click", closeCalDayPane);
+
+  // Hovering any day of a bar lights up the whole bar, every day it runs.
+  const grid = document.getElementById("calGrid");
+  const setBarHover = (key, on) => {
+    grid.querySelectorAll(".dash-event[data-bar]").forEach(piece => {
+      if (piece.dataset.bar === key) piece.classList.toggle("is-bar-hover", on);
+    });
+  };
+  grid?.addEventListener("mouseover", e => {
+    const piece = e.target.closest?.(".dash-event[data-bar]");
+    if (piece && !piece.contains(e.relatedTarget)) setBarHover(piece.dataset.bar, true);
+  });
+  grid?.addEventListener("mouseout", e => {
+    const piece = e.target.closest?.(".dash-event[data-bar]");
+    if (piece && !piece.contains(e.relatedTarget)) setBarHover(piece.dataset.bar, false);
+  });
 
   // A filter menu opened by click closes on the next click elsewhere, or Escape.
   const closeFilterMenu = () => {

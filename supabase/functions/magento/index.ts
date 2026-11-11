@@ -89,7 +89,7 @@ import { AsyncLocalStorage } from "node:async_hooks";
  * copy running in Supabase is older than the app expects. Bump it (and
  * MG_HELPER_VERSION in js/magento.js) whenever this file changes.
  */
-const HELPER_VERSION = "2026-11-10.3";
+const HELPER_VERSION = "2026-11-11.1";
 
 /**
  * Where a request's time went: each Magento call is counted and timed, per
@@ -1067,12 +1067,16 @@ const ORDER_SORT: Record<string, string> = {
   customer: "customer_lastname", email: "customer_email", qty: "total_qty_ordered",
 };
 
-function orderCriteria(p: Record<string, unknown>, page: number, pageSize: number, fields: string) {
+function orderCriteria(p: Record<string, unknown>, page: number, pageSize: number, fields: string, companyCustomerIds: string[] = []) {
   const groups: Filter[][] = [];
   const search = String(p.search ?? "").trim();
   if (search) {
-    groups.push(["increment_id", "customer_email", "customer_lastname", "customer_firstname"]
-      .map(field => [field, `%${search}%`, "like"] as Filter));
+    const group = ["increment_id", "customer_email", "customer_lastname", "customer_firstname"]
+      .map(field => [field, `%${search}%`, "like"] as Filter);
+    // Orders can't be searched by company, so the customers whose company
+    // matches are found first (searchCompanyCustomers) and their orders count.
+    if (companyCustomerIds.length) group.push(["customer_id", companyCustomerIds.join(","), "in"]);
+    groups.push(group);
   }
   groups.push(listParam(p.status).map(s => ["status", s, "eq"] as Filter));
   // Chosen orders by number (the app's list of orders flagged against N41).
@@ -1284,6 +1288,25 @@ async function addOrderCompanies<T extends { customerId: unknown; company: strin
     // The billing company stands.
   }
   return orders;
+}
+
+/**
+ * The ids of customers whose company matches the search — the store's own
+ * Company field, or their billing address's — for the order search. At most
+ * 100 (a longer list makes too long a web address); none if it can't be read.
+ */
+async function searchCompanyCustomers(search: string): Promise<string[]> {
+  if (!search) return [];
+  try {
+    const code = (await findCustomerFields()).company?.code;
+    const fields = ["billing_company", ...(code ? [code] : [])];
+    const q = criteria([fields.map(field => [field, `%${search}%`, "like"] as Filter)], null, 1, 100);
+    const body = await mg(`/customers/search?${q}&fields=items[id]`);
+    // deno-lint-ignore no-explicit-any
+    return (body?.items ?? []).map((c: any) => String(c.id)).filter(Boolean);
+  } catch {
+    return [];
+  }
 }
 
 /** Magento's built-in order statuses; any custom ones are found from recent orders. */
@@ -1786,7 +1809,8 @@ const actions: Record<string, (p: any) => Promise<unknown>> = {
 
   async orders(params) {
     const { page, pageSize } = pageParams(params);
-    const body = await mg(`/orders?${orderCriteria(params, page, pageSize, ORDER_LIST_FIELDS)}`);
+    const companyIds = await searchCompanyCustomers(String(params.search ?? "").trim());
+    const body = await mg(`/orders?${orderCriteria(params, page, pageSize, ORDER_LIST_FIELDS, companyIds)}`);
     const items = await addFirstOrders(await addOrderCompanies((body?.items ?? []).map(summarizeOrder)));
     return { items, total: Number(body?.total_count ?? 0), page, pageSize };
   },

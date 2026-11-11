@@ -227,6 +227,115 @@ async function loadAppData() {
 
   // The Complete history (styles shot or made in CG).
   await loadStyleCompletions(client);
+
+  // Holidays on the Home calendar — an add-on too.
+  await loadHolidays(client);
+}
+
+// ── Holidays ─────────────────────────────────────────────────────────────────
+//
+// A named run of days marked on the Home calendar. Not a task: nothing to
+// finish, no day-pane card, just a label on each day it covers.
+//   Holiday { id, name, startDate, endDate }
+
+let allHolidays = [];
+let holidaysTableReady = true;
+
+const HOLIDAYS_SQL = `create table if not exists holidays (
+  id text primary key,
+  user_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
+  name text not null,
+  start_date date not null,
+  end_date date not null,
+  created_at timestamptz not null default now(),
+  constraint holidays_dates_in_order check (end_date >= start_date)
+);
+alter table holidays enable row level security;
+drop policy if exists "holidays: own rows only" on holidays;
+create policy "holidays: own rows only" on holidays
+  for all using (user_id = auth.uid()) with check (user_id = auth.uid());`;
+
+function normalizeHoliday(raw) {
+  return {
+    id: String(raw?.id ?? ""),
+    name: String(raw?.name ?? "").trim(),
+    ...normalizeDateRange(raw),
+  };
+}
+
+async function loadHolidays(client) {
+  const res = await client.from("holidays").select("id, name, start_date, end_date");
+  holidaysTableReady = !res.error;
+  allHolidays = (res.error ? [] : res.data)
+    .map(row => normalizeHoliday({ id: row.id, name: row.name, startDate: row.start_date, endDate: row.end_date }))
+    .sort((a, b) => a.startDate.localeCompare(b.startDate));
+}
+
+function getAllHolidays() {
+  return allHolidays;
+}
+
+function getHolidayById(id) {
+  return allHolidays.find(h => h.id === String(id)) ?? null;
+}
+
+/** The holidays covering `dayYmd`, in date order. */
+function getHolidaysOn(dayYmd) {
+  return allHolidays.filter(h => h.startDate <= dayYmd && h.endDate >= dayYmd);
+}
+
+function requireHolidaysTable() {
+  if (!holidaysTableReady) {
+    throw new Error(`Create the holidays table in Supabase first (SQL Editor):\n\n${HOLIDAYS_SQL}`);
+  }
+}
+
+function validateHolidayFields(fields) {
+  if (!fields.name) throw new Error("Give the holiday a name.");
+  validateDateRange(fields);
+}
+
+async function persistHoliday(holiday) {
+  requireHolidaysTable();
+  throwIfError(await requireClient().from("holidays").upsert({
+    id: holiday.id,
+    name: holiday.name,
+    start_date: holiday.startDate,
+    end_date: holiday.endDate,
+  }));
+}
+
+function sortHolidays() {
+  allHolidays.sort((a, b) => a.startDate.localeCompare(b.startDate));
+}
+
+async function createHoliday(fields) {
+  const holiday = normalizeHoliday({ ...fields, id: newRecordId("hol") });
+  validateHolidayFields(holiday);
+  await persistHoliday(holiday);
+  allHolidays.push(holiday);
+  sortHolidays();
+  return holiday;
+}
+
+async function updateHoliday(id, patch) {
+  const holiday = getHolidayById(id);
+  if (!holiday) throw new Error(`Holiday ${id} not found.`);
+  const merged = normalizeHoliday({ ...holiday, ...patch, id: holiday.id });
+  validateHolidayFields(merged);
+  await persistHoliday(merged);
+  Object.assign(holiday, merged);
+  sortHolidays();
+  return holiday;
+}
+
+async function deleteHoliday(id) {
+  const index = allHolidays.findIndex(h => h.id === String(id));
+  if (index === -1) throw new Error(`Holiday ${id} not found.`);
+  requireHolidaysTable();
+  throwIfError(await requireClient().from("holidays").delete().eq("id", String(id)));
+  const [removed] = allHolidays.splice(index, 1);
+  return removed;
 }
 
 // ── PO lines (N41's PO Detail by Vendor) ────────────────────────────────────
@@ -1973,4 +2082,49 @@ async function setTaskComplete(taskId, complete) {
     completedTaskIds.delete(taskId);
   }
   return complete;
+}
+
+// ── E-Mail settings (Marketing → E-Mail, js/email.js) ───────────────────────
+//
+// What you set on an email template: its links and products. One row per
+// template; the template file itself lives in the repo (email-templates/).
+//   { links: { key: url }, products: { gridKey: [{ sku, style, name, url, image }] } }
+
+const EMAIL_SETTINGS_SQL = `create table if not exists email_settings (
+  user_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
+  template_id text not null,
+  links jsonb not null default '{}'::jsonb,
+  products jsonb not null default '{}'::jsonb,
+  updated_at timestamptz not null default now(),
+  primary key (user_id, template_id)
+);
+alter table email_settings enable row level security;
+drop policy if exists "email_settings: own rows only" on email_settings;
+create policy "email_settings: own rows only" on email_settings
+  for all using (user_id = auth.uid()) with check (user_id = auth.uid());`;
+
+let emailSettingsTableReady = true;
+
+/** Saved settings by template id. A missing table says how to make it. */
+async function loadEmailSettings() {
+  const res = await requireClient().from("email_settings").select("template_id, links, products");
+  emailSettingsTableReady = !res.error;
+  if (res.error) {
+    throw Object.assign(new Error("Saving needs the email_settings table — copy the SQL and run it in Supabase (SQL Editor), then reload."), { sql: EMAIL_SETTINGS_SQL });
+  }
+  return new Map(res.data.map(row => [row.template_id, { links: row.links ?? {}, products: row.products ?? {} }]));
+}
+
+async function saveEmailSettings(templateId, settings) {
+  if (!emailSettingsTableReady) {
+    throw new Error(`Create the email_settings table in Supabase first (SQL Editor):\n\n${EMAIL_SETTINGS_SQL}`);
+  }
+  const { data: { user } } = await requireClient().auth.getUser();
+  throwIfError(await requireClient().from("email_settings").upsert({
+    user_id: user?.id,
+    template_id: templateId,
+    links: settings.links,
+    products: settings.products,
+    updated_at: new Date().toISOString(),
+  }, { onConflict: "user_id,template_id" }));
 }

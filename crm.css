@@ -5594,32 +5594,6 @@ span.dash-event { cursor: pointer; /* clicking selects the day */ }
    Day cell open-task count + day pane tabs
    ============================================================ */
 
-/* Absolutely placed so it stays out of the cell's flex order — the chip
-   hoisting logic reorders everything else in there. */
-.dash-cal-open-count {
-  position: absolute;
-  top: 3px;
-  right: 4px;
-  min-width: 16px;
-  height: 16px;
-  padding: 0 4px;
-  border-radius: 8px;
-  background: var(--accent-light);
-  color: var(--text-muted);
-  font-family: var(--font);
-  font-size: 10px;
-  font-weight: 700;
-  line-height: 16px;
-  text-align: center;
-  pointer-events: none;
-}
-
-.dash-cal-cell.is-today .dash-cal-open-count,
-.dash-cal-cell.is-selected .dash-cal-open-count {
-  background: var(--accent);
-  color: #fff;
-}
-
 /* The pane's second header row carries the Open / Completed split. */
 .day-pane-tabs-row {
   padding: 6px 8px;
@@ -5629,9 +5603,9 @@ span.dash-event { cursor: pointer; /* clicking selects the day */ }
 .dashboard-day-pane .task-tabs { flex: 1; }
 
 /* ============================================================
-   Schedule items — one colour per trade show, campaign type and
-   photoshoot type, grouped by kind: trade shows cool (blues and
-   purples), campaigns red, photoshoots yellow
+   Schedule items — trade shows all one blue, campaigns all one
+   mustard yellow, and a colour per photoshoot type (studio purple, editorial
+   pink). Red is kept for holidays, green for today and the selection.
 
    Every place an item appears (table dot, calendar chip, card pill, form
    button) keys on data-show or data-campaign-type, so it reads as the same
@@ -5644,26 +5618,21 @@ span.dash-event { cursor: pointer; /* clicking selects the day */ }
   --item-bg: #eef0f3;
   --item-fg: #4b5563;
   --item-strong: #6b7280;
+  /* The calendar's solid event chip: a deeper fill and the text on it. */
+  --item-solid: #6b7280;
+  --item-on-solid: #fff;
 }
 
-/* Trade shows — cool: blues and purples */
-[data-show="atlanta-apparel"] { --item-bg: #e0ebfd; --item-fg: #1e4f9c; --item-strong: #2563c9; }
-[data-show="dallas-market"]   { --item-bg: #e5e7fc; --item-fg: #3730a3; --item-strong: #4f46e5; }
-[data-show="magic-new-york"]  { --item-bg: #efe7fd; --item-fg: #5b2ca0; --item-strong: #7c3aed; }
-[data-show="magic-las-vegas"] { --item-bg: #f5e6fb; --item-fg: #7a2391; --item-strong: #9b30b8; }
-[data-show="magic-nashville"] { --item-bg: #dff3f9; --item-fg: #0e5f78; --item-strong: #0e86a8; }
-[data-show="flair"]           { --item-bg: #e6ecf5; --item-fg: #34507a; --item-strong: #4a6fa5; }
+/* Trade shows — one blue for every show. */
+[data-show] { --item-bg: #dfeafd; --item-fg: #1d4ed8; --item-strong: #2563eb; --item-solid: #2563eb; --item-on-solid: #fff; }
 
-/* Campaign types — reds */
-[data-campaign-type="sale"]              { --item-bg: #fde4e4; --item-fg: #a01818; --item-strong: #d42a2a; }
-[data-campaign-type="new-arrivals"]      { --item-bg: #fde6ee; --item-fg: #a3214f; --item-strong: #d0346a; }
-[data-campaign-type="collection-launch"] { --item-bg: #f6e1e6; --item-fg: #7d1d36; --item-strong: #a3284a; }
-[data-campaign-type="holiday"]           { --item-bg: #ffe7df; --item-fg: #a83417; --item-strong: #e04b25; }
-[data-campaign-type="promotion"]         { --item-bg: #fce8ea; --item-fg: #b1323f; --item-strong: #e05563; }
+/* Campaigns — one mustard yellow for every type (red is for holidays).
+   Yellow is too light for white text, so its solid chip takes dark text. */
+[data-campaign-type] { --item-bg: #fdf3c2; --item-fg: #6b5a00; --item-strong: #e5bc00; --item-solid: #f2c811; --item-on-solid: #2e2600; }
 
-/* Photoshoot types — yellows */
-[data-shoot-type="studio"]    { --item-bg: #fdf3c4; --item-fg: #7a5c00; --item-strong: #d4a106; }
-[data-shoot-type="editorial"] { --item-bg: #fdebcc; --item-fg: #85520a; --item-strong: #d98a0b; }
+/* Photoshoot types — the type pill's colours: studio purple, editorial pink. */
+[data-shoot-type="studio"]    { --item-bg: #ece6fb; --item-fg: #5a3aa8; --item-strong: #7c4fd6; --item-solid: #7c4fd6; --item-on-solid: #fff; }
+[data-shoot-type="editorial"] { --item-bg: #fbe3f3; --item-fg: #9b1f74; --item-strong: #c93a9b; --item-solid: #c93a9b; --item-on-solid: #fff; }
 
 .item-dot {
   display: inline-block;
@@ -5702,9 +5671,9 @@ span.dash-event { cursor: pointer; /* clicking selects the day */ }
   box-shadow: none;
 }
 
-.cal-filter-btn[data-kind="campaign"].is-active { background: #e0561c; border-color: #e0561c; }
-.cal-filter-btn[data-kind="show"].is-active     { background: #6d4ac7; border-color: #6d4ac7; }
-.cal-filter-btn[data-kind="shoot"].is-active    { background: #0e7f9c; border-color: #0e7f9c; }
+.cal-filter-btn[data-kind="campaign"].is-active { background: #e5bc00; border-color: #e5bc00; color: #2e2600; }
+.cal-filter-btn[data-kind="show"].is-active     { background: #2563eb; border-color: #2563eb; }
+.cal-filter-btn[data-kind="shoot"].is-active    { background: #7c4fd6; border-color: #7c4fd6; }
 .cal-filter-btn[data-kind="email"].is-active,
 .cal-filter-btn[data-kind="banner"].is-active,
 .cal-filter-btn[data-kind="social"].is-active   { background: #1f2937; border-color: #1f2937; }
@@ -5850,16 +5819,17 @@ span.dash-event { cursor: pointer; /* clicking selects the day */ }
 
 .item-pane[hidden] { display: none !important; }
 
-/* On the home calendar the pane opens from the task list, so it floats as a
-   card to the left of that list instead of covering it — both stay in view.
-   The offsets follow .dashboard-wrap's 12px 16px 16px padding and the 300px
-   .dashboard-side rail plus its 12px gap. */
+/* On the home calendar the pane takes the task list's place (over the
+   300px rail), 440px wide; the calendar narrows by the 140px difference
+   while it's open (.dashboard-main below), so nothing is hidden behind it.
+   The offsets follow .dashboard-wrap's 12px 16px 16px padding. */
 @media (min-width: 761px) {
   .app-main:has(#calendarWrap:not([hidden])) .item-pane {
     top: 12px;
-    right: calc(16px + 300px + 12px);
+    right: 16px;
     bottom: 16px;
-    max-width: calc(100% - 16px - 300px - 12px - 16px);
+    width: 440px;
+    max-width: calc(100% - 32px);
     border: 1px solid var(--border);
     border-radius: 10px;
     box-shadow: 0 12px 32px rgba(15, 23, 42, 0.16);
@@ -9743,3 +9713,647 @@ body.is-dragging-file .style-pane-sample { border-color: #6f93c9; background-col
   color: #d97706;
   cursor: help;
 }
+
+/* ============================================================
+   Home calendar — clearer today, selection and month focus
+
+   Today is green: a filled date with "Today" beside it and a faint green
+   wash. The selected day is ringed in the same green, so the two read as
+   different marks that still work together on the same cell. Days outside
+   the month in the title have grey numbers.
+   ============================================================ */
+
+:root {
+  --cal-mark: #16a34a;
+  --cal-today-bg: #effaf2;
+  --cal-selected-bg: #dcf3e3;
+  --cal-grid-line: #d3d6dc;
+  --cal-other-text: #b4b9c1;
+}
+
+.dash-cal-head {
+  background: #2d2d29;
+  border-bottom-color: #2d2d29;
+}
+
+.dash-cal-head-cell {
+  padding: 8px 10px;
+  font-size: 11.5px;
+  letter-spacing: 0.08em;
+  color: #fff;
+}
+
+.dash-cal-head-cell.is-weekend { color: #b9bcc2; }
+
+.dash-cal-cell {
+  padding: 5px 6px 6px;
+  gap: 3px;
+  border-color: var(--cal-grid-line);
+}
+
+/* Weekends: barely tinted, so they don't compete with today. Days of the
+   neighbouring months keep the same background; only their numbers grey out. */
+.dash-cal-cell.is-weekend { background: #fafafb; }
+
+/* ── Date line: day number, then a month name or "Today" ── */
+.dash-cal-date {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 26px;
+  padding: 0;
+  margin-bottom: 1px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+  border-radius: 0;
+}
+
+.dash-cal-num {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 26px;
+  height: 26px;
+  padding: 0 4px;
+  border-radius: 999px;
+  font-variant-numeric: tabular-nums;
+}
+
+.dash-cal-month {
+  padding-left: 4px;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text);
+}
+
+/* The 1st's number tucks up against its month name. */
+.dash-cal-cell.is-month-start .dash-cal-num {
+  min-width: 0;
+  padding-left: 0;
+}
+
+.dash-cal-cell.is-past .dash-cal-num { color: var(--text-muted); font-weight: 500; }
+
+.dash-cal-cell.is-other-month .dash-cal-num,
+.dash-cal-cell.is-other-month .dash-cal-month { color: var(--cal-other-text); }
+
+/* ── Today ── */
+.dash-cal-cell.is-today,
+.dash-cal-cell.is-today.is-weekend,
+.dash-cal-cell.is-today.is-other-month {
+  background: var(--cal-today-bg);
+  box-shadow: none;
+}
+
+.dash-cal-cell.is-today .dash-cal-date {
+  display: inline-flex;
+  min-width: 0;
+  height: auto;
+  padding: 0;
+  background: none;
+  color: var(--text);
+  font-size: 14px;
+}
+
+.dash-cal-cell.is-today .dash-cal-num,
+.dash-cal-cell.is-today.is-month-start .dash-cal-num {
+  min-width: 26px;
+  padding: 0 4px;
+  background: var(--cal-mark);
+  color: #fff;
+  font-weight: 700;
+}
+
+.dash-cal-today-label {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #15803d;
+}
+
+/* ── Hover and selection ── */
+.dash-cal-cell.has-events:hover { background: #f1f3f6; }
+
+.dash-cal-cell.is-today.has-events:hover { background: #e2f5e8; }
+
+.dash-cal-cell.is-selected,
+.dash-cal-cell.is-selected.has-events:hover {
+  background: var(--cal-selected-bg);
+}
+
+.dash-cal-cell.is-selected::before {
+  inset: 1px;
+  border: 2px solid var(--cal-mark);
+  border-radius: 6px;
+  box-shadow: 0 0 0 3px rgba(22, 163, 74, 0.14);
+  z-index: 1;
+}
+
+.dash-cal-cell.is-selected .dash-cal-num { color: var(--cal-mark); font-weight: 700; }
+
+.dash-cal-cell.is-selected.is-today .dash-cal-num { color: #fff; }
+
+/* ── Chips: a touch more air ── */
+.dash-event {
+  padding: 2px 6px;
+  border-radius: 5px;
+  font-size: 11.5px;
+  line-height: 1.45;
+}
+
+.dash-cal-more { font-size: 11px; }
+
+/* ── Week view: the date line is bigger, as the cells are ── */
+.dash-cal-body--week .dash-cal-date { font-size: 15px; }
+
+/* ── Header: month + ‹ today › on the left, filter + Month/Week on the right ── */
+.dashboard-cal-header {
+  display: flex;
+  justify-content: space-between;
+}
+
+.dashboard-cal-header .dashboard-cal-legend { gap: 14px; }
+
+.dashboard-cal-header .dashboard-cal-title {
+  /* Wide enough for the longest month, so the arrows don't shift. */
+  min-width: 170px;
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  flex-shrink: 0;
+}
+
+.dashboard-cal-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+/* On the right now, so the filter menu opens leftward from its button. */
+.dashboard-cal-controls .cal-filter-menu {
+  left: auto;
+  right: 0;
+}
+
+.dash-cal-body--week .dash-cal-num { min-width: 28px; height: 28px; }
+
+/* ============================================================
+   Holidays on the Home calendar (js/holidays.js)
+
+   A red label under the date: not a task, so it doesn't look like the
+   chips. The day gets a faint red wash so a long holiday reads at a glance.
+   ============================================================ */
+
+.dash-cal-holiday {
+  /* Right after the date, ahead of every chip (chips order from 0). */
+  order: -999;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  width: 100%;
+  min-width: 0;
+  padding: 2px 6px;
+  border: none;
+  border-radius: 5px;
+  background: #fde2e2;
+  color: #b91c1c;
+  font-family: var(--font);
+  font-size: 11.5px;
+  font-weight: 700;
+  line-height: 1.45;
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+
+/* A small star marks it as a holiday. */
+.dash-cal-holiday::before {
+  content: "★";
+  flex: 0 0 auto;
+  font-size: 10px;
+  color: #dc2626;
+}
+
+/* Days after the first: still named, but quieter. */
+.dash-cal-holiday.is-continued { background: #feeeee; font-weight: 600; }
+
+.dash-cal-holiday:hover { background: #fbcaca; }
+
+.dash-cal-cell.is-holiday:not(.is-today):not(.is-selected) { background: #fff7f7; }
+
+/* ── Form ── */
+.holiday-form-card { width: min(460px, calc(100vw - 32px)); }
+
+.holiday-delete-btn { margin-right: auto; }
+
+/* ============================================================
+   Calendar chips — solid events, light tasks (the default)
+
+   An event's days (a show, a campaign, a shoot) are a solid block in the
+   item's deeper colour; its tasks are the same colour, lighter. The
+   earlier look — pale days, white tasks edged in colour — stays available
+   as "Classic chips" in the filter menu (#calGrid.is-classic-chips), and
+   its rules above are left as they were.
+   ============================================================ */
+
+#calGrid:not(.is-classic-chips) .dash-event.cal-event--day {
+  background: var(--item-solid);
+  color: var(--item-on-solid);
+  box-shadow: none;
+  font-weight: 600;
+}
+
+#calGrid:not(.is-classic-chips) .dash-event.cal-event--task {
+  background: var(--item-bg);
+  color: var(--item-fg);
+  box-shadow: none;
+}
+
+/* Selected: the light task fills in too, and both get a dark ring. */
+#calGrid:not(.is-classic-chips) .dash-event.cal-event--day.is-group-selected,
+#calGrid:not(.is-classic-chips) .dash-event.cal-event--task.is-group-selected {
+  background: var(--item-solid);
+  color: var(--item-on-solid);
+  box-shadow: inset 0 0 0 2px rgba(0, 0, 0, 0.45);
+}
+
+/* ============================================================
+   Connected bars — a run of days reads as one bar (js/calendar.js)
+
+   Each day's piece stretches over the cell padding (and the grid line) on
+   any side it joins a neighbour, with square corners there, so the pieces
+   meet edge to edge. The row's first piece writes the name across the
+   whole run; the rest stay blank.
+   ============================================================ */
+
+/* Chips past "+N more" really hide (.dash-event sets display: flex). */
+.dash-event[hidden] { display: none !important; }
+
+/* An empty lane: holds the height so the bars below line up. */
+.dash-cal-lane-gap { visibility: hidden; pointer-events: none; }
+
+/* Holidays sit in their lane like any bar, not pinned under the date. */
+.dash-cal-holiday { order: 0; }
+
+/* Month cells let a bar's name run sideways into the next days, while
+   still cutting off anything that runs past the bottom. */
+.dash-cal-body:not(.dash-cal-body--week) .dash-cal-cell {
+  overflow-x: visible;
+  overflow-y: clip;
+}
+
+/* A single chip clips its own text; a bar's first piece doesn't. */
+.dash-event { overflow: hidden; }
+
+.dash-event.is-span {
+  width: auto;
+  align-self: stretch;
+}
+
+.dash-event.is-join-left {
+  margin-left: -6px;
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+}
+
+.dash-event.is-join-right {
+  margin-right: -7px;   /* the padding, plus the grid line */
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+.dash-event.is-span .dash-event-meta { display: none; }
+
+.dash-event.is-span:not(.is-span-head) .dash-event-icon,
+.dash-event.is-span:not(.is-span-head) .dash-event-title,
+.dash-cal-holiday.is-span:not(.is-span-head)::before { visibility: hidden; }
+
+.dash-event.is-span-head { overflow: visible; }
+
+/* The name spans the run's days: about a cell's width per day, less the
+   icon. Above the next days' pieces, below the sticky weekday header. */
+.dash-event.is-span-head .dash-event-title {
+  position: relative;
+  z-index: 1;
+  max-width: calc(var(--span-days, 1) * (100% + 17px) - 31px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Week view's cells scroll on their own, so the name stays in its day. */
+.dash-cal-body--week .dash-cal-cell { overflow-x: hidden; }
+
+.dash-cal-body--week .dash-event.is-span-head { overflow: hidden; }
+
+.dash-cal-body--week .dash-event.is-span-head .dash-event-title {
+  position: static;
+  max-width: 100%;
+}
+
+/* Selected (solid chips): one ring around the whole bar, not a box per day. */
+#calGrid:not(.is-classic-chips) .dash-event.is-span.is-group-selected {
+  --ring: rgba(0, 0, 0, 0.45);
+  box-shadow:
+    inset 0 2px 0 var(--ring),
+    inset 0 -2px 0 var(--ring),
+    inset var(--ring-left, 2px) 0 0 var(--ring),
+    inset calc(-1 * var(--ring-right, 2px)) 0 0 var(--ring);
+}
+
+.dash-event.is-join-left { --ring-left: 0px; }
+.dash-event.is-join-right { --ring-right: 0px; }
+
+/* Hover lights the whole bar, not just the day under the pointer. */
+button.dash-event[data-bar]:hover { filter: none; }
+.dash-event.is-bar-hover { filter: brightness(0.9); }
+.dash-cal-holiday[data-bar]:hover { background: #fde2e2; }
+.dash-cal-holiday.is-bar-hover { background: #fbcaca; }
+
+/* ============================================================
+   Home: the calendar makes room for an open event pane
+
+   The pane covers the task rail and 140px more, so the calendar gives up
+   that 140px while it's open, and takes it back when the pane closes.
+   ============================================================ */
+
+@media (min-width: 761px) {
+  #calendarWrap .dashboard-main { transition: padding-right 160ms ease-out; }
+
+  .app-main:has(> .item-pane:not([hidden]):not(.is-pane-ghost)) #calendarWrap .dashboard-main {
+    padding-right: 140px;
+  }
+
+  /* The pane's own sizing on Home, for the header below. */
+  .app-main:has(#calendarWrap:not([hidden])) .item-pane { container-type: inline-size; }
+}
+
+/* ============================================================
+   Narrow pane header — two rows instead of one squeezed row
+
+   Row one: the title, the ⋯ menu and ✕. Row two: everything else in the
+   header's actions (layout switch, status). Any pane under 520px wide.
+   ============================================================ */
+
+@container (max-width: 520px) {
+  .item-pane-header,
+  .item-pane[data-layout="cards"] .item-pane-header { flex-wrap: wrap; gap: 8px 6px; }
+
+  .item-pane-title-group {
+    order: -1;
+    flex: 1 1 calc(100% - 84px);
+  }
+
+  .item-pane-header-actions { display: contents; }
+
+  .item-pane-header-actions > * { order: 3; }
+  .item-pane-header-actions > .header-menu-wrap { order: 1; align-self: flex-start; }
+  .item-pane-header-actions > .item-pane-close { order: 2; align-self: flex-start; }
+
+  .item-pane[data-layout="cards"] .item-pane-title { font-size: 18px; }
+}
+
+/* A narrowed calendar: the header's controls drop to a second line rather
+   than running out of the panel. */
+.dashboard-cal-header { flex-wrap: wrap; row-gap: 8px; }
+
+/* ── Header search (js/header-search.js): the page's box, centred in the header ── */
+.app-header { position: relative; }
+.header-search {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: min(420px, 34vw);
+  display: flex;
+}
+.header-search:empty { display: none; }
+.header-search .toolbar-search-wrap {
+  flex: 1;
+  min-width: 0;
+  max-width: none;
+}
+.header-search .toolbar-search-wrap[hidden] { display: none; }
+/* A keyword in the box: the same amber as the matches it marks in the table. */
+.header-search .toolbar-search-wrap.is-searching input[type="search"] {
+  background: #fff8e6;
+  border-color: rgb(255, 149, 0);
+  box-shadow: 0 0 0 3px rgba(255, 176, 32, 0.28);
+  font-weight: 600;
+}
+.header-search .toolbar-search-wrap.is-searching svg { color: rgb(214, 120, 0); }
+
+@media (max-width: 900px) {
+  .header-search {
+    position: static;
+    transform: none;
+    flex: 1;
+    width: auto;
+    min-width: 0;
+  }
+}
+
+/* ============================================================
+   E-Mail (js/email.js): templates down the left (the POs month list's
+   look), the preview in the middle, the edit panel on the right.
+   ============================================================ */
+
+.email-layout { overflow: hidden; }
+.email-list-problems { color: var(--danger) !important; font-weight: 600; }
+
+.email-preview {
+  flex: 1;
+  min-width: 0;
+  overflow-y: auto;
+  padding: 24px 24px 48px;
+  background: #ecebe6;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+/* Desktop and mobile at their real widths, side by side; js/email.js scales
+   the pair down to fit and sizes the wrapper to the scaled box. */
+.email-preview-fit { flex: 0 0 auto; position: relative; }
+.email-preview-pair {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: flex;
+  align-items: flex-start;
+  gap: 32px;
+  transform-origin: top left;
+}
+.email-device { margin: 0; flex: 0 0 auto; }
+.email-device figcaption {
+  margin: 0 0 8px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.email-preview-frame {
+  display: block;
+  height: 600px;
+  border: 0;
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06), 0 8px 24px rgba(0, 0, 0, 0.08);
+}
+.email-device--desktop .email-preview-frame { width: 660px; } /* the email's own max width */
+.email-device--mobile .email-preview-frame { width: 375px; }
+.email-notice {
+  width: 100%;
+  max-width: 1107px;
+  padding: 10px 12px;
+  border: 1px solid #e8c27a;
+  border-radius: 6px;
+  background: #fdf6e7;
+  font-size: 12.5px;
+  user-select: text;
+}
+.email-notice:not([hidden]) { display: flex; align-items: center; gap: 12px; }
+.email-notice > span { flex: 1; }
+.email-notice .btn { flex: 0 0 auto; padding: 4px 10px; font-size: 12px; }
+.email-notice[hidden] { display: none; }
+
+/* Narrow windows: a slimmer list and panel; a phone stacks them. */
+@media (max-width: 1100px) {
+  .email-layout > .po-months { flex-basis: 160px; }
+  .email-edit { flex-basis: 300px; }
+  .email-preview { padding: 16px 12px 32px; }
+}
+@media (max-width: 760px) {
+  .email-layout { flex-direction: column; overflow-y: auto; }
+  .email-layout > .po-months { flex: 0 0 auto; border-right: none; border-bottom: 1px solid var(--border); }
+  .email-preview { flex: 0 0 auto; overflow: visible; }
+  .email-edit { flex: 0 0 auto; border-left: none; border-top: 1px solid var(--border); }
+  .email-edit-body { overflow: visible; }
+}
+
+.email-edit {
+  flex: 0 0 360px;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  border-left: 1px solid var(--border);
+  background: var(--surface);
+}
+.email-edit-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px 0;
+}
+.email-edit-head h2 { margin: 0; font-size: 15px; font-weight: 600; }
+.email-reset { font-size: 12px; font-weight: 500; }
+.email-edit-hint { margin: 4px 16px 0; font-size: 12px; color: var(--text-muted); }
+.email-edit-body { flex: 1; min-height: 0; overflow-y: auto; padding: 4px 16px 16px; }
+.email-edit-foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  border-top: 1px solid var(--border);
+}
+.email-save-state { flex: 1; font-size: 12px; color: var(--text-muted); }
+.email-save-btn:not(:disabled) { background: var(--text); color: #fff; border-color: var(--text); }
+.email-save-btn:not(:disabled):hover { background: #000; border-color: #000; }
+
+.email-section { padding: 14px 0 4px; border-bottom: 1px solid var(--border); }
+.email-section:last-child { border-bottom: none; }
+.email-section-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-bottom: 10px; }
+.email-section-head h3 { margin: 0; font-size: 13px; font-weight: 600; }
+.email-section-count { font-size: 11.5px; color: var(--text-muted); }
+.email-section-body { display: flex; flex-direction: column; gap: 12px; padding-bottom: 10px; }
+
+.email-link { display: flex; flex-direction: column; gap: 5px; border-radius: 6px; }
+.email-link-problem { font-size: 11px; color: var(--danger); }
+.email-link-problem[hidden] { display: none; }
+.email-link .form-input, .email-product-url { font-size: 12.5px; }
+
+/* Clicked in the preview: a moment of highlight. */
+@keyframes email-flash { from { background: #fff3c4; box-shadow: 0 0 0 6px #fff3c4; } to { background: transparent; box-shadow: 0 0 0 6px transparent; } }
+.email-link.is-flash, .email-product.is-flash { animation: email-flash 1.4s ease-out; }
+
+.email-products { display: flex; flex-direction: column; gap: 8px; }
+.email-product {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  padding: 6px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.email-product-thumb {
+  flex: 0 0 auto;
+  width: 40px;
+  height: 60px;
+  object-fit: cover;
+  border-radius: 4px;
+  background: var(--bg);
+}
+.email-product-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 5px; }
+.email-product-style { font-size: 12.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.email-product-name { font-weight: 400; color: var(--text-muted); }
+.email-product-url { padding: 4px 8px; }
+.email-product-tools { display: flex; flex-direction: column; gap: 2px; }
+.email-icon-btn {
+  width: 24px;
+  height: 20px;
+  border: none;
+  border-radius: 4px;
+  background: none;
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+}
+.email-icon-btn:hover:not(:disabled) { background: var(--accent-heavy); color: var(--text); }
+.email-icon-btn:disabled { opacity: 0.3; cursor: default; }
+.email-empty { margin: 0; font-size: 12px; color: var(--text-muted); }
+
+.email-product-search { position: relative; }
+.email-product-search input[type="search"] { width: 100%; }
+.email-search-results {
+  position: absolute;
+  z-index: 5;
+  left: 0;
+  right: 0;
+  top: calc(100% + 4px);
+  max-height: 320px;
+  overflow-y: auto;
+  padding: 4px;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+}
+.email-search-results[hidden] { display: none; }
+.email-search-result {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 5px 6px;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  font-family: var(--font);
+  font-size: 12.5px;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+.email-search-result:hover:not(:disabled) { background: var(--accent-heavy); }
+.email-search-result:disabled { opacity: 0.45; cursor: default; }
+.email-search-result img { flex: 0 0 auto; width: 28px; height: 42px; object-fit: cover; border-radius: 3px; background: var(--bg); }
+.email-search-result span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.email-search-state { padding: 8px; font-size: 12px; color: var(--text-muted); }
+.email-search-state.is-error { color: var(--danger); }

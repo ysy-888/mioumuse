@@ -793,6 +793,7 @@ function renderPoNotice() {
       poPhotoFilter = "all";
       const search = document.getElementById("poSearchInput");
       if (search) search.value = "";
+      syncHeaderSearch();
       renderPoView();
     });
     notice.appendChild(show);

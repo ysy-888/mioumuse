@@ -491,3 +491,45 @@ alter table n41_po_lines enable row level security;
 drop policy if exists "n41_po_lines: own rows only" on n41_po_lines;
 create policy "n41_po_lines: own rows only" on n41_po_lines
   for all using (user_id = auth.uid()) with check (user_id = auth.uid());
+
+-- ── Holidays (Home → menu → Add Holiday) ────────────────────────────────────
+--
+-- A named run of days marked on the Home calendar. Not a task: there's
+-- nothing to finish, it just labels the days. Click one on the calendar to
+-- edit or delete it.
+
+create table if not exists holidays (
+  id text primary key,
+  user_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
+  name text not null,
+  start_date date not null,
+  end_date date not null,
+  created_at timestamptz not null default now(),
+  constraint holidays_dates_in_order check (end_date >= start_date)
+);
+
+alter table holidays enable row level security;
+
+drop policy if exists "holidays: own rows only" on holidays;
+create policy "holidays: own rows only" on holidays
+  for all using (user_id = auth.uid()) with check (user_id = auth.uid());
+
+-- ── E-Mail settings (Marketing → E-Mail) ────────────────────────────────────
+--
+-- The links and products you set on each email template (the templates
+-- themselves are files in email-templates/). One row per template.
+
+create table if not exists email_settings (
+  user_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
+  template_id text not null,
+  links jsonb not null default '{}'::jsonb,
+  products jsonb not null default '{}'::jsonb,
+  updated_at timestamptz not null default now(),
+  primary key (user_id, template_id)
+);
+
+alter table email_settings enable row level security;
+
+drop policy if exists "email_settings: own rows only" on email_settings;
+create policy "email_settings: own rows only" on email_settings
+  for all using (user_id = auth.uid()) with check (user_id = auth.uid());
