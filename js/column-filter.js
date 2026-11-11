@@ -1,7 +1,7 @@
 /**
- * Header filters — the PO app's design: click a column's label to sort, or
- * the rest of the header (the funnel) to pick which values to show. One
- * popover serves every table.
+ * Header menus — click a column's header for SORT ↓ ↑ (columns that sort)
+ * and, on filtered columns, the values to show. One popover serves every
+ * table; initSortMenus gives the sort-only columns theirs.
  *
  *   initColumnFilter("stylesTable", "ihd", {
  *     options: () => [{ key, label, count }],   // what can be ticked
@@ -67,35 +67,98 @@ function clearColumnFilter(tableId, col) {
  * `width` (px) widens the popover for long option lists, e.g. category paths.
  * `hideByDefault(key)` leaves those values unticked until the filter is
  * changed (N41 Status: COMPANY and CANCEL).
- * `sortable`: the column sorts, so only the funnel opens the filter — the
- * rest of the header sorts, like the columns beside it.
+ * Clicking anywhere on the header opens the menu; a column that sorts gets
+ * SORT ↓ ↑ at its top. (`sortable` is still accepted — the header's
+ * th-no-sort class is what decides.)
  */
-function initColumnFilter(tableId, col, { options, onChange, width = null, hideByDefault = null, sortable = false }) {
+function initColumnFilter(tableId, col, { options, onChange, width = null, hideByDefault = null }) {
   const th = document.querySelector(`#${tableId} thead th[data-col="${col}"]`);
   if (!th) return;
   const entry = { selected: null, options, onChange, th, width, hideByDefault, useDefault: Boolean(hideByDefault) };
   if (entry.useDefault) th.classList.add("filter-active");
   columnFilters.set(columnFilterId(tableId, col), entry);
-
   th.classList.add("th-filterable");
-  th.classList.remove("th-no-sort");
+  attachHeaderMenu(th, entry);
+}
+
+// ── Sorting, from the same menu ──────────────────────────────────────────────
+
+/** The tables that sort; their headers without a filter get a sort-only menu. */
+const SORT_MENU_TABLES = [
+  "campaignsTable", "tradeShowsTable", "bannersTable", "stylesTable", "needTable",
+  "completeTable", "shootsTable", "mgProductsTable", "mgOrdersTable", "mgCustomersTable",
+];
+const columnSortSetters = new Map(); // tableId → (col, "asc" | "desc" | null) => void
+let columnSortPassThrough = false;
+
+/**
+ * A table whose sort asks a server (Magento) sets it directly, rather than
+ * being clicked through its cycle — one request, not three.
+ */
+function registerColumnSort(tableId, setter) {
+  columnSortSetters.set(tableId, setter);
+}
+
+function columnSortDir(th) {
+  if (th.classList.contains("sorted-asc")) return "asc";
+  if (th.classList.contains("sorted-desc")) return "desc";
+  return null;
+}
+
+function columnSorts(entry) {
+  return !entry.th.classList.contains("th-no-sort");
+}
+
+/**
+ * Every table's header click cycles unsorted → ↑ → ↓ → unsorted, so click
+ * (past the menu) until the header shows the direction asked for.
+ */
+function applyHeaderMenuSort(entry, dir) {
+  const { th } = entry;
+  closeColumnFilterPopover();
+  const setter = columnSortSetters.get(th.closest("table")?.id);
+  if (setter) {
+    setter(th.dataset.col, dir);
+    return;
+  }
+  columnSortPassThrough = true;
+  try {
+    for (let i = 0; i < 3 && columnSortDir(th) !== dir; i++) th.click();
+  } finally {
+    columnSortPassThrough = false;
+  }
+}
+
+/** Run last (after the tables wire their sorting): sort-only menus on the rest. */
+function initSortMenus() {
+  SORT_MENU_TABLES.forEach(tableId => {
+    document.querySelectorAll(`#${tableId} thead th[data-col]`).forEach(th => {
+      if (th.classList.contains("th-menu") || th.classList.contains("th-no-sort") || th.querySelector("input")) return;
+      th.classList.add("th-sort-menu");
+      attachHeaderMenu(th, { th, sortOnly: true });
+    });
+  });
+}
+
+/** Label + icon, and a click anywhere on the header opens the menu. */
+function attachHeaderMenu(th, entry) {
+  th.classList.add("th-menu");
   if (!th.querySelector(".th-label")) {
     const label = document.createElement("span");
     label.className = "th-label";
     label.append(...th.childNodes);
     th.appendChild(label);
   }
-  // The funnel, right after the label; the popover opens under it.
   const hit = document.createElement("span");
   hit.className = "th-filter-hit";
   hit.setAttribute("aria-hidden", "true");
   th.appendChild(hit);
   entry.hit = hit;
 
-  // Capture phase, so a click outside the label opens the filter instead of
-  // reaching the table's sort handler.
+  // Capture phase, so the click opens the menu instead of reaching the
+  // table's own sort handler — unless applyHeaderMenuSort is the one clicking.
   th.addEventListener("click", e => {
-    if (sortable ? !e.target.closest(".th-filter-hit") : e.target.closest(".th-label")) return;
+    if (columnSortPassThrough) return;
     e.stopImmediatePropagation();
     if (openColumnFilter === entry) closeColumnFilterPopover();
     else openColumnFilterPopover(entry);
@@ -109,10 +172,22 @@ function openColumnFilterPopover(entry) {
   if (!pop) return;
   openColumnFilter?.hit?.classList.remove("is-open");
   openColumnFilter = entry;
-  const all = entry.options().map(o => o.key);
-  columnFilterDraft = new Set(entry.selected ? all.filter(k => entry.selected.has(k))
-    : entry.useDefault ? all.filter(k => !entry.hideByDefault(k)) : all);
-  renderColumnFilterList();
+  const sortRow = document.getElementById("columnFilterSort");
+  if (sortRow) sortRow.hidden = !columnSorts(entry);
+  const dir = columnSortDir(entry.th);
+  pop.querySelectorAll(".column-filter-sort-btn").forEach(btn => {
+    btn.classList.toggle("is-active", btn.dataset.dir === dir);
+    btn.setAttribute("aria-pressed", String(btn.dataset.dir === dir));
+  });
+  const body = document.getElementById("columnFilterBody");
+  if (body) body.hidden = Boolean(entry.sortOnly);
+  pop.classList.toggle("is-sort-only", Boolean(entry.sortOnly));
+  if (!entry.sortOnly) {
+    const all = entry.options().map(o => o.key);
+    columnFilterDraft = new Set(entry.selected ? all.filter(k => entry.selected.has(k))
+      : entry.useDefault ? all.filter(k => !entry.hideByDefault(k)) : all);
+    renderColumnFilterList();
+  }
   pop.style.width = entry.width ? `${entry.width}px` : "";
   pop.style.maxWidth = entry.width ? `min(${entry.width}px, calc(100vw - 16px))` : "";
   entry.hit?.classList.add("is-open");
@@ -130,7 +205,7 @@ function closeColumnFilterPopover() {
 
 function renderColumnFilterList() {
   const list = document.getElementById("columnFilterList");
-  if (!list || !openColumnFilter) return;
+  if (!list || !openColumnFilter || openColumnFilter.sortOnly) return;
   const options = openColumnFilter.options();
   if (!options.length) {
     list.innerHTML = '<div class="column-filter-empty">Nothing to filter yet</div>';
@@ -173,7 +248,7 @@ function positionColumnFilterPopover(entry) {
 
 function applyColumnFilterFromPopover() {
   const entry = openColumnFilter;
-  if (!entry) return;
+  if (!entry || entry.sortOnly) return;
   const all = entry.options().map(o => o.key);
   // Everything ticked is the same as no filter.
   entry.selected = all.every(k => columnFilterDraft.has(k)) ? null : new Set(columnFilterDraft);
@@ -184,7 +259,7 @@ function applyColumnFilterFromPopover() {
 }
 
 function setColumnFilterDraftAll(on) {
-  if (!openColumnFilter) return;
+  if (!openColumnFilter || openColumnFilter.sortOnly) return;
   columnFilterDraft = on ? new Set(openColumnFilter.options().map(o => o.key)) : new Set();
   renderColumnFilterList();
 }
@@ -194,11 +269,19 @@ function initColumnFilterPopover() {
   document.getElementById("columnFilterClearAll")?.addEventListener("click", () => setColumnFilterDraftAll(false));
   document.getElementById("columnFilterOk")?.addEventListener("click", applyColumnFilterFromPopover);
   document.getElementById("columnFilterCancel")?.addEventListener("click", closeColumnFilterPopover);
+  document.querySelectorAll("#columnFilterPopover .column-filter-sort-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const entry = openColumnFilter;
+      if (!entry) return;
+      // The direction already on clears it.
+      applyHeaderMenuSort(entry, columnSortDir(entry.th) === btn.dataset.dir ? null : btn.dataset.dir);
+    });
+  });
 
   document.addEventListener("click", e => {
     const pop = document.getElementById("columnFilterPopover");
     if (!pop || pop.hidden) return;
-    if (pop.contains(e.target) || e.target.closest("th.th-filterable")) return;
+    if (pop.contains(e.target) || e.target.closest("th.th-menu")) return;
     closeColumnFilterPopover();
   });
   document.addEventListener("keydown", e => {

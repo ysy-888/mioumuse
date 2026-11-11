@@ -1674,6 +1674,14 @@ function initMagento() {
   });
   // The default sort shows on its header from the start.
   syncMgSortHeaders();
+  // SORT ↓ ↑ in the header menu: straight to the order asked for, one request.
+  registerColumnSort("mgProductsTable", (col, dir) => {
+    if (!MG_SORTABLE.has(col)) return;
+    if (dir) Object.assign(mgQuery, { sort: col, dir: dir === "asc" ? "ASC" : "DESC" });
+    else Object.assign(mgQuery, MG_DEFAULT_SORT);
+    syncMgSortHeaders();
+    setMgQuery({});
+  });
 
   // Right-click a name for "Copy" (mgCopyText says what; js/copy-menu.js).
   document.getElementById("mgProductsBody")?.addEventListener("contextmenu", e => {

@@ -239,9 +239,8 @@ filtering and sorting, so it stays quick on a big catalog.
   Select all removes the filter. The toolbar's quick filters are shortcuts
   for the header ones: All / Enabled / Disabled for Status, All / Grouped /
   Simple for Type. Search matches SKU or name.
-- Products open sorted by **Name**, A–Z. Click a column's label to sort:
-  ascending, descending, then back to Name A–Z (Name itself flips between
-  A–Z and Z–A). Categories, color, image and qty don't sort. Products with
+- Products open sorted by **Name**, A–Z. Click a column's header for its
+  menu: **SORT ↓ ↑** (clicking the lit one again goes back to Name A–Z). Categories, color, image and qty don't sort. Products with
   the same name put the Grouped item first, then go by SKU.
 - **Qty**: Magento's product list doesn't carry stock, so the helper asks
   Magento's inventory for each page's SKUs in one call — a SKU's qty is the
@@ -852,8 +851,9 @@ the right of the header and tick the months to show. **No IHD** covers
 styles without one. A filtered header turns dark; tick everything (Select
 all) to remove the filter. 
 
-Need to Shoot and Shoots sort by clicking a column header: ascending, then
-descending, then back to the default order. Blank values sort last — except
+Every table sorts from its header menu (click the header): **SORT ↓ ↑** at
+the top, then the column's filter if it has one. Clicking the lit arrow
+again goes back to the default order. Blank values sort last — except
 IHD: soonest first puts the ones with no IHD at
 the top.
 Need to Shoot's default order is IHD, soonest first (no IHD on top).

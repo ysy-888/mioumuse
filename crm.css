@@ -53,6 +53,8 @@
   --col-type-status-min: 56px;
   --col-type-status-max: 96px;
   --icon-caret-down: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none'%3E%3Cpath d='M3.5 6.25 8 10.75l4.5-4.5' stroke='%23000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  --icon-arrow-up: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none'%3E%3Cpath d='M8 13.5V2.5M3 7.5l5-5 5 5' stroke='%23000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  --icon-arrow-down: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none'%3E%3Cpath d='M8 2.5v11M3 8.5l5 5 5-5' stroke='%23000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
   --icon-filter: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none'%3E%3Cpath d='M3 5h18l-6.5 7.5V19l-3 1.5V12.5L3 5z' fill='%23000'/%3E%3C/svg%3E");
   --cursor-copy: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='40' height='24' viewBox='0 0 40 24'%3E%3Crect x='1' y='1' width='38' height='22' rx='4' fill='%23ffffff' stroke='%23c8c5ba' stroke-width='1.2'/%3E%3Ctext x='20' y='15.5' text-anchor='middle' font-family='DM Sans,system-ui,sans-serif' font-size='10' font-weight='600' fill='%231a1a18'%3Ecopy%3C/text%3E%3C/svg%3E") 6 6, pointer;
 }
@@ -980,51 +982,6 @@ th {
   background: var(--header-bg);
 }
 
-th:not(.th-filterable).sorted-asc,
-th:not(.th-filterable).sorted-desc {
-  padding-right: 22px;
-}
-
-th:not(.th-filterable).sorted-asc::after,
-th:not(.th-filterable).sorted-desc::after {
-  position: absolute;
-  right: 8px;
-  top: 50%;
-  transform: translateY(-50%);
-  font-weight: 600;
-}
-
-th:not(.th-filterable).sorted-asc::after { content: '↑'; }
-th:not(.th-filterable).sorted-desc::after { content: '↓'; }
-
-/* PO table: sort hint on header hover (lighter), full arrow when sorted */
-.record-table thead th[data-col]:not(.th-filterable):not(.th-flag-col):not(.th-select-col):not(.th-packing-list-col):not(.sorted-asc):not(.sorted-desc):hover::after {
-  content: '↑';
-  position: absolute;
-  right: 8px;
-  top: 50%;
-  transform: translateY(-50%);
-  font-weight: 600;
-  color: var(--text-muted);
-  opacity: 0.45;
-}
-
-.record-table thead th[data-col]:not(.th-filterable):not(.th-flag-col):not(.th-select-col):not(.th-packing-list-col).sorted-asc::after,
-.record-table thead th[data-col]:not(.th-filterable):not(.th-flag-col):not(.th-select-col):not(.th-packing-list-col).sorted-desc::after {
-  color: var(--text);
-  opacity: 1;
-}
-
-/* Filterable headers: the sort hint sits right after the label — and only
-   on columns that sort. */
-.record-table thead th.th-filterable:not(.th-no-sort):not(.sorted-asc):not(.sorted-desc):not(.filter-active) .th-label:hover::after {
-  content: '↑';
-  margin-left: 3px;
-  font-weight: 600;
-  color: var(--text-muted);
-  opacity: 0.45;
-}
-
 th.col-leading,
 td.col-leading {
   padding-left: 24px;
@@ -1142,22 +1099,13 @@ th.th-filterable {
   transition: opacity 0.15s ease, transform 0.15s ease;
 }
 
-th.th-filterable:not(.filter-active) .th-filter-hit:hover,
-th.th-filterable .th-filter-hit.is-open {
+th.th-menu:not(.filter-active) .th-filter-hit:hover,
+th.th-menu .th-filter-hit.is-open {
   opacity: 1;
   color: var(--filter-icon-active);
   transform: scale(1.1);
 }
 
-/* Sorted: the arrow follows the label too. */
-th.th-filterable.sorted-asc .th-label::after,
-th.th-filterable.sorted-desc .th-label::after {
-  margin-left: 3px;
-  font-weight: 600;
-}
-
-th.th-filterable.sorted-asc .th-label::after { content: '↑'; }
-th.th-filterable.sorted-desc .th-label::after { content: '↓'; }
 
 td.select-cell.select-cell-hover::after,
 td.select-cell.select-cell-open::after {
@@ -1229,14 +1177,36 @@ th.th-filterable.filter-active:hover {
   color: #fff;
 }
 
-th.th-filterable .th-label {
+th.th-menu .th-label {
   display: inline;
   white-space: pre-line;
   line-height: 1.25;
   cursor: pointer;
 }
 
-th.th-filterable.th-no-sort .th-label { cursor: default; }
+th.th-menu { cursor: pointer; }
+
+/* A sort-only header: a caret on hover, in a slot that's always there so
+   nothing moves. Sorted (any menu): the slot shows the direction instead. */
+th.th-sort-menu .th-filter-hit {
+  opacity: 0;
+  mask-image: var(--icon-caret-down);
+  -webkit-mask-image: var(--icon-caret-down);
+  mask-size: 11px;
+  -webkit-mask-size: 11px;
+}
+th.th-sort-menu:hover .th-filter-hit { opacity: 0.55; }
+th.th-menu.sorted-asc .th-filter-hit,
+th.th-menu.sorted-desc .th-filter-hit {
+  opacity: 1;
+  color: var(--text);
+  mask-size: 12px;
+  -webkit-mask-size: 12px;
+}
+th.th-menu.sorted-asc .th-filter-hit { mask-image: var(--icon-arrow-up); -webkit-mask-image: var(--icon-arrow-up); }
+th.th-menu.sorted-desc .th-filter-hit { mask-image: var(--icon-arrow-down); -webkit-mask-image: var(--icon-arrow-down); }
+th.th-menu.filter-active.sorted-asc .th-filter-hit,
+th.th-menu.filter-active.sorted-desc .th-filter-hit { color: #fff; }
 
 .th-tooltip-card {
   position: fixed;
@@ -1355,6 +1325,51 @@ th.th-filterable.th-no-sort .th-label { cursor: default; }
   border-radius: 8px;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
   padding: 10px;
+}
+
+.column-filter-popover.is-sort-only { min-width: 0; }
+.column-filter-body[hidden],
+.column-filter-sort[hidden] { display: none; }
+
+/* SORT ↓ ↑ — the top of every header menu on a column that sorts. */
+.column-filter-sort {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.column-filter-sort-label {
+  flex: 1;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin-right: 8px;
+}
+.column-filter-sort-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+}
+.column-filter-sort-btn svg { width: 15px; height: 15px; }
+.column-filter-sort-btn:hover { background: var(--header-bg); }
+.column-filter-sort-btn.is-active {
+  background: #111;
+  border-color: #111;
+  color: #fff;
+}
+.column-filter-sort:not([hidden]) + .column-filter-body:not([hidden]) {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
 }
 
 .column-filter-toolbar {

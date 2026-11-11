@@ -6,7 +6,7 @@
 <title>MIOU MUSE</title>
 <link rel="icon" href="favicon.png?v=2" type="image/png" />
 <link rel="apple-touch-icon" href="favicon.png?v=2" />
-<link rel="stylesheet" href="crm.css?v=20261110-1643" />
+<link rel="stylesheet" href="crm.css?v=20261110-1700" />
 </head>
 <body>
 
@@ -1025,17 +1025,17 @@
           <th data-col="price">Price</th>
           <th data-col="qty">Qty</th>
           <th data-col="salableQty" title="Available to sell: Magento's Salable Qty, Qty less what open orders have reserved">ATS</th>
-          <th data-col="stockStatus">Stock Status</th>
-          <th data-col="preOrderDate">Pre-Order Date</th>
+          <th data-col="stockStatus">Stock&#10;Status</th>
+          <th data-col="preOrderDate">Pre-Order&#10;Date</th>
           <th data-col="visibility">Visibility</th>
           <th data-col="status">Status</th>
           <th data-col="available" title="Showing on the webstore: enabled, in stock, salable qty above 0, and (for an item) in an available group">Available</th>
-          <th data-col="n41Avail" title="N41's available month for this Style # + Color (the Style Master)">N41 Available</th>
-          <th data-col="n41Inv" title="Inventory qty for this Style # + Color, from the Style Master (Import CSV, column S)">Inv Qty</th>
+          <th data-col="n41Avail" title="N41's available month for this Style # + Color (the Style Master)">N41&#10;Available</th>
+          <th data-col="n41Inv" title="Inventory qty for this Style # + Color, from the Style Master (Import CSV, column S)">Inv&#10;Qty</th>
           <th data-col="n41Oh" title="On hand, from N41's ATS report (Import ATS)">OH</th>
           <th data-col="n41Wip" title="Work in progress, from N41's ATS report">WIP</th>
           <th data-col="n41Oo" title="On order, from N41's ATS report">OO</th>
-          <th data-col="n41Ats" title="Available to sell, from N41's ATS report (Magento's own is the ATS column)">N41 ATS</th>
+          <th data-col="n41Ats" title="Available to sell, from N41's ATS report (Magento's own is the ATS column)">N41&#10;ATS</th>
           <th data-col="categories">Categories</th>
           <th data-col="updatedAt">Updated</th>
         </tr>
@@ -2008,6 +2008,12 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <!-- Header filter (js/column-filter.js) — one popover for every table. -->
 <div id="columnFilterPopover" class="column-filter-popover" hidden>
+  <div class="column-filter-sort" id="columnFilterSort">
+    <span class="column-filter-sort-label">Sort</span>
+    <button type="button" class="column-filter-sort-btn" data-dir="desc" title="Sort descending" aria-label="Sort descending"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3v10M3.5 8.5 8 13l4.5-4.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+    <button type="button" class="column-filter-sort-btn" data-dir="asc" title="Sort ascending" aria-label="Sort ascending"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 13V3M3.5 7.5 8 3l4.5 4.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+  </div>
+  <div class="column-filter-body" id="columnFilterBody">
   <div class="column-filter-toolbar">
     <button type="button" class="column-filter-link" id="columnFilterSelectAll">Select all</button>
     <span class="column-filter-sep">|</span>
@@ -2018,52 +2024,53 @@
     <button type="button" class="btn btn-primary column-filter-ok" id="columnFilterOk">OK</button>
     <button type="button" class="btn column-filter-cancel" id="columnFilterCancel">Cancel</button>
   </div>
+  </div>
 </div>
 
-<script src="js/config.js?v=20261110-1643"></script>
+<script src="js/config.js?v=20261110-1700"></script>
 <!-- Needs SUPABASE_URL/KEY from config.js and the CDN client above. -->
-<script src="js/auth.js?v=20261110-1643"></script>
-<script src="js/util.js?v=20261110-1643"></script>
-<script src="js/dates.js?v=20261110-1643"></script>
-<script src="js/store.js?v=20261110-1643"></script>
-<script src="js/tasks.js?v=20261110-1643"></script>
-<script src="js/app-shell.js?v=20261110-1643"></script>
-<script src="js/table-pager.js?v=20261110-1643"></script>
-<script src="js/record-list.js?v=20261110-1643"></script>
-<script src="js/item-pane.js?v=20261110-1643"></script>
-<script src="js/campaign-form.js?v=20261110-1643"></script>
-<script src="js/trade-show-form.js?v=20261110-1643"></script>
-<script src="js/banners.js?v=20261110-1643"></script>
-<script src="js/banner-form.js?v=20261110-1643"></script>
-<script src="js/mailchimp.js?v=20261110-1643"></script>
-<script src="js/style-import.js?v=20261110-1643"></script>
-<script src="js/column-filter.js?v=20261110-1643"></script>
-<script src="js/styles.js?v=20261110-1643"></script>
-<script src="js/style-images.js?v=20261110-1643"></script>
-<script src="js/sample-photos.js?v=20261110-1643"></script>
-<script src="js/photoshoots.js?v=20261110-1643"></script>
-<script src="js/complete.js?v=20261110-1643"></script>
-<script src="js/photoshoot-form.js?v=20261110-1643"></script>
-<script src="js/purchase-orders.js?v=20261110-1643"></script>
-<script src="js/production-import.js?v=20261110-1643"></script>
-<script src="js/ats-import.js?v=20261110-1643"></script>
-<script src="js/style-pane.js?v=20261110-1643"></script>
-<script src="js/magento.js?v=20261110-1643"></script>
-<script src="js/magento-availability.js?v=20261110-1643"></script>
-<script src="js/magento-photos.js?v=20261110-1643"></script>
-<script src="js/magento-group-order.js?v=20261110-1643"></script>
-<script src="js/magento-sales.js?v=20261110-1643"></script>
-<script src="js/magento-n41.js?v=20261110-1643"></script>
-<script src="js/magento-events.js?v=20261110-1643"></script>
-<script src="js/trade-show-import.js?v=20261110-1643"></script>
-<script src="js/magento-groups.js?v=20261110-1643"></script>
-<script src="js/table-view.js?v=20261110-1643"></script>
-<script src="js/exports.js?v=20261110-1643"></script>
-<script src="js/copy-menu.js?v=20261110-1643"></script>
-<script src="js/row-quick-select.js?v=20261110-1643"></script>
-<script src="js/pane-dismiss.js?v=20261110-1643"></script>
-<script src="js/shortcuts.js?v=20261110-1643"></script>
-<script src="js/calendar.js?v=20261110-1643"></script>
-<script src="js/main.js?v=20261110-1643"></script>
+<script src="js/auth.js?v=20261110-1700"></script>
+<script src="js/util.js?v=20261110-1700"></script>
+<script src="js/dates.js?v=20261110-1700"></script>
+<script src="js/store.js?v=20261110-1700"></script>
+<script src="js/tasks.js?v=20261110-1700"></script>
+<script src="js/app-shell.js?v=20261110-1700"></script>
+<script src="js/table-pager.js?v=20261110-1700"></script>
+<script src="js/record-list.js?v=20261110-1700"></script>
+<script src="js/item-pane.js?v=20261110-1700"></script>
+<script src="js/campaign-form.js?v=20261110-1700"></script>
+<script src="js/trade-show-form.js?v=20261110-1700"></script>
+<script src="js/banners.js?v=20261110-1700"></script>
+<script src="js/banner-form.js?v=20261110-1700"></script>
+<script src="js/mailchimp.js?v=20261110-1700"></script>
+<script src="js/style-import.js?v=20261110-1700"></script>
+<script src="js/column-filter.js?v=20261110-1700"></script>
+<script src="js/styles.js?v=20261110-1700"></script>
+<script src="js/style-images.js?v=20261110-1700"></script>
+<script src="js/sample-photos.js?v=20261110-1700"></script>
+<script src="js/photoshoots.js?v=20261110-1700"></script>
+<script src="js/complete.js?v=20261110-1700"></script>
+<script src="js/photoshoot-form.js?v=20261110-1700"></script>
+<script src="js/purchase-orders.js?v=20261110-1700"></script>
+<script src="js/production-import.js?v=20261110-1700"></script>
+<script src="js/ats-import.js?v=20261110-1700"></script>
+<script src="js/style-pane.js?v=20261110-1700"></script>
+<script src="js/magento.js?v=20261110-1700"></script>
+<script src="js/magento-availability.js?v=20261110-1700"></script>
+<script src="js/magento-photos.js?v=20261110-1700"></script>
+<script src="js/magento-group-order.js?v=20261110-1700"></script>
+<script src="js/magento-sales.js?v=20261110-1700"></script>
+<script src="js/magento-n41.js?v=20261110-1700"></script>
+<script src="js/magento-events.js?v=20261110-1700"></script>
+<script src="js/trade-show-import.js?v=20261110-1700"></script>
+<script src="js/magento-groups.js?v=20261110-1700"></script>
+<script src="js/table-view.js?v=20261110-1700"></script>
+<script src="js/exports.js?v=20261110-1700"></script>
+<script src="js/copy-menu.js?v=20261110-1700"></script>
+<script src="js/row-quick-select.js?v=20261110-1700"></script>
+<script src="js/pane-dismiss.js?v=20261110-1700"></script>
+<script src="js/shortcuts.js?v=20261110-1700"></script>
+<script src="js/calendar.js?v=20261110-1700"></script>
+<script src="js/main.js?v=20261110-1700"></script>
 </body>
 </html>

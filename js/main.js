@@ -67,6 +67,8 @@ async function bootApp() {
   initPaneDismiss();
   initShortcuts();
   initCalendar();
+  // After every table has wired its sorting: a menu on each header that sorts.
+  initSortMenus();
   // Last: rearranges the headers every table above has set up.
   initTableViews();
 

@@ -1101,6 +1101,11 @@ function initMagentoSales() {
       if (!s.sortable.has(th.dataset.col)) th.classList.add("th-no-sort");
       th.addEventListener("click", () => sortMgSalesBy(kind, th.dataset.col));
     });
+    registerColumnSort(s.table, (col, dir) => {
+      if (!s.sortable.has(col)) return;
+      setMgSalesQuery(kind, dir ? { sort: col, dir: dir === "asc" ? "ASC" : "DESC" } : { sort: null, dir: "ASC" });
+      syncMgSalesSortHeaders(kind);
+    });
     document.getElementById(s.body)?.addEventListener("click", e => {
       const tr = e.target.closest("tr[data-id]");
       if (tr) openMgSalesPane(kind, tr.dataset.id);
