@@ -1007,6 +1007,8 @@ function styleRowToStyle(row) {
     availableDate: String(row.available_date ?? ""),
     memo: String(row.memo ?? ""),
     receivedQty: row.received_qty == null || row.received_qty === "" ? "" : String(Number(row.received_qty)),
+    // The Style Master's total_inv_qty (column S), the same way.
+    invQty: row.inv_qty == null || row.inv_qty === "" ? "" : String(Number(row.inv_qty)),
     // In-house date — entered in the app, not part of the Style Master.
     ihd: normalizeYmd(row.ihd),
     // Also entered in the app; the import leaves it alone.
@@ -1042,6 +1044,7 @@ function styleToRow(style) {
     available_date: style.availableDate ?? "",
     memo: style.memo ?? "",
     received_qty: style.receivedQty === "" || style.receivedQty == null ? null : Number(style.receivedQty),
+    inv_qty: style.invQty === "" || style.invQty == null ? null : Number(style.invQty),
     updated_at: new Date().toISOString(),
   };
 }
@@ -1221,7 +1224,11 @@ async function saveStyles(styles, onProgress) {
   const client = requireClient();
   for (let i = 0; i < styles.length; i += BATCH) {
     const batch = styles.slice(i, i + BATCH);
-    throwIfError(await client.from("styles").upsert(batch.map(styleToRow), { onConflict: "user_id,style_no,color" }));
+    const res = await client.from("styles").upsert(batch.map(styleToRow), { onConflict: "user_id,style_no,color" });
+    if (res.error && /inv_qty/.test(res.error.message ?? "")) {
+      throw new Error("The styles table needs its Inv Qty column — run the styles SQL in supabase-schema.sql (inv_qty), then import again.");
+    }
+    throwIfError(res);
     onProgress?.(Math.min(i + BATCH, styles.length), styles.length);
   }
   // Fold the saved records into the cache without a full reload.

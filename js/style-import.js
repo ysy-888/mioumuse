@@ -9,7 +9,7 @@
  *   A  Style #      B  Color        C  N41 Status
  *   D  Available    (date → "YYYY-MM", shown as JUL26)
  *   F  Season       J  Description  K  Memo ("updated by Mass Update" dropped)
- *   R  Received qty
+ *   R  Received qty       S  Inv Qty (total_inv_qty)
  *
  *   It has no category, so a style keeps the one it has (new ones get none).
  *   (The old ATS report isn't read any more.)
@@ -116,6 +116,7 @@ function extractStylesFromCsv(sheet) {
       description: cleanCell(row.J),
       memo: cleanImportMemo(row.K),
       receivedQty: cleanImportQty(row.R),
+      invQty: cleanImportQty(row.S),
     });
   });
   return { styles: [...byKey.values()], skipped };
@@ -129,6 +130,7 @@ const STYLE_FIELDS = [
   { key: "description", label: "Description" },
   { key: "availableDate", label: "Available", format: v => formatMonYY(v) },
   { key: "receivedQty", label: "Rcvd Qty", format: v => (v === "" || v == null ? "" : Number(v).toLocaleString()) },
+  { key: "invQty", label: "Inv Qty", format: v => (v === "" || v == null ? "" : Number(v).toLocaleString()) },
   { key: "memo", label: "Memo" },
 ];
 const STYLE_FIELD_BY_KEY = new Map(STYLE_FIELDS.map(f => [f.key, f]));

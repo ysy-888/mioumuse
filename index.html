@@ -6,7 +6,7 @@
 <title>MIOU MUSE</title>
 <link rel="icon" href="favicon.png?v=2" type="image/png" />
 <link rel="apple-touch-icon" href="favicon.png?v=2" />
-<link rel="stylesheet" href="crm.css?v=20261110-1623" />
+<link rel="stylesheet" href="crm.css?v=20261110-1643" />
 </head>
 <body>
 
@@ -724,6 +724,11 @@
         <col class="col-status" />
         <col class="col-magento" />
         <col class="col-available" />
+        <col class="col-invqty" />
+        <col class="col-qty" />
+        <col class="col-qty" />
+        <col class="col-qty" />
+        <col class="col-qty" />
         <col class="col-ihd" />
         <col class="col-shoot" />
         <col class="col-notes" />
@@ -740,13 +745,18 @@
           <th data-col="status">N41 Status</th>
           <th data-col="magento" title="Showing on the webstore: the colour's Magento item (STYLE#-COLOR) is enabled, in stock, salable qty above 0, and in an available group">Magento Status</th>
           <th data-col="available" title="N41 available date">Available</th>
+          <th data-col="invQty" title="Inventory qty, from the Style Master (Import CSV, column S)">Inv Qty</th>
+          <th data-col="oh" title="On hand, from N41's ATS report (Import ATS)">OH</th>
+          <th data-col="wip" title="Work in progress, from N41's ATS report">WIP</th>
+          <th data-col="oo" title="On order, from N41's ATS report">OO</th>
+          <th data-col="ats" title="Available to sell, from N41's ATS report">ATS</th>
           <th data-col="ihd" title="In-house date">IHD</th>
           <th data-col="shoot">Shoot</th>
           <th data-col="notes">Notes</th>
         </tr>
       </thead>
       <tbody id="stylesTableBody">
-        <tr class="state-row"><td colspan="13">Loading styles…</td></tr>
+        <tr class="state-row"><td colspan="18">Loading styles…</td></tr>
       </tbody>
     </table>
     </div>
@@ -996,6 +1006,7 @@
         <col class="col-status" />
         <col class="col-available" />
         <col class="col-n41avail" />
+        <col class="col-n41inv" />
         <col class="col-n41qty" />
         <col class="col-n41qty" />
         <col class="col-n41qty" />
@@ -1020,6 +1031,7 @@
           <th data-col="status">Status</th>
           <th data-col="available" title="Showing on the webstore: enabled, in stock, salable qty above 0, and (for an item) in an available group">Available</th>
           <th data-col="n41Avail" title="N41's available month for this Style # + Color (the Style Master)">N41 Available</th>
+          <th data-col="n41Inv" title="Inventory qty for this Style # + Color, from the Style Master (Import CSV, column S)">Inv Qty</th>
           <th data-col="n41Oh" title="On hand, from N41's ATS report (Import ATS)">OH</th>
           <th data-col="n41Wip" title="Work in progress, from N41's ATS report">WIP</th>
           <th data-col="n41Oo" title="On order, from N41's ATS report">OO</th>
@@ -1029,7 +1041,7 @@
         </tr>
       </thead>
       <tbody id="mgProductsBody">
-        <tr class="state-row"><td colspan="21">Loading products…</td></tr>
+        <tr class="state-row"><td colspan="22">Loading products…</td></tr>
       </tbody>
     </table>
     </div>
@@ -2008,50 +2020,50 @@
   </div>
 </div>
 
-<script src="js/config.js?v=20261110-1623"></script>
+<script src="js/config.js?v=20261110-1643"></script>
 <!-- Needs SUPABASE_URL/KEY from config.js and the CDN client above. -->
-<script src="js/auth.js?v=20261110-1623"></script>
-<script src="js/util.js?v=20261110-1623"></script>
-<script src="js/dates.js?v=20261110-1623"></script>
-<script src="js/store.js?v=20261110-1623"></script>
-<script src="js/tasks.js?v=20261110-1623"></script>
-<script src="js/app-shell.js?v=20261110-1623"></script>
-<script src="js/table-pager.js?v=20261110-1623"></script>
-<script src="js/record-list.js?v=20261110-1623"></script>
-<script src="js/item-pane.js?v=20261110-1623"></script>
-<script src="js/campaign-form.js?v=20261110-1623"></script>
-<script src="js/trade-show-form.js?v=20261110-1623"></script>
-<script src="js/banners.js?v=20261110-1623"></script>
-<script src="js/banner-form.js?v=20261110-1623"></script>
-<script src="js/mailchimp.js?v=20261110-1623"></script>
-<script src="js/style-import.js?v=20261110-1623"></script>
-<script src="js/column-filter.js?v=20261110-1623"></script>
-<script src="js/styles.js?v=20261110-1623"></script>
-<script src="js/style-images.js?v=20261110-1623"></script>
-<script src="js/sample-photos.js?v=20261110-1623"></script>
-<script src="js/photoshoots.js?v=20261110-1623"></script>
-<script src="js/complete.js?v=20261110-1623"></script>
-<script src="js/photoshoot-form.js?v=20261110-1623"></script>
-<script src="js/purchase-orders.js?v=20261110-1623"></script>
-<script src="js/production-import.js?v=20261110-1623"></script>
-<script src="js/ats-import.js?v=20261110-1623"></script>
-<script src="js/style-pane.js?v=20261110-1623"></script>
-<script src="js/magento.js?v=20261110-1623"></script>
-<script src="js/magento-availability.js?v=20261110-1623"></script>
-<script src="js/magento-photos.js?v=20261110-1623"></script>
-<script src="js/magento-group-order.js?v=20261110-1623"></script>
-<script src="js/magento-sales.js?v=20261110-1623"></script>
-<script src="js/magento-n41.js?v=20261110-1623"></script>
-<script src="js/magento-events.js?v=20261110-1623"></script>
-<script src="js/trade-show-import.js?v=20261110-1623"></script>
-<script src="js/magento-groups.js?v=20261110-1623"></script>
-<script src="js/table-view.js?v=20261110-1623"></script>
-<script src="js/exports.js?v=20261110-1623"></script>
-<script src="js/copy-menu.js?v=20261110-1623"></script>
-<script src="js/row-quick-select.js?v=20261110-1623"></script>
-<script src="js/pane-dismiss.js?v=20261110-1623"></script>
-<script src="js/shortcuts.js?v=20261110-1623"></script>
-<script src="js/calendar.js?v=20261110-1623"></script>
-<script src="js/main.js?v=20261110-1623"></script>
+<script src="js/auth.js?v=20261110-1643"></script>
+<script src="js/util.js?v=20261110-1643"></script>
+<script src="js/dates.js?v=20261110-1643"></script>
+<script src="js/store.js?v=20261110-1643"></script>
+<script src="js/tasks.js?v=20261110-1643"></script>
+<script src="js/app-shell.js?v=20261110-1643"></script>
+<script src="js/table-pager.js?v=20261110-1643"></script>
+<script src="js/record-list.js?v=20261110-1643"></script>
+<script src="js/item-pane.js?v=20261110-1643"></script>
+<script src="js/campaign-form.js?v=20261110-1643"></script>
+<script src="js/trade-show-form.js?v=20261110-1643"></script>
+<script src="js/banners.js?v=20261110-1643"></script>
+<script src="js/banner-form.js?v=20261110-1643"></script>
+<script src="js/mailchimp.js?v=20261110-1643"></script>
+<script src="js/style-import.js?v=20261110-1643"></script>
+<script src="js/column-filter.js?v=20261110-1643"></script>
+<script src="js/styles.js?v=20261110-1643"></script>
+<script src="js/style-images.js?v=20261110-1643"></script>
+<script src="js/sample-photos.js?v=20261110-1643"></script>
+<script src="js/photoshoots.js?v=20261110-1643"></script>
+<script src="js/complete.js?v=20261110-1643"></script>
+<script src="js/photoshoot-form.js?v=20261110-1643"></script>
+<script src="js/purchase-orders.js?v=20261110-1643"></script>
+<script src="js/production-import.js?v=20261110-1643"></script>
+<script src="js/ats-import.js?v=20261110-1643"></script>
+<script src="js/style-pane.js?v=20261110-1643"></script>
+<script src="js/magento.js?v=20261110-1643"></script>
+<script src="js/magento-availability.js?v=20261110-1643"></script>
+<script src="js/magento-photos.js?v=20261110-1643"></script>
+<script src="js/magento-group-order.js?v=20261110-1643"></script>
+<script src="js/magento-sales.js?v=20261110-1643"></script>
+<script src="js/magento-n41.js?v=20261110-1643"></script>
+<script src="js/magento-events.js?v=20261110-1643"></script>
+<script src="js/trade-show-import.js?v=20261110-1643"></script>
+<script src="js/magento-groups.js?v=20261110-1643"></script>
+<script src="js/table-view.js?v=20261110-1643"></script>
+<script src="js/exports.js?v=20261110-1643"></script>
+<script src="js/copy-menu.js?v=20261110-1643"></script>
+<script src="js/row-quick-select.js?v=20261110-1643"></script>
+<script src="js/pane-dismiss.js?v=20261110-1643"></script>
+<script src="js/shortcuts.js?v=20261110-1643"></script>
+<script src="js/calendar.js?v=20261110-1643"></script>
+<script src="js/main.js?v=20261110-1643"></script>
 </body>
 </html>

@@ -305,7 +305,7 @@ function createMgAvailCell(product) {
 // that page is loaded. Grouped items have none of these but Stock Status:
 // a filter on the others leaves them out, and they sort last.
 
-const MG_LOCAL_COLS = ["n41Avail", "n41Oh", "n41Wip", "n41Oo", "n41Ats", "qty", "salableQty", "stockStatus", "preOrderDate"];
+const MG_LOCAL_COLS = ["n41Avail", "n41Inv", "n41Oh", "n41Wip", "n41Oo", "n41Ats", "qty", "salableQty", "stockStatus", "preOrderDate"];
 
 /** A product's value in one of those columns (null when blank). */
 function mgLocalValue(col, sku, r = mgIndex?.get(sku)) {
@@ -318,7 +318,7 @@ function mgLocalValue(col, sku, r = mgIndex?.get(sku)) {
   const style = mgProductStyles({ sku, type: r.type })[0]; // js/magento.js
   if (!style) return null;
   if (col === "n41Avail") return /^\d{4}-\d{2}/.exec(style.availableDate ?? "")?.[0] ?? null;
-  return style[MG_N41_QTY[col]] ?? null;
+  return numOrNull(style[MG_N41_QTY[col]]);
 }
 
 /** Its filter choice: a month, In / Out of Stock, or above / at / below 0. */

@@ -35,7 +35,7 @@ const MG_TYPES = {
 /** Columns the header sorts by (Magento's names live in the Edge Function). */
 // The last nine sort here, not in Magento (js/magento-availability.js MG_LOCAL_COLS).
 const MG_SORTABLE = new Set(["name", "sku", "type", "price", "status", "visibility", "updatedAt",
-  "n41Avail", "n41Oh", "n41Wip", "n41Oo", "n41Ats", "qty", "salableQty", "stockStatus", "preOrderDate"]);
+  "n41Avail", "n41Inv", "n41Oh", "n41Wip", "n41Oo", "n41Ats", "qty", "salableQty", "stockStatus", "preOrderDate"]);
 
 let mgSubview = "products";
 let mgLoadedOnce = false;
@@ -779,7 +779,7 @@ function createMgCategoryChips(product) {
 // A Simple item's SKU is STYLE#-COLOR (or STYLE#ST-COLOR); a Grouped item
 // shows nothing in these columns.
 
-const MG_N41_QTY = { n41Oh: "oh", n41Wip: "wip", n41Oo: "oo", n41Ats: "ats" };
+const MG_N41_QTY = { n41Inv: "invQty", n41Oh: "oh", n41Wip: "wip", n41Oo: "oo", n41Ats: "ats" };
 
 /** The Styles database colours behind a product: one for an item, all of them for a group. */
 function mgProductStyles(product) {
@@ -809,8 +809,8 @@ function createMgN41AvailPill(product) {
 /** The item's figure; blank for a Grouped item, "–" for 0 or before the ATS report is imported. */
 function formatMgN41Qty(product, field) {
   if (product.type === "grouped") return "";
-  const value = mgProductStyles(product)[0]?.[field];
-  return value === null || value === undefined || value === 0 ? EMPTY_DISPLAY : value.toLocaleString();
+  const value = numOrNull(mgProductStyles(product)[0]?.[field]); // Inv Qty is kept as text
+  return value === null || value === 0 ? EMPTY_DISPLAY : value.toLocaleString();
 }
 
 function renderMgProducts() {

@@ -6985,6 +6985,15 @@ span.dash-event { cursor: pointer; /* clicking selects the day */ }
 .styles-table .col-season      { width: 90px;  min-width: 80px; }
 .styles-table .col-status      { width: 110px; min-width: 100px; }
 .styles-table .col-available   { width: 84px;  min-width: 76px; }
+.styles-table .col-qty         { width: 72px;  min-width: 64px; }
+.styles-table .col-invqty      { width: 92px;  min-width: 88px; }
+.styles-table td.cell-num { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.styles-table th[data-col="invQty"],
+.styles-table th[data-col="oh"],
+.styles-table th[data-col="wip"],
+.styles-table th[data-col="oo"],
+.styles-table th[data-col="ats"],
+.styles-table td.cell-num { padding-left: 6px; padding-right: 6px; }
 .styles-table .col-magento     { width: 130px; min-width: 120px; }
 /* Styles and Need to Shoot: only as wide as their columns. Styles sits on
    the left, leaving room for the style pane on the right; Need is centered. */
@@ -8332,6 +8341,7 @@ tr:hover .shoot-picker.is-unpicked,
 .mg-products-table .col-available  { width: 150px; min-width: 140px; }
 .mg-products-table .col-n41avail   { width: 104px; min-width: 96px; }
 .mg-products-table .col-n41qty     { width: 64px;  min-width: 56px; }
+.mg-products-table .col-n41inv     { width: 84px;  min-width: 80px; }
 .mg-products-table .col-stock      { width: 120px; min-width: 110px; }
 .mg-products-table .col-color      { width: 120px; min-width: 100px; }
 .mg-products-table .col-image      { width: 64px;  min-width: 64px; }
@@ -8347,7 +8357,7 @@ tr:hover .shoot-picker.is-unpicked,
 /* Categories takes whatever room is left. */
 .mg-products-table .col-categories { width: auto;  min-width: 160px; }
 /* The narrow figure columns: less side padding, so label and funnel share a line. */
-.mg-products-table :is(th, td):is([data-col="n41Oh"], [data-col="n41Wip"], [data-col="n41Oo"], [data-col="n41Ats"], [data-col="qty"], [data-col="salableQty"]) { padding-left: 6px; padding-right: 6px; }
+.mg-products-table :is(th, td):is([data-col="n41Inv"], [data-col="n41Oh"], [data-col="n41Wip"], [data-col="n41Oo"], [data-col="n41Ats"], [data-col="qty"], [data-col="salableQty"]) { padding-left: 6px; padding-right: 6px; }
 .mg-products-table .col-updated    { width: 96px;  min-width: 90px; }
 .mg-products-table tbody tr.clickable-row { cursor: pointer; }
 .mg-products-table tbody tr.is-open td { background: var(--row-selected-bg); }

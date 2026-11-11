@@ -507,11 +507,14 @@ only when importing) — the file itself is never uploaded. The Style Master
 | J | Description |
 | K | Memo — the "updated by Mass Update" notes N41 adds are dropped |
 | R | Received qty |
+| S | Inv Qty (total_inv_qty) |
 
 The CSV has no category, so a style keeps the category it has (new ones get
-none). Available shows as a column in the Styles table; Available, Rcvd Qty
-and Memo show in the style pane. They need three columns on the styles table
-— run the `available_date` / `memo` / `received_qty` lines in
+none). Available and Inv Qty show as columns in the Styles table (with the
+ATS report's OH, WIP, OO and ATS beside them — each sorts and filters by
+above 0 / 0 or blank / below 0); Available, Rcvd Qty, Inv Qty and Memo show
+in the style pane. They need columns on the styles table — run the
+`available_date` / `memo` / `received_qty` / `inv_qty` lines in
 `supabase-schema.sql` first.
 
 **Magento Status** (Styles table, sits left so the style pane fits beside it;
@@ -882,7 +885,8 @@ Need to Shoot's default order is IHD, soonest first (no IHD on top).
     and N ats are saved as OH / WIP / OO / ATS (styles not in the report keep
     theirs). Products shows them as **OH**, **WIP**, **OO** and **N41 ATS**
     beside **N41 Available** (the Style Master's month); Grouped items leave
-    them blank. N41 Available, OH, WIP, OO, N41 ATS, Qty, ATS, Stock Status
+    them blank, plus **Inv Qty** (the Style Master's column S). N41 Available,
+    Inv Qty, OH, WIP, OO, N41 ATS, Qty, ATS, Stock Status
     and Pre-Order Date sort and filter in the app, from the catalog index
     (Pre-Order Date needs the magento function redeployed); sorted by one of
     them, items aren't pulled under their groups, and blanks go last.

@@ -71,6 +71,7 @@ function renderStylePaneSummary(style) {
     ...field("Available", createAvailablePill(style.availableDate, style) ?? ""),
     ...field("PO", poValue),
     ...field("Rcvd Qty", style.receivedQty ? Number(style.receivedQty).toLocaleString() : ""),
+    ...field("Inv Qty", style.invQty ? Number(style.invQty).toLocaleString() : ""),
     ...field("Memo", style.memo ? createStylePaneMemo(style) : "", { wide: true }),
     ...field("Notes", createStylePaneNotes(style), { wide: true }),
   );

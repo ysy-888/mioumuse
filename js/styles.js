@@ -41,7 +41,41 @@ const STYLE_COLUMNS = {
   // "YYYY-MM-DD" sorts as a date; blanks on top soonest first, at the bottom latest first.
   ihd: { value: s => fixTwoDigitYear(s.ihd) }, // an old 0026-… sorts as 2026, as it shows
   notes: { value: s => s.notes ?? "" },
+  // Inv Qty from the Style Master; OH, WIP, OO and ATS from N41's ATS report.
+  // Sorted as numbers, blanks last either way; 0 and blank show as "–".
+  ...Object.fromEntries(Object.entries({ invQty: "invQty", oh: "oh", wip: "wip", oo: "oo", ats: "ats" }).map(([col, field]) => [col, {
+    value: s => numOrNull(s[field]),
+    display: s => formatStyleQty(s[field]),
+    numeric: true,
+  }])),
 };
+
+/** The figure columns: column → the style's field. */
+const STYLE_QTY_COLS = ["invQty", "oh", "wip", "oo", "ats"];
+
+/** 1,234; "–" for 0 or blank. */
+function formatStyleQty(v) {
+  const n = numOrNull(v);
+  return n === null || n === 0 ? EMPTY_DISPLAY : n.toLocaleString();
+}
+
+/** A figure's filter choice: above 0, 0 or blank, below 0 (as on Magento Products). */
+const STYLE_QTY_BUCKETS = { pos: "Above 0", zero: "– (0 or blank)", neg: "Below 0" };
+
+function styleQtyFilterKey(v) {
+  const n = numOrNull(v);
+  return n === null || n === 0 ? "zero" : n > 0 ? "pos" : "neg";
+}
+
+function styleQtyFilterOptions(col) {
+  const counts = new Map();
+  getAllStyles().forEach(s => {
+    const key = styleQtyFilterKey(STYLE_COLUMNS[col].value(s));
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  });
+  return Object.keys(STYLE_QTY_BUCKETS).filter(k => counts.has(k))
+    .map(key => ({ key, label: STYLE_QTY_BUCKETS[key], count: counts.get(key) }));
+}
 
 /** N41's available month, "2026-07" → "JUL 26" ("" when there's none). */
 function formatMonYY(ym) {
@@ -111,7 +145,13 @@ function isStyleStatusHiddenByDefault(key) {
 }
 
 function compareStyles(a, b) {
-  if (styleSortCol) {
+  if (styleSortCol && STYLE_COLUMNS[styleSortCol].numeric) {
+    const x = STYLE_COLUMNS[styleSortCol].value(a);
+    const y = STYLE_COLUMNS[styleSortCol].value(b);
+    if (x === null || y === null) {
+      if (x !== y) return x === null ? 1 : -1;
+    } else if (x !== y) return styleSortDir * (x - y);
+  } else if (styleSortCol) {
     // compareSortValues (js/photoshoots.js) keeps blanks last — but IHD soonest first puts them on top.
     const primary = compareSortValues(STYLE_COLUMNS[styleSortCol].value(a), STYLE_COLUMNS[styleSortCol].value(b), styleSortDir,
       { blankFirstAscending: BLANK_FIRST_SORT_COLUMNS.has(styleSortCol) });
@@ -132,6 +172,7 @@ function applyStyleFilters({ keepShown = false } = {}) {
     if (!columnFilterPasses("stylesTable", "season", statusFilterKey(s.season))) return false;
     if (noPhotos && (NO_PHOTOS_SKIP_STATUSES.some(st => statusFilterKey(s.status).toUpperCase().startsWith(st)) || hasStyleImages(s.styleNo, s.color))) return false;
     if (!columnFilterPasses("stylesTable", "ihd", monthFilterKey(s.ihd))) return false;
+    if (!STYLE_QTY_COLS.every(col => columnFilterPasses("stylesTable", col, styleQtyFilterKey(STYLE_COLUMNS[col].value(s))))) return false;
     if (!q) return true;
     return styleSearchText(s).includes(q);
   });
@@ -266,7 +307,10 @@ function renderStylesTable() {
       else if (col === "status") td.appendChild(createStyleStatusPill(style.status));
       else if (col === "magento") td.appendChild(createStyleMgStatusCell(style));
       else if (col === "available") { const pill = createAvailablePill(style.availableDate, style); if (pill) td.appendChild(pill); }
-      else mountSearchHighlightedText(td, (STYLE_COLUMNS[col].display ?? STYLE_COLUMNS[col].value)(style));
+      else {
+        mountSearchHighlightedText(td, (STYLE_COLUMNS[col].display ?? STYLE_COLUMNS[col].value)(style));
+        if (STYLE_COLUMNS[col].numeric) td.classList.add("cell-num");
+      }
       if (col === "description" && style.description) td.title = style.description;
       tr.appendChild(td);
     });
@@ -636,6 +680,11 @@ function initStylesView() {
     onChange: () => applyStyleFilters(),
     sortable: true,
   });
+  STYLE_QTY_COLS.forEach(col => initColumnFilter("stylesTable", col, {
+    options: () => styleQtyFilterOptions(col),
+    onChange: () => applyStyleFilters(),
+    sortable: true,
+  }));
   initColumnFilter("stylesTable", "category", {
     options: () => statusFilterOptions(getAllStyles().map(s => s.category)),
     onChange: () => applyStyleFilters(),
