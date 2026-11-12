@@ -7906,12 +7906,10 @@ body:has(#stylePane:not([hidden])) #posTableWrap > .table-scroll-y { margin-righ
 
 /* Pane. */
 /* A shoot's styles: one grid for the column heads and every row, so the
-   columns line up — grip · # · photo · Style # / Color · Description ·
-   Category · Shoot (the three reason buttons) · IHD · remove. */
+   columns line up — grip · # · ↑↓ · photo · Style # / Color · Type (from the
+   PO) · Description · Available · IHD · Notes · remove. */
 .shoot-pane {
-  /* grip · # · photo · Style # Color · Shoot · Description · Category · IHD · ✕ —
-     no stretchy column, so the ✕ sits right after the IHD. */
-  --shoot-cols: 12px 24px 22px 40px minmax(140px, 220px) 148px minmax(0, 280px) minmax(0, 150px) 150px 24px;
+  --shoot-cols: 12px 24px 22px 40px minmax(150px, 240px) 146px minmax(0, 240px) 62px 150px minmax(140px, 1fr) 24px;
 }
 .shoot-style-list {
   display: flex;
@@ -7920,7 +7918,7 @@ body:has(#stylePane:not([hidden])) #posTableWrap > .table-scroll-y { margin-righ
 }
 /* As wide as the columns need, no wider. */
 .shoot-style-list,
-.shoot-style-head { max-width: 1180px; }
+.shoot-style-head { max-width: 1480px; }
 .shoot-style-head,
 .shoot-style-row {
   display: grid;
@@ -7976,18 +7974,23 @@ body:has(#stylePane:not([hidden])) #posTableWrap > .table-scroll-y { margin-righ
   color: #4a5568;
 }
 .shoot-style-cat { color: var(--text-muted); font-size: 12px; }
-/* The shoot buttons, then room for the TOP pill, so the buttons line up with or without it. */
-.shoot-style-reasons { display: inline-grid; grid-template-columns: auto 38px; align-items: center; column-gap: 6px; }
-.shoot-style-reasons .style-top-pill { grid-column: 2; justify-self: start; }
-.shoot-picker.is-fixed .shoot-pick { cursor: default; }
+/* The type pill, then the TOP pill when there is one. */
+.shoot-style-type { display: inline-flex; align-items: center; gap: 6px; min-width: 0; }
+.shoot-style-avail { font-size: 12px; color: var(--text-muted); }
+.shoot-style-notes { min-width: 0; }
+.shoot-style-notes .cell-notes-input { width: 100%; }
+/* In a row there are no cell edges to show where to type: a faint box until it's hovered or in use. */
+.shoot-style-notes .cell-notes-input:not(:hover):not(:focus) { border-color: #eceef1; }
 .shoot-style-end { display: inline-flex; justify-content: center; }
 
-/* Floating (Home): too narrow for every column — Description and Category go. */
+/* Floating (Home): too narrow for every column — just the style and its type. */
 .shoot-pane:not(.is-docked) {
-  --shoot-cols: 12px 22px 22px 40px minmax(0, 1fr) 148px 140px 24px;
+  --shoot-cols: 12px 22px 22px 40px minmax(0, 1fr) 146px 24px;
 }
 .shoot-pane:not(.is-docked) .shoot-col-desc,
-.shoot-pane:not(.is-docked) .shoot-col-cat { display: none; }
+.shoot-pane:not(.is-docked) .shoot-col-avail,
+.shoot-pane:not(.is-docked) .shoot-col-ihd,
+.shoot-pane:not(.is-docked) .shoot-col-notes { display: none; }
 .shoot-pane .item-pane-section.shoot-styles-section { border-bottom: 0; }
 .shoot-pane.is-docked .item-pane-section.shoot-styles-section { padding: 12px 24px 24px; }
 
@@ -9610,18 +9613,24 @@ body.row-drag-selecting { user-select: none; cursor: default; }
 /* A style's pane open over the Photoshoots page: the shoot moves over to make room. */
 body:has(#stylePane:not([hidden])) .shoot-dock { margin-right: 540px; }
 /* The docked shoot narrows (a style pane beside it, a small window):
-   Description and Category go first, then IHD (the style pane shows it). */
+   Available and IHD go first (the style pane shows them), then Description,
+   then Notes. */
 .shoot-pane.is-docked .shoot-styles-section { container-type: inline-size; }
-@container (max-width: 900px) {
+@container (max-width: 1120px) {
   .shoot-style-head,
-  .shoot-style-row { --shoot-cols: 12px 22px 22px 40px minmax(0, 1fr) 148px 140px 24px; }
-  .shoot-col-desc,
-  .shoot-col-cat { display: none; }
+  .shoot-style-row { --shoot-cols: 12px 22px 22px 40px minmax(150px, 220px) 146px minmax(0, 1fr) minmax(130px, 1fr) 24px; }
+  .shoot-col-avail,
+  .shoot-col-ihd { display: none; }
+}
+@container (max-width: 860px) {
+  .shoot-style-head,
+  .shoot-style-row { --shoot-cols: 12px 22px 22px 40px minmax(0, 1fr) 146px minmax(110px, 200px) 24px; }
+  .shoot-col-desc { display: none; }
 }
 @container (max-width: 620px) {
   .shoot-style-head,
-  .shoot-style-row { --shoot-cols: 12px 22px 22px 40px minmax(0, 1fr) 148px 24px; column-gap: 10px; }
-  .shoot-col-ihd { display: none; }
+  .shoot-style-row { --shoot-cols: 12px 22px 22px 40px minmax(0, 1fr) 146px 24px; column-gap: 10px; }
+  .shoot-col-notes { display: none; }
 }
 
 /* ── Sample photos (js/sample-photos.js) ──
@@ -11076,3 +11085,90 @@ a.email-product-url:hover { color: var(--text); text-decoration: underline; }
 @container cal-day (max-width: 110px) {
   .dash-cal-today-label { display: none; }
 }
+
+/* ── Shoot workflow: type from the PO, Photoshoot / CG, sets ──────────────────
+   (js/photoshoots.js) A style's type is its PO's kind, shown as the POs
+   page's pill. The Shoot cell is one button to put a style on Need to Shoot,
+   or — once it's there — the choice between Photoshoot and CG. */
+.styles-table .col-shoot { width: 300px; min-width: 280px; }
+.need-table .col-shoot { width: 300px; }
+.need-table .col-type { width: 128px; min-width: 126px; }
+/* Buttons on the left, the scheduled / shot date after them. */
+td > .style-shoot-cell {
+  grid-template-columns: auto 1fr;
+  justify-items: start;
+  column-gap: 8px;
+}
+.shoot-pick-add,
+.shoot-pick-method {
+  width: auto;
+  gap: 5px;
+  padding: 0 9px;
+  font-family: var(--font);
+  font-size: 11.5px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+/* Photoshoot and CG look alike — neutral slate, the picked one filled. */
+.shoot-pick-method { --c: #4b5563; --tint: #f1f3f5; color: #6b7280; }
+/* Waiting for the choice: an amber edge until one is picked. */
+.shoot-picker.is-waiting { background: #fff8e6; box-shadow: inset 0 0 0 1px #f0c36a; }
+
+.shoot-type-cell { display: inline-flex; align-items: center; }
+.po-line[data-kind="other"] { background: #eef0f3; color: #4b5563; }
+
+/* A set: a small tag by the Style #, and its rows tinted and boxed in blue. */
+.set-tag {
+  display: inline-block;
+  flex: 0 0 auto;
+  margin-left: 6px;
+  padding: 0 5px;
+  border-radius: 4px;
+  background: #e1ebf8;
+  color: #2f5f9e;
+  font-family: var(--font);
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  line-height: 15px;
+  vertical-align: middle;
+  cursor: help;
+}
+.need-table tbody > tr.set-row > td { background: #f5f9fe; }
+.need-table tbody > tr.set-row:hover > td { background: #ebf2fc; }
+.need-table tbody > tr.set-row > td:first-child { box-shadow: inset 3px 0 0 #8fb0dc; }
+.need-table tbody > tr.set-row:not([data-set-place="last"]) > td { border-bottom-color: #e2eaf6; }
+/* The set's top and bottom edges: 2px each. The top is the row above's bottom
+   line (1px, turned blue) plus 1px on the first row — so it's 2px like the
+   bottom, and a set at the very top of the table still gets an edge. */
+.need-table tbody > tr:has(+ tr.set-row[data-set-place="first"]) > td { border-bottom-color: #b8cce9; }
+.need-table tbody > tr.set-row[data-set-place="first"] > td { border-top: 1px solid #b8cce9; }
+.need-table tbody > tr.set-row[data-set-place="last"] > td { border-bottom: 2px solid #b8cce9; }
+
+/* In a shoot: the set's rows in one box, which is what drags and moves. */
+.shoot-set {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  /* The box's edge and padding sit outside the rows, so their columns still line up. */
+  margin: 0 -5px;
+  padding: 4px;
+  border: 1px solid #c3d5ee;
+  border-radius: 11px;
+  background: #f2f7fd;
+}
+.shoot-style-name .set-tag { align-self: center; margin-left: 0; }
+.shoot-block.is-dragging { opacity: 0.4; }
+.shoot-set.is-drop-before::before,
+.shoot-set.is-drop-after::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 2px;
+  border-radius: 2px;
+  background: #6f93c9;
+}
+.shoot-set.is-drop-before::before { top: -5px; }
+.shoot-set.is-drop-after::after { bottom: -5px; }

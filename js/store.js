@@ -547,7 +547,10 @@ function applyPoIhds() {
     l.tentative = !l.etaFinal || isPlaceholderDate(l.etaFinal);
   });
   const etas = new Map();
+  /** Every Style # on a PO, any colour. */
+  const onPo = new Set();
   allPoLines.forEach(l => {
+    onPo.add(l.styleNo);
     if (!l.etaFinal) return;
     const key = `${l.styleNo}\u0000${l.color}`;
     if (!etas.has(key)) etas.set(key, new Set());
@@ -559,6 +562,12 @@ function applyPoIhds() {
     if (set) {
       const list = [...set].sort();
       style.ihd = list.find(d => d >= today) ?? list[list.length - 1];
+      style.ihdFromPo = true;
+    } else if (onPo.has(style.styleNo.trim().toUpperCase())) {
+      // A colour of a Style # that's on a PO, but not on it itself (R6959
+      // NAVY/WHITE, say, when only OATMEAL/LT BLUE was ordered): it goes by
+      // the POs too — no ETA for it, so no IHD — not a date typed in before.
+      style.ihd = "";
       style.ihdFromPo = true;
     } else {
       style.ihd = style.ihdSaved;
@@ -1190,6 +1199,7 @@ function setAllStyles(rows) {
 
 function indexStyles() {
   applyPoIhds();
+  styleSetIndex = null;
   stylesByNo = new Map();
   allStyles.forEach(style => {
     const key = style.styleNo.toUpperCase();
@@ -1240,6 +1250,110 @@ function getStyleColors(styleNo) {
 function findStyle(styleNo, color) {
   const c = String(color ?? "").trim().toUpperCase();
   return getStyleColors(styleNo).find(s => s.color.toUpperCase() === c) ?? null;
+}
+
+// ── Sets ─────────────────────────────────────────────────────────────────────
+//
+// A set's pieces (a top and its pants, say) name each other in the Style
+// Master memo: "J4267ST, P4268ST - SET". N41 writes a set piece with ST after
+// the Style #; the Styles database has it with or without. Pieces of a set in
+// the same colour are kept together on Need to Shoot and in a photoshoot.
+
+/** Style # (as the database has it) → the Set of Style #s in its set. Built when first asked. */
+let styleSetIndex = null;
+
+/** A Style # as the Styles database has it: as written, or without a trailing ST. */
+function baseStyleNo(styleNo) {
+  const s = String(styleNo ?? "").trim().toUpperCase();
+  return !stylesByNo.has(s) && /ST$/.test(s) && stylesByNo.has(s.slice(0, -2)) ? s.slice(0, -2) : s;
+}
+
+function buildStyleSetIndex() {
+  const index = new Map();
+  const seen = new Set();
+  allStyles.forEach(style => {
+    const memo = String(style.memo ?? "").toUpperCase();
+    const own = baseStyleNo(style.styleNo);
+    if (!memo || seen.has(`${own}\u0000${memo}`)) return;
+    seen.add(`${own}\u0000${memo}`);
+    const tokens = [...memo.matchAll(/\b[A-Z]{1,4}\d{3,6}[A-Z]{0,3}\b/g)].map(m => m[0]);
+    // A set says SET, or lists its pieces as …ST — and names this style among them.
+    if (!/\bSETS?\b/.test(memo) && !tokens.some(t => /ST$/.test(t))) return;
+    const pieces = new Set(tokens.map(baseStyleNo).filter(no => stylesByNo.has(no)));
+    if (!pieces.has(own) || pieces.size < 2) return;
+    // Pieces already in a set (from another piece's memo) join this one.
+    const group = [...pieces].map(no => index.get(no)).find(Boolean) ?? new Set();
+    pieces.forEach(no => {
+      const other = index.get(no);
+      if (other && other !== group) other.forEach(x => { group.add(x); index.set(x, group); });
+      group.add(no);
+      index.set(no, group);
+    });
+  });
+  return index;
+}
+
+function getStyleSetPieces(styleNo) {
+  styleSetIndex ??= buildStyleSetIndex();
+  return styleSetIndex.get(baseStyleNo(styleNo)) ?? null;
+}
+
+/** What a Style # + Color is grouped by: its set and colour — "" when it isn't in a set. */
+function styleSetKey(styleNo, color) {
+  const pieces = getStyleSetPieces(styleNo);
+  return pieces ? `${[...pieces].sort().join("+")}\u0000${String(color ?? "").trim().toUpperCase()}` : "";
+}
+
+/** The other pieces of its set that come in the same colour: [{ styleNo, color }]. */
+function getSetMates(styleNo, color) {
+  const own = baseStyleNo(styleNo);
+  return [...(getStyleSetPieces(styleNo) ?? [])]
+    .filter(no => no !== own)
+    .map(no => findStyle(no, color))
+    .filter(Boolean)
+    .map(s => ({ styleNo: s.styleNo, color: s.color }));
+}
+
+/** `styles` plus, for each, the set mates that pass `wanted` — no style twice. */
+function withSetMates(styles, wanted = () => true) {
+  const seen = new Set();
+  const out = [];
+  const add = s => {
+    const key = styleKey(s.styleNo, s.color);
+    if (seen.has(key)) return;
+    seen.add(key);
+    out.push({ styleNo: s.styleNo, color: s.color });
+  };
+  styles.forEach(s => {
+    add(s);
+    getSetMates(s.styleNo, s.color).filter(wanted).forEach(add);
+  });
+  return out;
+}
+
+/**
+ * Anything with styleNo / color, in blocks: a set's pieces (same colour)
+ * together where the first of them stood, everything else on its own.
+ */
+function groupBySet(items) {
+  const blocks = [];
+  const bySet = new Map();
+  items.forEach(item => {
+    const key = styleSetKey(item.styleNo, item.color);
+    if (key && bySet.has(key)) {
+      bySet.get(key).push(item);
+      return;
+    }
+    const block = [item];
+    if (key) bySet.set(key, block);
+    blocks.push(block);
+  });
+  return blocks;
+}
+
+/** The same list with each set's pieces next to each other. */
+function arrangeSets(items) {
+  return groupBySet(items).flat();
 }
 
 /**
@@ -1435,9 +1549,15 @@ async function loadStyleImportChanges(id) {
 // A flag on a Style # + Color. It stays on the list — scheduled or not —
 // until a photoshoot with it is marked complete; then it's recorded as shot
 // (shotShootId / shotAt) and drops off. Reopening that shoot clears the
-// record, so the style needs shooting again. Each one says why it's needed
-// (reason, SHOOT_REASONS: New Style / New Color / Reshoot); entries from
-// before reasons have none.
+// record, so the style needs shooting again.
+//
+// Two things about each one:
+//   type    New Style / New Color / Recut — not chosen: it's the kind of the
+//           style's PO (getShootType). `reason` keeps what it was when added,
+//           for a style that's on no PO.
+//   method  Photoshoot or CG — the one choice made on Need to Shoot
+//           (setShootMethod). Photoshoot puts it in the next studio shoot;
+//           CG keeps it out of shoots until it's marked complete.
 
 /** styleKey → ShootListEntry. */
 let shootList = new Map();
@@ -1450,6 +1570,7 @@ function setShootList(rows) {
       color: String(row.color ?? ""),
       addedAt: String(row.added_at ?? ""),
       reason: SHOOT_REASON_KEYS.includes(row.reason) ? row.reason : "",
+      method: SHOOT_METHOD_KEYS.includes(row.method) ? row.method : "",
       shotShootId: row.shot_shoot_id ? String(row.shot_shoot_id) : "",
       shotAt: String(row.shot_at ?? ""),
     };
@@ -1479,12 +1600,66 @@ function needsShoot(styleNo, color) {
   return Boolean(entry && !entry.shotShootId);
 }
 
+/**
+ * The kind of the colour's PO — "new" / "newColor" / "recut": the PO its IHD
+ * comes from, else its newest. "" when it's on no PO.
+ */
+function getStylePoKind(styleNo, color) {
+  const style = findStyle(styleNo, color);
+  if (!style) return "";
+  const line = (style.ihdFromPo && getStylePoLines(style.styleNo, style.color).find(l => l.etaFinal === style.ihd)) || style.newestPo;
+  return line?.kind ?? "";
+}
+
+/**
+ * The type its PO (or, on no PO, its Need to Shoot entry) gives it — what
+ * the POs page shows.
+ */
+function getPoShootType(styleNo, color) {
+  return PO_KIND_SHOOT_TYPE[getStylePoKind(styleNo, color)]
+    ?? shootList.get(styleKey(styleNo, color))?.reason ?? "";
+}
+
+/**
+ * Another colour of the same Style # that has model photos (from the linked
+ * image folder) — the first found, or null. Never one when photos aren't known.
+ */
+function getPhotographedSibling(styleNo, color) {
+  if (typeof arePhotosKnown !== "function" || !arePhotosKnown()) return null;
+  const own = String(color ?? "").trim().toUpperCase();
+  return getStyleColors(styleNo).find(s => s.color.trim().toUpperCase() !== own && hasStyleImages(s.styleNo, s.color)) ?? null;
+}
+
+/**
+ * A style's type on Need to Shoot and in photoshoots (a SHOOT_REASONS key):
+ * its PO's type — except that a New Style becomes a New Color once another
+ * colour of it has model photos. (J8888 BLACK and WHITE come in new on one
+ * PO; BLACK is shot and its photos imported: WHITE is now a New Color to
+ * schedule, though the PO still says New Style.) "" with no type.
+ */
+function getShootType(styleNo, color) {
+  const type = getPoShootType(styleNo, color);
+  return type === "newStyle" && getPhotographedSibling(styleNo, color) ? "newColor" : type;
+}
+
+/**
+ * Photoshoot or CG for a waiting style — "" until it's decided. One already
+ * in a planned shoot is a Photoshoot whatever was saved.
+ */
+function getShootMethod(styleNo, color) {
+  const entry = getShootListEntry(styleNo, color);
+  if (!entry || entry.shotShootId) return "";
+  if (entry.method !== "cg" && getPlannedShootsFor(styleNo, color).length) return "photoshoot";
+  return entry.method;
+}
+
 function shootListRow(entry) {
   return {
     style_no: entry.styleNo,
     color: entry.color,
     added_at: entry.addedAt,
     reason: entry.reason || null,
+    method: entry.method || null,
     shot_shoot_id: entry.shotShootId || null,
     shot_at: entry.shotAt || null,
   };
@@ -1501,7 +1676,7 @@ async function saveShootListEntries(entries) {
     let res = await client.from("shoot_list").upsert(rows, { onConflict: "user_id,style_no,color" });
     // Before the reason column is added, entries without one still save.
     if (res.error && /reason/i.test(res.error.message ?? "")) {
-      if (anyReason) throw new Error(`New Style / New Color / Reshoot need one line run in Supabase → SQL Editor first: ${SHOOT_REASON_SQL}`);
+      if (anyReason) throw new Error(`The type needs one line run in Supabase → SQL Editor first: ${SHOOT_REASON_SQL}`);
       rows = rows.map(({ reason, ...rest }) => rest);
       res = await client.from("shoot_list").upsert(rows, { onConflict: "user_id,style_no,color" });
     }
@@ -1511,29 +1686,66 @@ async function saveShootListEntries(entries) {
 }
 
 /**
- * Flag styles as needing a shoot, for `reason` (New Style / New Color /
- * Reshoot). Ones already waiting for that reason are left as they are, ones
- * waiting for another switch over; ones that were shot before go back on
- * the list. Returns how many were newly flagged or switched.
+ * Flag styles as needing a shoot. The type isn't asked for: it's the style's
+ * PO kind, saved with the entry (`reason` only stands in for a style on no
+ * PO). Ones already waiting are left as they are; ones that were shot before
+ * go back on the list, undecided. Returns how many were newly flagged.
  */
 async function addToShootList(styles, reason = "") {
   const now = new Date().toISOString();
   const changed = [];
+  let added = 0;
   const seen = new Set();
   styles.forEach(({ styleNo, color }) => {
     const key = styleKey(styleNo, color);
     if (seen.has(key)) return;
     seen.add(key);
     if (isNoShootStyle(styleNo, color)) return;
+    const type = PO_KIND_SHOOT_TYPE[getStylePoKind(styleNo, color)] ?? reason;
     const current = shootList.get(key);
     if (current && !current.shotShootId) {
-      if (reason && current.reason !== reason) changed.push({ ...current, reason });
+      if (type && current.reason !== type) changed.push({ ...current, reason: type });
       return;
     }
-    changed.push({ styleNo, color, addedAt: now, reason, shotShootId: "", shotAt: "" });
+    added += 1;
+    changed.push({ styleNo, color, addedAt: now, reason: type || (current?.reason ?? ""), method: "", shotShootId: "", shotAt: "" });
   });
   await saveShootListEntries(changed);
-  return changed.length;
+  return added;
+}
+
+/**
+ * Photoshoot, CG, or "" (undecided) for styles on Need to Shoot — a set's
+ * waiting pieces go together. Photoshoot puts the ones not yet in a planned
+ * shoot into the next studio shoot (none planned: they wait, and start the
+ * next one made); CG or "" takes them out of planned shoots.
+ * Returns { count, shoot, added } — `shoot` is the one they were added to.
+ */
+async function setShootMethod(styles, method) {
+  const value = SHOOT_METHOD_KEYS.includes(method) ? method : "";
+  const picked = withSetMates(styles, s => needsShoot(s.styleNo, s.color))
+    .filter(s => !isNoShootStyle(s.styleNo, s.color));
+  await addToShootList(picked);
+  const entries = picked.map(s => shootList.get(styleKey(s.styleNo, s.color)))
+    .filter(e => e && !e.shotShootId && e.method !== value);
+  await saveShootListEntries(entries.map(e => ({ ...e, method: value })));
+  let shoot = null;
+  let added = 0;
+  if (value === "photoshoot") {
+    const loose = picked.filter(s => !getPlannedShootsFor(s.styleNo, s.color).length);
+    shoot = loose.length ? getNextStudioShoot() : null;
+    if (shoot) added = await addStylesToPhotoshoot(shoot.id, loose);
+  } else {
+    await removeFromPlannedShoots(picked);
+  }
+  return { count: picked.length, shoot, added };
+}
+
+/** Waiting, set to Photoshoot, and in no planned shoot — what the next studio shoot starts with. */
+function getUnscheduledPhotoshootStyles() {
+  return getShootListEntries()
+    .filter(e => !e.shotShootId && e.method === "photoshoot" && !getPlannedShootsFor(e.styleNo, e.color).length)
+    .map(e => ({ styleNo: e.styleNo, color: e.color }));
 }
 
 /** Take styles off the list (they stay in any shoot they're in). */
@@ -1644,9 +1856,11 @@ async function markStylesCompleteCg(styles) {
     color,
     method: "cg",
     shootId: "",
-    reason: shootList.get(styleKey(styleNo, color))?.reason ?? "",
+    reason: getShootType(styleNo, color),
     completedAt: now,
   })));
+  // Done by CG, so it isn't in a planned shoot any more either.
+  await removeFromPlannedShoots(marked);
   await saveShootListEntries(marked.map(({ styleNo, color }) => {
     const current = shootList.get(styleKey(styleNo, color));
     return {
@@ -1654,6 +1868,7 @@ async function markStylesCompleteCg(styles) {
       color,
       addedAt: current?.addedAt || now,
       reason: current?.reason ?? "",
+      method: "cg",
       shotShootId: CG_SHOOT_ID,
       shotAt: now,
     };
@@ -1758,19 +1973,37 @@ function validatePhotoshoot(shoot) {
   if (!shoot.date) throw new Error("Pick a shoot date.");
 }
 
-/** Everything in a shoot is on the Need to Shoot list too. */
-async function ensureOnShootList(styles) {
+/**
+ * The studio shoot Photoshoot styles go into: the soonest planned one from
+ * today; if they're all overdue, the latest of those. null with none planned.
+ */
+function getNextStudioShoot() {
+  const planned = allPhotoshoots.filter(s => s.status === "planned" && s.type === "studio")
+    .sort((a, b) => a.date.localeCompare(b.date));
+  const today = todayYmd();
+  return planned.find(s => s.date >= today) ?? planned[planned.length - 1] ?? null;
+}
+
+/**
+ * Everything in a shoot is on the Need to Shoot list too — and, in a planned
+ * one (`planned`), its waiting styles are Photoshoot.
+ */
+async function ensureOnShootList(styles, planned = false) {
   const missing = styles.filter(s => !shootList.has(styleKey(s.styleNo, s.color)));
   if (missing.length) await addToShootList(missing);
+  if (!planned) return;
+  const undecided = styles.map(s => shootList.get(styleKey(s.styleNo, s.color)))
+    .filter(e => e && !e.shotShootId && e.method !== "photoshoot");
+  if (undecided.length) await saveShootListEntries(undecided.map(e => ({ ...e, method: "photoshoot" })));
 }
 
 async function createPhotoshoot(fields) {
-  const styles = (fields.styles ?? []).filter(s => !isNoShootStyle(s.styleNo, s.color));
+  const styles = arrangeSets((fields.styles ?? []).filter(s => !isNoShootStyle(s.styleNo, s.color)));
   const shoot = normalizePhotoshoot({ ...fields, styles, id: newRecordId("ps"), status: "planned" });
   validatePhotoshoot(shoot);
   await persistPhotoshoot(shoot);
   allPhotoshoots.push(shoot);
-  await ensureOnShootList(shoot.styles);
+  await ensureOnShootList(shoot.styles, true);
   return shoot;
 }
 
@@ -1781,18 +2014,46 @@ async function updatePhotoshoot(id, patch) {
   validatePhotoshoot(merged);
   await persistPhotoshoot(merged);
   Object.assign(shoot, merged);
-  await ensureOnShootList(shoot.styles);
+  await ensureOnShootList(shoot.styles, shoot.status === "planned");
   return shoot;
 }
 
-/** Add styles to a shoot that already exists. Returns how many were new to it. */
+/**
+ * Add styles to a shoot that already exists — with the pieces of their sets
+ * that are waiting and not in a shoot yet, each set kept together. Returns
+ * how many were new to it.
+ */
 async function addStylesToPhotoshoot(id, styles) {
   const shoot = getPhotoshootById(id);
   if (!shoot) throw new Error(`Photoshoot ${id} not found.`);
   const before = shoot.styles.length;
-  const shootable = styles.filter(s => !isNoShootStyle(s.styleNo, s.color));
-  await updatePhotoshoot(id, { styles: [...shoot.styles, ...shootable] });
+  const shootable = withSetMates(styles, s => needsShoot(s.styleNo, s.color) && !getPlannedShootsFor(s.styleNo, s.color).length)
+    .filter(s => !isNoShootStyle(s.styleNo, s.color));
+  await updatePhotoshoot(id, { styles: arrangeSets([...shoot.styles, ...shootable]) });
   return shoot.styles.length - before;
+}
+
+/**
+ * Take styles out of one planned shoot. They stay on Need to Shoot, undecided
+ * again (unless another planned shoot still has them).
+ */
+async function removeStylesFromPhotoshoot(id, styles) {
+  const shoot = getPhotoshootById(id);
+  if (!shoot) throw new Error(`Photoshoot ${id} not found.`);
+  const keys = new Set(styles.map(s => styleKey(s.styleNo, s.color)));
+  await updatePhotoshoot(id, { styles: shoot.styles.filter(s => !keys.has(styleKey(s.styleNo, s.color))) });
+  const undecided = styles.map(s => shootList.get(styleKey(s.styleNo, s.color)))
+    .filter(e => e && !e.shotShootId && e.method === "photoshoot" && !getPlannedShootsFor(e.styleNo, e.color).length);
+  if (undecided.length) await saveShootListEntries(undecided.map(e => ({ ...e, method: "" })));
+}
+
+/** Take styles out of every planned shoot they're in (CG, or back to undecided). */
+async function removeFromPlannedShoots(styles) {
+  const keys = new Set(styles.map(s => styleKey(s.styleNo, s.color)));
+  for (const shoot of allPhotoshoots.filter(s => s.status === "planned")) {
+    const kept = shoot.styles.filter(s => !keys.has(styleKey(s.styleNo, s.color)));
+    if (kept.length !== shoot.styles.length) await updatePhotoshoot(shoot.id, { styles: kept });
+  }
 }
 
 /**
@@ -1810,7 +2071,7 @@ async function completePhotoshoot(id) {
     color: s.color,
     method: "photoshoot",
     shootId: shoot.id,
-    reason: shootList.get(styleKey(s.styleNo, s.color))?.reason ?? "",
+    reason: getShootType(s.styleNo, s.color),
     completedAt: now,
   })));
   await saveShootListEntries(shoot.styles.map(s => ({

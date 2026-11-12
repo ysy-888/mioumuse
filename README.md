@@ -552,7 +552,7 @@ back. Needs the `deleted_at` SQL in `supabase-schema.sql`.
 Each import that saves anything is recorded in full. **Update History**
 (header menu ⋮, on the Styles tab) lists them newest first — when, which
 file, and how many updated / new / unchanged — and opening one shows its
-Update, New Styles and New Colors tabs again — click a row for the style's detail window. Each row has the Styles table's shoot buttons, and the two New tabs have **Add all to Need to Shoot** (as New Style or New Color) (everything on the tab, as searched; ones already waiting are skipped). Records live in the `style_imports` table (see
+Update, New Styles and New Colors tabs again — click a row for the style's detail window. Each row has the Styles table's shoot buttons, and the two New tabs have **Add all to Need to Shoot** (everything on the tab, as searched; ones already waiting are skipped). Records live in the `style_imports` table (see
 `supabase-schema.sql`); imports made before it was added aren't recorded.
 
 **Notes** on each Style # + Color are typed right in the Notes column of
@@ -660,15 +660,52 @@ sample file stays in its folder. A sample doesn't count as a photo for
 
 ## Photoshoots
 
-**Need to Shoot** is a flag on a Style # + Color, with a reason: **New
-Style**, **New Color** or **Reshoot**. Any of the three puts the style on the
-list. In the Shoot cell (Styles, Need to Shoot, POs) they're icons — a
-T-shirt for New Style, a paint bucket for New Color, a camera for Reshoot —
-and the filled one is the reason it's waiting: click it again to take the
-style off, or another to change the reason. A dashed outline is the
-suggested reason. To flag many,
-tick styles in the Styles tab and use the **Need to Shoot: New Style / New
-Color / Reshoot** buttons. Need to Shoot also filters by reason (the same three icons).
+The workflow is **POs → Need to Shoot → Photoshoots**:
+
+1. Every PO line is worked out as New Style, New Color or Recut (POs, below).
+2. Colours with no model photos go on **Need to Shoot** (POs → **Add
+   suggested to Need to Shoot**, or tick styles on Styles → **Add to Need to
+   Shoot**).
+3. On Need to Shoot each style gets one choice: **Photoshoot** or **CG**.
+   Photoshoot puts it in the next studio photoshoot; CG keeps it out of
+   shoots until it's marked complete.
+
+**Type** (New Style / New Color / Recut) is never chosen: it's the kind of
+the style's PO — the PO its IHD comes from, else its newest — and shows as
+the POs page's pill on Need to Shoot, in a shoot and in the reports. A style
+on no PO keeps the type it was saved with (older entries may say Reshoot),
+or shows a dash. One exception, because these lists are for scheduling: a
+**New Style turns New Color once another colour of the Style # has model
+photos** (J8888 BLACK and WHITE come in new together; BLACK is shot and its
+photos land in the image folder, so WHITE is now a New Color). The POs page
+still shows the PO's own type. This needs the image folder linked; without
+it, the PO's type shows.
+
+The **Shoot** cell (Styles, Need to Shoot, POs, the style pane) is a single
+**+ Need to Shoot** button while a style isn't waiting (dashed on the POs
+page when it's suggested), and **Photoshoot | CG** once it is. The lit one is
+what was picked: click it again to undo, the other to switch.
+- **Photoshoot** adds the style to the next planned **Studio** shoot (the
+  soonest from today). With none planned it waits, and the next studio shoot
+  you create starts with every waiting one (drop any in the form).
+- **CG** takes it out of any planned shoot (it asks first).
+- Ticking rows on Need to Shoot gives **Photoshoot** / **CG** for all of
+  them, plus **Add to shoot…** (a particular shoot — an editorial one, say),
+  **Create photoshoot** and **Remove from list**.
+Need to Shoot filters by **To decide / Photoshoot / CG** and by type (the
+T-shirt, paint bucket and scissors icons).
+
+**Sets** stay together. A set's pieces name each other in the Style Master
+memo (`J4267ST, P4268ST - SET`; a piece is matched with or without the
+trailing ST). Pieces in the same colour sit next to each other on Need to
+Shoot with a **SET** tag, take Photoshoot / CG together, go into a shoot
+together, and in a shoot sit in one box that drags, moves with ↑ / ↓ and is
+removed as one. Reports box them and keep them on one page.
+
+**Notes** are the style's own (one per Style # + Color), so the same note
+shows and can be edited on POs, Need to Shoot, Styles, the style pane and in
+a shoot's style list — and prints in every style report.
+
 The months down the left of Need to Shoot filter the list: **Show
 all**, **No month**, then each month some style on the list arrives in, in a
 folder per year (click a year to open or close it), with its style count.
@@ -678,21 +715,21 @@ no Available. Available belongs to the colour, not the PO, so a recut can
 carry an old one: an Available month before the PO's own date doesn't
 count, and the ETA's month is used.
 
-After the buttons, a scheduled or shot date shows with a camera, lined up
-at the left of its half of the cell — click it to open that photoshoot on
+After the buttons, a scheduled or shot date shows with a camera — click it to open that photoshoot on
 the Photoshoots page. The yellow **TOP** pill (from the production sheet)
 has its own narrow space after that, there and in a shoot's style list, so
 the buttons and dates line up whether a style has TOP or not.
 
 The **⋮** after the shoot buttons (Styles, Need to Shoot, POs, the style
-pane) has **Add to Photoshoot** — a planned shoot, or a new one — and **Mark
-as Complete**, for pictures made in Photoshop or with AI: the style is done
-and logged as CG today.
+pane) has **Add to Photoshoot** — a particular planned shoot, or a new one —
+**Mark as Complete**, for pictures made in Photoshop or with AI: the style is
+done and logged as CG today — and, for a waiting style, **Remove from Need
+to Shoot**.
 
 **Complete** (Photoshoots → Complete) is the history of every style that got
 its pictures from now on: one row each time, newest first, with how —
 **Photoshoot** (when its shoot is marked complete; reopening the shoot takes
-those rows back out) or **CG** — the reason, the shoot and the date. Filter
+those rows back out) or **CG** — its type, the shoot and the date. Filter
 by Photoshoot or CG, search, sort by any column. A CG row has **Undo**, which
 puts the style back on Need to Shoot. Needs the `style_completions` SQL in
 `supabase-schema.sql`.
@@ -782,8 +819,9 @@ Color**.
 **IHD comes from the ETAs.** A style + colour on any PO shows the next ETA
 from today as its IHD, or the latest if they've all passed (shown grey). It
 moves on by itself the day after an ETA passes. It's shown, not typed in —
-hover it for every PO and its ETA. A style + colour on no PO keeps the IHD
-typed in for it.
+hover it for every PO and its ETA. A colour of a Style # that's on a PO, but
+not on the PO itself, has no IHD (and can't be typed in). A Style # on no PO
+keeps the IHD typed in for it.
 
 The months are listed down the left of the page, oldest first, in a folder per
 year (click a year to open or close it); click one to show it. Each month's
@@ -798,13 +836,12 @@ needs photos again. Without the image folder linked, photos aren't known: the
 count is all of the month's styles and nothing is archived. (The old
 `po_month_archive` table isn't used any more.)
 
-Suggestions (a pale fill on the button) are only for colours with no photos:
-**New Style** for a New colour, **New Color** for a Recut or New Color one. Colours already
+Suggestions (a dashed **+ Need to Shoot** button) are only for colours with no photos. Colours already
 waiting or with N41 status CANCEL or INACTIVE aren't suggested, and nothing is without the image folder linked.
 A note under the toolbar counts the month's colours with no photos that aren't
 on Need to Shoot; **Show them** (or **Suggested**) filters the page to just
-those, and then **Add suggested to Need to Shoot** appears to add them all. Reshoot is
-always chosen by hand. **Need to Shoot** filters the page to the colours already
+those, and then **Add suggested to Need to Shoot** appears to add them all —
+each with its PO's type. **Need to Shoot** filters the page to the colours already
 waiting on Need to Shoot (not yet shot).
 
 A cost-sheet style is matched to the Styles database by its base Style #
@@ -819,29 +856,31 @@ The Photoshoots tab lists them with where each stands:
 
 | Status | Meaning |
 |---|---|
-| New Style / New Color / Reshoot | On the list, not in any planned shoot |
-
+| To decide | On the list, not yet Photoshoot or CG |
+| Photoshoot · not scheduled | Photoshoot, with no studio shoot planned yet |
+| CG | To be done in CG — not in any shoot |
 | Scheduled · date | In a planned shoot — the earliest one's (tentative) date |
 | Shot · date | In a shoot that was marked complete — off the list, on **Complete** |
 | CG · date | Marked complete by hand (made in Photoshop or with AI) — off the list, on **Complete** |
 
-From the list, ticked styles can go into a **new photoshoot** (date, studio
-or editorial, model, optional name, notes), be **added to an existing**
-planned shoot, or be **removed from the list**.
+From the list, ticked styles can be set to **Photoshoot** or **CG**, go
+into a **new photoshoot** (date, studio or editorial, model, optional name,
+notes), be **added to a particular** planned shoot, or be **removed from the
+list** (which also takes them out of planned shoots).
 
 The **Photoshoots** page lists the shoots down the left (date as M/D, name,
 type and how many styles) under Planned / Complete / All and the search. The
 one picked fills the rest of the page; the first one listed is picked when
 you open the page. Its date, type, model, style count (and when it was
 completed) are on the line under its name, with its notes below. Its styles
-are numbered, in columns: photo, Style # (its Color beside it), the New
-Style / New Color / Reshoot buttons (as on Need to Shoot; fixed on a
-completed shoot), Description, Category and IHD. To change the order, drag
+are numbered, in columns: photo, Style # (its Color beside it), Type,
+Description, Available, IHD and Notes. To change the order, drag
 a style by its grip (⋮⋮), or click the small ↑ / ↓ buttons beside its number
-to swap it with the one above or below. Clicking a style's row opens its
+to swap it with the one above or below — a set moves as one. Clicking a style's row opens its
 style pane on the right (the shoot moves over to make room, dropping
-Description and Category, then IHD, when it gets narrow). The new order is saved with the shoot (the CSV and
-PDF follow it).
+Available and IHD, then Description, then Notes, when it gets narrow). The new order is saved with the shoot (the CSV and
+PDF follow it). The ✕ takes a style (or its set) out of the shoot: it stays on
+Need to Shoot, undecided again.
 Styles that weren't shot can be taken out before **Mark shoot complete** (in
 the shoot's ⋮ menu), which records every style left in it as shot. **Reopen
 shoot** (same menu) undoes that and
@@ -861,23 +900,26 @@ the top, then the column's filter if it has one. Clicking the lit arrow
 again goes back to the default order. Blank values sort last — except
 IHD: soonest first puts the ones with no IHD at
 the top.
-Need to Shoot's default order is IHD, soonest first (no IHD on top).
+Need to Shoot's default order is by **Available month** (oldest first, none
+last); within a month each **Style #**'s colours sit together, the Style #s
+by their soonest **IHD** (no IHD on top), and a Style #'s colours by IHD.
+A set's pieces are still pulled together after that.
 
 ### Exports
 
 - **Need to Shoot**: the header menu's **Export CSV** or **Export PDF** covers
-  the list as it's showing, with the filters and search applied. The PDF
-  has each style's photo, shoot type, IHD and whether it's scheduled.
+  the list as it's showing, with the filters and search applied.
 - **Platforms**: the header menu's **Export PDF** lists the banners showing,
   with their images.
 - **A shoot's ⋯ menu**: **Export CSV** (every style in the shoot) or **PDF
   report**. The report has the shoot details and notes, plus a ☐ Shot
   column to tick on set, the styles in the shoot's order.
 - PDF reports open the print window: choose **Save as PDF**. Style photos are
-  included when the image folder is linked. The shoot
-  type prints as the three New Style / New Color / Reshoot icons, the
-  style's one lit, with a key above the table.
-  Reports print on Letter paper (portrait) with dates as MM/DD/YY.
+  included when the image folder is linked. The three style reports (Need to
+  Shoot, a photoshoot, POs) are landscape and share their columns: photo,
+  Style #, Color, Description, Type, Available, Shoot (Photoshoot — with its
+  shoot's date — or CG) and Notes. A set's pieces are boxed together.
+  Reports print on Letter paper with dates as MM/DD/YY.
 - The header menu ⋮ follows the page you're on (Sign Out is always there,
   and pages with a table also get **Table View**):
   - Home, Photoshoots, Magento → Categories: nothing else.
@@ -902,5 +944,5 @@ Need to Shoot's default order is IHD, soonest first (no IHD on top).
     Magento 200 at a time), with color, each Grouped item's simple-item
     count and SKUs, category paths, prices, stock and image URLs.
 
-Data: `shoot_list` (the flag and its reason, plus which shoot it was shot in),
+Data: `shoot_list` (the flag, its saved type (`reason`), Photoshoot / CG (`method`), plus which shoot it was shot in),
 `photoshoots` and `n41_po_lines` (see `supabase-schema.sql`).

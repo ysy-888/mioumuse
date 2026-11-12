@@ -3,12 +3,20 @@
  *
  * Date (required), studio or editorial, model, an optional name, notes — and
  * the styles in it: the ones ticked on Need to Shoot when creating, any of
- * which can be dropped before saving.
+ * which can be dropped before saving. A new studio shoot also starts with
+ * every style set to Photoshoot that isn't in a shoot yet.
  */
 
 let photoshootFormId = null;
 /** The styles the form will save, [{ styleNo, color }]. */
 let photoshootFormStyles = [];
+/** New shoot only: Photoshoot styles waiting for a studio shoot — in it while the type is Studio. */
+let photoshootFormWaiting = [];
+
+/** What saving puts in the shoot: the form's styles, and for a studio shoot the waiting ones. */
+function getPhotoshootFormStyles() {
+  return getPhotoshootTypeValue() === "studio" ? [...photoshootFormStyles, ...photoshootFormWaiting] : photoshootFormStyles;
+}
 
 function fillPhotoshootTypePicker() {
   const row = document.getElementById("shootFormType");
@@ -29,6 +37,8 @@ function setPhotoshootTypeValue(value) {
     btn.classList.toggle("is-active", btn.dataset.value === value);
     btn.setAttribute("aria-pressed", btn.dataset.value === value ? "true" : "false");
   });
+  // The waiting Photoshoot styles come and go with Studio.
+  if (photoshootFormWaiting.length) renderPhotoshootFormStyles();
 }
 
 function getPhotoshootTypeValue() {
@@ -46,16 +56,18 @@ function fillModelSuggestions() {
 function renderPhotoshootFormStyles() {
   const wrap = document.getElementById("shootFormStyles");
   const label = document.getElementById("shootFormStylesLabel");
-  if (label) label.textContent = `Styles (${photoshootFormStyles.length})`;
+  const styles = getPhotoshootFormStyles();
+  const waiting = styles.length - photoshootFormStyles.length;
+  if (label) label.textContent = `Styles (${styles.length})` + (waiting ? ` · ${waiting} set to Photoshoot, waiting for a studio shoot` : "");
   if (!wrap) return;
-  if (photoshootFormStyles.length === 0) {
+  if (styles.length === 0) {
     wrap.replaceChildren(Object.assign(document.createElement("span"), {
       className: "form-hint",
-      textContent: "No styles yet — tick styles on Need to Shoot to add them, now or later.",
+      textContent: "No styles yet — pick Photoshoot for them on Need to Shoot, now or later.",
     }));
     return;
   }
-  wrap.replaceChildren(...photoshootFormStyles.map(s => {
+  wrap.replaceChildren(...styles.map(s => {
     const chip = document.createElement("span");
     chip.className = "shoot-form-chip";
     chip.append(createStyleThumb(s.styleNo, s.color, "shoot-mini-thumb"), document.createTextNode(`${s.styleNo} · ${s.color}`));
@@ -66,6 +78,7 @@ function renderPhotoshootFormStyles() {
     remove.setAttribute("aria-label", `Remove ${s.styleNo} ${s.color}`);
     remove.addEventListener("click", () => {
       photoshootFormStyles = photoshootFormStyles.filter(x => x !== s);
+      photoshootFormWaiting = photoshootFormWaiting.filter(x => x !== s);
       renderPhotoshootFormStyles();
     });
     chip.appendChild(remove);
@@ -87,6 +100,8 @@ function openPhotoshootForm(id = null, styles = []) {
   const shoot = id ? getPhotoshootById(id) : null;
   photoshootFormId = shoot?.id ?? null;
   photoshootFormStyles = (shoot?.styles ?? styles).map(s => ({ styleNo: s.styleNo, color: s.color }));
+  const inForm = new Set(photoshootFormStyles.map(s => styleKey(s.styleNo, s.color)));
+  photoshootFormWaiting = shoot ? [] : getUnscheduledPhotoshootStyles().filter(s => !inForm.has(styleKey(s.styleNo, s.color)));
 
   fillPhotoshootTypePicker();
   fillModelSuggestions();
@@ -108,6 +123,7 @@ function closePhotoshootForm() {
   document.getElementById("shootFormOverlay")?.classList.remove("open");
   photoshootFormId = null;
   photoshootFormStyles = [];
+  photoshootFormWaiting = [];
 }
 
 async function savePhotoshootForm() {
@@ -117,7 +133,7 @@ async function savePhotoshootForm() {
     model: document.getElementById("shootFormModel").value.trim(),
     name: document.getElementById("shootFormName").value.trim(),
     notes: document.getElementById("shootFormNotes").value,
-    styles: photoshootFormStyles,
+    styles: getPhotoshootFormStyles(),
   };
   if (!fields.date) {
     document.getElementById("shootFormDate").classList.add("is-invalid");

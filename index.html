@@ -6,7 +6,7 @@
 <title>MIOU MUSE</title>
 <link rel="icon" href="favicon.png?v=2" type="image/png" />
 <link rel="apple-touch-icon" href="favicon.png?v=2" />
-<link rel="stylesheet" href="crm.css?v=20261112-1745" />
+<link rel="stylesheet" href="crm.css?v=20261112-2155" />
 </head>
 <body>
 
@@ -266,10 +266,7 @@
     <!-- Shown while rows are ticked. -->
     <div class="selection-bar" id="styleSelectionBar" hidden>
       <span class="selection-count" id="styleSelectionCount"></span>
-      <span class="selection-label" id="styleShootLabel">Need to Shoot:</span>
-      <button type="button" class="btn btn-primary" data-shoot-reason="newStyle">New Style</button>
-      <button type="button" class="btn btn-primary" data-shoot-reason="newColor">New Color</button>
-      <button type="button" class="btn btn-primary" data-shoot-reason="reshoot">Reshoot</button>
+      <button type="button" class="btn btn-primary" id="styleAddToShootBtn" title="Each style's type (New Style / New Color / Recut) comes from its PO">Add to Need to Shoot</button>
       <button type="button" class="btn btn-danger" id="styleDeleteBtn">Delete</button>
       <!-- In the deleted styles view, instead of the buttons above. -->
       <button type="button" class="btn btn-primary" id="styleRestoreBtn" hidden>Restore</button>
@@ -308,7 +305,7 @@
       <span class="toolbar-filter-divider" aria-hidden="true"></span>
       <button type="button" class="filter-btn" id="poNeedBtn" title="Show only the colours waiting on Need to Shoot">Need to Shoot</button>
       <button type="button" class="filter-btn" id="poSuggestedBtn">Suggested</button>
-      <button type="button" class="btn" id="poAddSuggestedBtn" title="Put every suggestion (the filled buttons) on Need to Shoot">Add suggested to Need to Shoot</button>
+      <button type="button" class="btn" id="poAddSuggestedBtn" title="Put every suggestion (the dashed buttons: no model photos) on Need to Shoot — its type comes from the PO">Add suggested to Need to Shoot</button>
       <span class="toolbar-filter-divider" aria-hidden="true"></span>
       <label class="form-check" title="Colours with N41 status COMPANY are hidden unless this is ticked">
         <input type="checkbox" id="poShowCompany" />
@@ -366,23 +363,27 @@
   <div class="toolbar-filter-cluster">
     <!-- Need to Shoot: filters, and actions on the ticked styles. -->
     <div class="toolbar-filter-section shoot-controls" id="needToolbarControls">
-      <div class="filter-btn-group" id="needFilters" role="group" aria-label="Shoot status">
+      <!-- Photoshoot or CG: the one choice made on this page. -->
+      <div class="filter-btn-group" id="needFilters" role="group" aria-label="Photoshoot or CG">
         <button type="button" class="filter-btn" data-filter="all">All</button>
-        <button type="button" class="filter-btn" data-filter="unscheduled">Not scheduled</button>
-        <button type="button" class="filter-btn" data-filter="scheduled">Scheduled</button>
+        <button type="button" class="filter-btn" data-filter="undecided" title="Not yet set to Photoshoot or CG">To decide</button>
+        <button type="button" class="filter-btn" data-filter="photoshoot">Photoshoot</button>
+        <button type="button" class="filter-btn" data-filter="cg">CG</button>
       </div>
       <span class="toolbar-filter-divider" aria-hidden="true"></span>
-      <div class="filter-btn-group" id="needReasonFilters" role="group" aria-label="Why it needs pictures">
+      <div class="filter-btn-group" id="needReasonFilters" role="group" aria-label="Type, from the PO">
         <button type="button" class="filter-btn" data-reason="all">All</button>
-        <!-- Icons filled in from the Shoot buttons (js/photoshoots.js). -->
+        <!-- Icons filled in from the type pills (js/photoshoots.js). -->
         <button type="button" class="filter-btn filter-btn-icon" data-reason="newStyle" aria-label="New Style" title="New Style"></button>
         <button type="button" class="filter-btn filter-btn-icon" data-reason="newColor" aria-label="New Color" title="New Color"></button>
-        <button type="button" class="filter-btn filter-btn-icon" data-reason="reshoot" aria-label="Reshoot" title="Reshoot"></button>
+        <button type="button" class="filter-btn filter-btn-icon" data-reason="recut" aria-label="Recut" title="Recut"></button>
       </div>
       <div class="selection-bar" id="needSelectionBar" hidden>
         <span class="selection-count" id="needSelectionCount"></span>
-        <button type="button" class="btn btn-primary" id="needCreateShootBtn">Create photoshoot</button>
-        <select class="form-input selection-select" id="needAddToShootSelect" aria-label="Add to an existing shoot"></select>
+        <button type="button" class="btn btn-primary" data-method="photoshoot" title="Photoshoot: into the next studio shoot">Photoshoot</button>
+        <button type="button" class="btn btn-primary" data-method="cg" title="CG: retouched instead of shot — kept out of photoshoots">CG</button>
+        <select class="form-input selection-select" id="needAddToShootSelect" aria-label="Add to a particular shoot"></select>
+        <button type="button" class="btn" id="needCreateShootBtn">Create photoshoot</button>
         <button type="button" class="btn" id="needRemoveBtn">Remove from list</button>
         <button type="button" class="btn-close" id="needClearSelectionBtn" title="Clear selection" aria-label="Clear selection">✕</button>
       </div>
@@ -805,13 +806,15 @@
         <col class="col-style-no" />
         <col class="col-color" />
         <col class="col-description" />
+        <col class="col-type" />
+        <col class="col-available" />
+        <col class="col-shoot" />
+        <col class="col-notes" />
         <col class="col-category" />
         <col class="col-season" />
         <col class="col-status" />
         <col class="col-ihd" />
-        <col class="col-shoot" />
         <col class="col-added" />
-        <col class="col-notes" />
       </colgroup>
       <thead>
         <tr>
@@ -820,17 +823,20 @@
           <th data-col="styleNo">Style #</th>
           <th data-col="color">Color</th>
           <th data-col="description">Description</th>
+          <th data-col="type" title="New Style / New Color / Recut — from the style's PO">Type</th>
+          <th data-col="available" title="N41 available date">Available</th>
+          <!-- The same columns, in the same order, as the PDF report; the rest after. -->
+          <th data-col="shoot" title="Photoshoot (into the next studio shoot) or CG">Shoot</th>
+          <th data-col="notes">Notes</th>
           <th data-col="category">Category</th>
           <th data-col="season">Season</th>
           <th data-col="n41">N41 Status</th>
           <th data-col="ihd" title="In-house date">IHD</th>
-          <th data-col="shoot">Shoot</th>
           <th data-col="added">Added</th>
-          <th data-col="notes">Notes</th>
         </tr>
       </thead>
       <tbody id="needTableBody">
-        <tr class="state-row"><td colspan="12">Loading…</td></tr>
+        <tr class="state-row"><td colspan="14">Loading…</td></tr>
       </tbody>
     </table>
     </div>
@@ -858,7 +864,7 @@
           <th data-col="styleNo">Style #</th>
           <th data-col="color">Color</th>
           <th data-col="description">Description</th>
-          <th data-col="reason">Reason</th>
+          <th data-col="reason" title="New Style / New Color / Recut — from the style's PO when it was done">Type</th>
           <th data-col="method">Done by</th>
           <th data-col="shoot">Photoshoot</th>
           <th data-col="completed">Completed</th>
@@ -1018,8 +1024,8 @@
         <!-- Column heads over the style rows (same grid as .shoot-style-row). -->
         <div class="shoot-style-head" id="shootPaneStylesHead" aria-hidden="true">
           <span></span><span>#</span><span></span><span></span>
-          <span>Style # · Color</span><span class="shoot-col-center">Shoot</span>
-          <span class="shoot-col-desc">Description</span><span class="shoot-col-cat">Category</span><span class="shoot-col-ihd">IHD</span><span></span>
+          <span>Style # · Color</span><span>Type</span>
+          <span class="shoot-col-desc">Description</span><span class="shoot-col-avail">Available</span><span class="shoot-col-ihd">IHD</span><span class="shoot-col-notes">Notes</span><span></span>
         </div>
         <div class="shoot-style-list" id="shootPaneStyles"></div>
       </section>
@@ -2125,53 +2131,53 @@
   </div>
 </div>
 
-<script src="js/config.js?v=20261112-1745"></script>
+<script src="js/config.js?v=20261112-2155"></script>
 <!-- Needs SUPABASE_URL/KEY from config.js and the CDN client above. -->
-<script src="js/auth.js?v=20261112-1745"></script>
-<script src="js/util.js?v=20261112-1745"></script>
-<script src="js/dates.js?v=20261112-1745"></script>
-<script src="js/store.js?v=20261112-1745"></script>
-<script src="js/tasks.js?v=20261112-1745"></script>
-<script src="js/app-shell.js?v=20261112-1745"></script>
-<script src="js/table-pager.js?v=20261112-1745"></script>
-<script src="js/record-list.js?v=20261112-1745"></script>
-<script src="js/item-pane.js?v=20261112-1745"></script>
-<script src="js/campaign-form.js?v=20261112-1745"></script>
-<script src="js/trade-show-form.js?v=20261112-1745"></script>
-<script src="js/banners.js?v=20261112-1745"></script>
-<script src="js/banner-form.js?v=20261112-1745"></script>
-<script src="js/mailchimp.js?v=20261112-1745"></script>
-<script src="js/style-import.js?v=20261112-1745"></script>
-<script src="js/column-filter.js?v=20261112-1745"></script>
-<script src="js/styles.js?v=20261112-1745"></script>
-<script src="js/style-images.js?v=20261112-1745"></script>
-<script src="js/sample-photos.js?v=20261112-1745"></script>
-<script src="js/photoshoots.js?v=20261112-1745"></script>
-<script src="js/complete.js?v=20261112-1745"></script>
-<script src="js/photoshoot-form.js?v=20261112-1745"></script>
-<script src="js/purchase-orders.js?v=20261112-1745"></script>
-<script src="js/production-import.js?v=20261112-1745"></script>
-<script src="js/ats-import.js?v=20261112-1745"></script>
-<script src="js/style-pane.js?v=20261112-1745"></script>
-<script src="js/magento.js?v=20261112-1745"></script>
-<script src="js/magento-availability.js?v=20261112-1745"></script>
-<script src="js/magento-photos.js?v=20261112-1745"></script>
-<script src="js/magento-group-order.js?v=20261112-1745"></script>
-<script src="js/magento-sales.js?v=20261112-1745"></script>
-<script src="js/magento-n41.js?v=20261112-1745"></script>
-<script src="js/magento-events.js?v=20261112-1745"></script>
-<script src="js/trade-show-import.js?v=20261112-1745"></script>
-<script src="js/magento-groups.js?v=20261112-1745"></script>
-<script src="js/table-view.js?v=20261112-1745"></script>
-<script src="js/exports.js?v=20261112-1745"></script>
-<script src="js/copy-menu.js?v=20261112-1745"></script>
-<script src="js/row-quick-select.js?v=20261112-1745"></script>
-<script src="js/pane-dismiss.js?v=20261112-1745"></script>
-<script src="js/shortcuts.js?v=20261112-1745"></script>
-<script src="js/header-search.js?v=20261112-1745"></script>
-<script src="js/calendar.js?v=20261112-1745"></script>
-<script src="js/holidays.js?v=20261112-1745"></script>
-<script src="js/email.js?v=20261112-1745"></script>
-<script src="js/main.js?v=20261112-1745"></script>
+<script src="js/auth.js?v=20261112-2155"></script>
+<script src="js/util.js?v=20261112-2155"></script>
+<script src="js/dates.js?v=20261112-2155"></script>
+<script src="js/store.js?v=20261112-2155"></script>
+<script src="js/tasks.js?v=20261112-2155"></script>
+<script src="js/app-shell.js?v=20261112-2155"></script>
+<script src="js/table-pager.js?v=20261112-2155"></script>
+<script src="js/record-list.js?v=20261112-2155"></script>
+<script src="js/item-pane.js?v=20261112-2155"></script>
+<script src="js/campaign-form.js?v=20261112-2155"></script>
+<script src="js/trade-show-form.js?v=20261112-2155"></script>
+<script src="js/banners.js?v=20261112-2155"></script>
+<script src="js/banner-form.js?v=20261112-2155"></script>
+<script src="js/mailchimp.js?v=20261112-2155"></script>
+<script src="js/style-import.js?v=20261112-2155"></script>
+<script src="js/column-filter.js?v=20261112-2155"></script>
+<script src="js/styles.js?v=20261112-2155"></script>
+<script src="js/style-images.js?v=20261112-2155"></script>
+<script src="js/sample-photos.js?v=20261112-2155"></script>
+<script src="js/photoshoots.js?v=20261112-2155"></script>
+<script src="js/complete.js?v=20261112-2155"></script>
+<script src="js/photoshoot-form.js?v=20261112-2155"></script>
+<script src="js/purchase-orders.js?v=20261112-2155"></script>
+<script src="js/production-import.js?v=20261112-2155"></script>
+<script src="js/ats-import.js?v=20261112-2155"></script>
+<script src="js/style-pane.js?v=20261112-2155"></script>
+<script src="js/magento.js?v=20261112-2155"></script>
+<script src="js/magento-availability.js?v=20261112-2155"></script>
+<script src="js/magento-photos.js?v=20261112-2155"></script>
+<script src="js/magento-group-order.js?v=20261112-2155"></script>
+<script src="js/magento-sales.js?v=20261112-2155"></script>
+<script src="js/magento-n41.js?v=20261112-2155"></script>
+<script src="js/magento-events.js?v=20261112-2155"></script>
+<script src="js/trade-show-import.js?v=20261112-2155"></script>
+<script src="js/magento-groups.js?v=20261112-2155"></script>
+<script src="js/table-view.js?v=20261112-2155"></script>
+<script src="js/exports.js?v=20261112-2155"></script>
+<script src="js/copy-menu.js?v=20261112-2155"></script>
+<script src="js/row-quick-select.js?v=20261112-2155"></script>
+<script src="js/pane-dismiss.js?v=20261112-2155"></script>
+<script src="js/shortcuts.js?v=20261112-2155"></script>
+<script src="js/header-search.js?v=20261112-2155"></script>
+<script src="js/calendar.js?v=20261112-2155"></script>
+<script src="js/holidays.js?v=20261112-2155"></script>
+<script src="js/email.js?v=20261112-2155"></script>
+<script src="js/main.js?v=20261112-2155"></script>
 </body>
 </html>

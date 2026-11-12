@@ -11,10 +11,14 @@
  * What's exported:
  *   Need to Shoot   CSV or PDF: the list as it's showing (filters and search applied)
  *   a photoshoot    CSV or PDF: its details and every style in it, in order
- *   (PDFs show each style's shoot type as the three icons, its reason lit)
  *   Platforms       PDF: the banners showing, with their images
  *   POs             PDF: the month's colours as showing, with their POs
  *   header menu     Export CSV / PDF follow the page you're on
+ *
+ * The three style reports (Need to Shoot, a photoshoot, POs) are landscape
+ * and share their columns: photo, Style #, Color, Description, Type (from
+ * the PO), Available, Shoot (Photoshoot / CG) and Notes. A set's pieces are
+ * boxed together and kept on one page.
  */
 
 // ── CSV ──────────────────────────────────────────────────────────────────────
@@ -94,10 +98,24 @@ const REPORT_CSS = `
   .pill.shot { background: #e1f5ee; color: #0f6e56; }
   footer { margin-top: 10px; color: #8b929c; font-size: 9.5px; }
   body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-  td.reasons { width: 86px; white-space: nowrap; }
-  .reason { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 20px; margin-right: 3px; border: 1px solid #d4d9df; border-radius: 5px; color: #b4bac2; vertical-align: middle; }
-  .reason svg { width: 12px; height: 12px; }
-  .reason.on { background: #9bb3c9; border-color: #9bb3c9; color: #fff; }
+  .po-line[data-kind="other"] { background: #eef0f3; color: #4b5563; }
+  td.desc { min-width: 150px; }
+  td.note-col { width: 24%; min-width: 150px; white-space: pre-wrap; overflow-wrap: anywhere; }
+  th.note-col { width: 24%; }
+  /* Photoshoot / CG. A scheduled Photoshoot carries its date and shoot under it. */
+  .method { display: inline-block; padding: 1px 8px; border-radius: 9px; font-size: 9.5px; font-weight: 700; white-space: nowrap; }
+  .method.photoshoot { background: #ece6fb; color: #5a3aa8; }
+  .method.cg { background: #d9f0f3; color: #0e687a; }
+  .method.none { background: none; padding-left: 0; color: #8b929c; font-weight: 500; }
+  .method-sub { margin-top: 2px; color: #4b5563; font-size: 9px; white-space: nowrap; }
+  /* A set: its pieces in one box, kept on one page, tagged SET. */
+  tbody.set { break-inside: avoid; page-break-inside: avoid; }
+  tbody.set td { background: #f5f9fe; }
+  tbody.set td:first-child { box-shadow: inset 3px 0 0 #8fb0dc; }
+  tbody.set tr:not(:last-child) td { border-bottom-color: #e2eaf6; }
+  tbody.set tr:last-child td { border-bottom: 1px solid #b8cce9; }
+  tbody.set tr:first-child td { border-top: 1px solid #b8cce9; }
+  .set-tag { display: inline-block; margin-left: 5px; padding: 0 4px; border-radius: 3px; background: #e1ebf8; color: #2f5f9e; font-size: 7.5px; font-weight: 700; letter-spacing: 0.06em; vertical-align: 1px; }
   header .meta { margin: 0; justify-content: end; grid-template-columns: none; grid-auto-flow: column; }
 `;
 
@@ -139,11 +157,13 @@ async function loadReportThumbs(rows) {
  * columns: [{ label, cell(row) → { text, html?, className? } }]
  * rows:    whatever `cell` reads; each needs styleNo / color for its photo
  * noun:    what a row is, for the count at the top
- * landscape: lay the page sideways (POs, which has more columns)
+ * landscape: lay the page sideways (the style reports, which have more columns)
  * metaInHeader: the meta fields sit on the right of the header, in place of
  *          the "Generated" date and row count (shoot and Need to Shoot)
+ * setKey:  row → what set it's in ("" for none). Rows next to each other
+ *          with the same key are boxed together and kept on one page.
  */
-async function printReport({ fileTitle, title, subtitle = "", meta = [], notes = "", columns, rows, photos, footnote = "", noun = "style", metaInHeader = false, landscape = false }) {
+async function printReport({ fileTitle, title, subtitle = "", meta = [], notes = "", columns, rows, photos, footnote = "", noun = "style", metaInHeader = false, landscape = false, setKey = null }) {
   if (!rows.length) {
     showIndicator("Nothing to export", "error");
     return;
@@ -153,8 +173,8 @@ async function printReport({ fileTitle, title, subtitle = "", meta = [], notes =
   // Photos come from the linked image folder, as small thumbnails.
   const thumbs = photos ? await loadReportThumbs(rows) : [];
 
-  const head = (photos ? "<th></th>" : "") + columns.map(c => `<th>${escapeReportHtml(c.label)}</th>`).join("");
-  const body = rows.map((row, i) => {
+  const head = (photos ? "<th></th>" : "") + columns.map(c => `<th class="${c.className ?? ""}">${escapeReportHtml(c.label)}</th>`).join("");
+  const rowHtml = (row, i) => {
     const photo = photos
       ? `<td class="photo">${thumbs[i] ? `<img src="${thumbs[i]}" alt="">` : '<div class="none"></div>'}</td>`
       : "";
@@ -163,7 +183,16 @@ async function printReport({ fileTitle, title, subtitle = "", meta = [], notes =
       return `<td class="${cell.className ?? ""}">${cell.html ?? escapeReportHtml(cell.text)}</td>`;
     }).join("");
     return `<tr>${photo}${cells}</tr>`;
-  }).join("");
+  };
+  // One <tbody> per run of rows: a set's pieces share one (boxed, unbroken).
+  const runs = [];
+  rows.forEach((row, i) => {
+    const key = setKey?.(row) ?? "";
+    const last = runs[runs.length - 1];
+    if (last && last.key === key) last.html.push(rowHtml(row, i));
+    else runs.push({ key, html: [rowHtml(row, i)] });
+  });
+  const body = runs.map(run => `<tbody${run.key && run.html.length > 1 ? ' class="set"' : ""}>${run.html.join("")}</tbody>`).join("");
 
   const generated = `${formatReportDate(todayYmd())} ${new Date().toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}`;
   const metaHtml = meta.length ? `<div class="meta">${meta.map(([k, v]) => `<div><b>${escapeReportHtml(k)}</b><span>${escapeReportHtml(v)}</span></div>`).join("")}</div>` : "";
@@ -174,7 +203,7 @@ async function printReport({ fileTitle, title, subtitle = "", meta = [], notes =
     </header>
     ${metaInHeader ? "" : metaHtml}
     ${notes ? `<div class="notes">${escapeReportHtml(notes)}</div>` : ""}
-    <table><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>
+    <table><thead><tr>${head}</tr></thead>${body}</table>
     ${footnote ? `<footer>${escapeReportHtml(footnote)}</footer>` : ""}
   </body></html>`;
 
@@ -224,14 +253,25 @@ function reportHasPhotos() {
 
 function styleExportFields(styleNo, color) {
   const style = findStyle(styleNo, color);
+  const status = describeShootStatus(styleNo, color);
   return {
     styleNo,
     color,
+    style,
     description: style?.description ?? "",
     category: style?.category ?? "",
     season: style?.season ?? "",
     n41: style?.status ?? "",
     ihd: style?.ihd ?? "",
+    availableDate: style?.availableDate ?? "",
+    notes: style?.notes ?? "",
+    // From its PO, not chosen (js/store.js getShootType).
+    type: getShootType(styleNo, color),
+    // Photoshoot / CG — "" until it's decided.
+    method: getShootMethod(styleNo, color),
+    status,
+    // The planned shoot it's in (the soonest).
+    shoot: status?.tone === "scheduled" ? status.shoots[0] : null,
   };
 }
 
@@ -239,32 +279,78 @@ function shootStatusText(styleNo, color) {
   return describeShootStatus(styleNo, color)?.label ?? "";
 }
 
-function shootReasonOf(styleNo, color) {
-  return getShootListEntry(styleNo, color)?.reason ?? "";
+/** A set's key for a report row — rows with the same one are boxed together. */
+function reportSetKey(r) {
+  return styleSetKey(r.styleNo, r.color);
 }
 
-/** New Style / New Color / Reshoot as the three icons, the style's reason lit. */
-function reportReasonIcons(reason) {
-  return SHOOT_REASONS.map(({ key, label }) =>
-    `<span class="reason${key === reason ? " on" : ""}" title="${escapeReportHtml(label)}">${shootReasonIcon(key)}</span>`).join("");
+/**
+ * The columns every style report has, in order: Style #, Color, Description,
+ * Type, Available, Shoot, Notes. `rows` is the report's rows (a set's SET tag
+ * only shows when another of its pieces is in the report); `shoot` is the
+ * photoshoot the report is of, when it is one.
+ */
+function reportStyleColumns(rows, { shoot = null } = {}) {
+  const setCounts = new Map();
+  rows.forEach(r => {
+    const key = reportSetKey(r);
+    if (key) setCounts.set(key, (setCounts.get(key) ?? 0) + 1);
+  });
+  const inSet = r => (setCounts.get(reportSetKey(r)) ?? 0) > 1;
+  return {
+    styleNo: {
+      label: "Style #",
+      cell: r => ({ html: escapeReportHtml(r.styleNo) + (inSet(r) ? '<span class="set-tag">SET</span>' : ""), className: "strong" }),
+    },
+    color: { label: "Color", cell: r => ({ text: r.color, className: "nowrap" }) },
+    description: { label: "Description", cell: r => ({ text: r.description, className: "desc" }) },
+    type: { label: "Type", cell: r => ({ html: shootTypePillHtml(r.type) || "–", className: "nowrap" }) },
+    available: {
+      label: "Available",
+      cell: r => ({
+        html: r.availableDate
+          ? `<span class="available-pill${r.style?.availMismatch ? " is-mismatch" : ""}">${escapeReportHtml(formatMonYY(r.availableDate))}</span>`
+          : "–",
+        className: "nowrap",
+      }),
+    },
+    shoot: { label: "Shoot", cell: r => ({ html: reportMethodHtml(r, shoot) }) },
+    notes: { label: "Notes", className: "note-col", cell: r => ({ text: r.notes, className: "note-col" }) },
+  };
+}
+
+/**
+ * Photoshoot or CG as a pill. In a shoot's own report it's just Photoshoot;
+ * elsewhere a scheduled one carries its shoot's date and name underneath, a
+ * finished one says Shot / Done (CG) and when.
+ */
+function reportMethodHtml(r, ownShoot = null) {
+  const pill = (key, text) => `<span class="method ${key}">${escapeReportHtml(text)}</span>`;
+  const sub = text => `<div class="method-sub">${escapeReportHtml(text)}</div>`;
+  if (ownShoot) return pill("photoshoot", "Photoshoot");
+  const status = r.status;
+  if (status?.tone === "shot") return pill(status.shoots.length ? "photoshoot" : "cg", status.shoots.length ? "Photoshoot" : "CG") + sub(status.label);
+  if (r.method === "cg") return pill("cg", "CG");
+  if (r.method === "photoshoot") {
+    if (!r.shoot) return pill("photoshoot", "Photoshoot") + sub("Not scheduled");
+    const more = status.shoots.length > 1 ? ` +${status.shoots.length - 1}` : "";
+    return pill("photoshoot", "Photoshoot") + sub(`${r.shoot.date ? formatReportDate(r.shoot.date) : "No date"} · ${getPhotoshootTitle(r.shoot)}${more}`);
+  }
+  return status ? pill("none", "To decide") : "";
+}
+
+/** The same as words, for a CSV. */
+function methodExportText(r) {
+  if (r.status?.tone === "shot") return r.status.label;
+  return getShootMethodLabel(r.method) || (r.status ? "To decide" : "");
 }
 
 // ── Need to Shoot ────────────────────────────────────────────────────────────
 
-/** The rows the Need to Shoot table is showing right now. */
+/** The rows the Need to Shoot table is showing right now, sets together. */
 function getNeedExportRows() {
   renderNeedTable(); // brings filteredNeedRows up to date
-  return filteredNeedRows.map(r => {
-    const status = describeShootStatus(r.styleNo, r.color);
-    const next = status?.tone === "scheduled" ? status.shoots[0] : null;
-    return {
-      ...styleExportFields(r.styleNo, r.color),
-      reason: shootReasonOf(r.styleNo, r.color),
-      status,
-      shoot: next,
-      addedAt: r.addedAt,
-    };
-  });
+  return filteredNeedRows.map(r => ({ ...styleExportFields(r.styleNo, r.color), addedAt: r.addedAt }));
 }
 
 function exportNeedCsv() {
@@ -274,14 +360,13 @@ function exportNeedCsv() {
     return;
   }
   downloadCsv(`Need to Shoot ${todayYmd()}`,
-    ["Style #", "Color", "Description", "Category", "Season", "N41 Status", "IHD", "Shoot Status", "Shoot Date", "Shoot", "Shoot Type", "Model", "Added"],
+    ["Style #", "Color", "Description", "Type", "Available", "Shoot", "Shoot Date", "Photoshoot", "Notes", "Category", "Season", "N41 Status", "IHD", "Added"],
     rows.map(r => [
-      r.styleNo, r.color, r.description, r.category, r.season, r.n41, r.ihd,
-      r.status?.label ?? "",
+      r.styleNo, r.color, r.description, getShootReasonLabel(r.type), formatMonYY(r.availableDate),
+      methodExportText(r),
       r.shoot?.date ?? "",
       r.shoot ? getPhotoshootTitle(r.shoot) : "",
-      r.shoot ? getPhotoshootTypeLabel(r.shoot.type) : "",
-      r.shoot?.model ?? "",
+      r.notes, r.category, r.season, r.n41, r.ihd,
       r.addedAt ? r.addedAt.slice(0, 10) : "",
     ]));
   showIndicator(`Exported ${rows.length} ${rows.length === 1 ? "style" : "styles"}`, "success");
@@ -290,43 +375,31 @@ function exportNeedCsv() {
 /** Need to Shoot as a printable list, laid out like a shoot's report. */
 function exportNeedPdf() {
   const rows = getNeedExportRows();
-  const count = key => String(rows.filter(r => r.reason === key).length);
+  const count = test => String(rows.filter(test).length);
+  const cols = reportStyleColumns(rows);
   printReport({
     fileTitle: `Need to Shoot ${todayYmd()}`,
     title: "Need to Shoot",
     meta: [
-      ...SHOOT_REASONS.map(({ key, label }) => [label, count(key)]),
-      ["Scheduled", String(rows.filter(r => r.status?.tone === "scheduled").length)],
+      ["Styles", String(rows.length)],
+      ["Photoshoot", count(r => r.method === "photoshoot")],
+      ["CG", count(r => r.method === "cg")],
+      ["To decide", count(r => !r.method)],
     ],
     metaInHeader: true,
+    landscape: true,
     photos: reportHasPhotos(),
     rows,
-    columns: [
-      { label: "Style #", cell: r => ({ text: r.styleNo, className: "strong" }) },
-      { label: "Color", cell: r => ({ text: r.color, className: "nowrap" }) },
-      { label: "Shoot", cell: r => ({ html: reportReasonIcons(r.reason), className: "reasons" }) },
-      { label: "Description", cell: r => ({ text: r.description }) },
-      { label: "Category", cell: r => ({ text: r.category }) },
-      { label: "N41", cell: r => ({ text: r.n41, className: "nowrap" }) },
-      { label: "IHD", cell: r => ({ text: r.ihd ? formatReportDate(r.ihd) : "", className: "nowrap" }) },
-      {
-        label: "Status",
-        cell: r => {
-          const tone = r.status?.tone ?? "needed";
-          const text = tone === "needed" ? "To shoot"
-            : tone === "scheduled" && r.shoot ? `${r.shoot.date ? formatReportDate(r.shoot.date) : "No date"} · ${getPhotoshootTitle(r.shoot)}`
-            : r.status?.label ?? "";
-          return { html: `<span class="pill ${tone}">${escapeReportHtml(text)}</span>` };
-        },
-      },
-    ],
+    setKey: reportSetKey,
+    columns: [cols.styleNo, cols.color, cols.description, cols.type, cols.available, cols.shoot, cols.notes],
   });
 }
 
 // ── One photoshoot ───────────────────────────────────────────────────────────
 
+/** A shoot's styles in its order — each set's pieces together, as its pane shows them. */
 function getShootExportRows(shoot) {
-  return shoot.styles.map(s => ({ ...styleExportFields(s.styleNo, s.color), reason: shootReasonOf(s.styleNo, s.color) }));
+  return getShootBlocks(shoot).flat().map(s => styleExportFields(s.styleNo, s.color));
 }
 
 function shootFileBase(shoot) {
@@ -342,11 +415,12 @@ function exportShootCsv(id) {
     return;
   }
   downloadCsv(shootFileBase(shoot),
-    ["Shoot", "Shoot Date", "Type", "Model", "Status", "Style #", "Color", "Description", "Category", "Season", "N41 Status", "IHD"],
-    rows.map(r => [
+    ["Shoot", "Shoot Date", "Shoot Type", "Model", "Status", "#", "Style #", "Color", "Description", "Type", "Available", "Notes", "Category", "Season", "N41 Status", "IHD"],
+    rows.map((r, i) => [
       getPhotoshootTitle(shoot), shoot.date, getPhotoshootTypeLabel(shoot.type), shoot.model,
       shoot.status === "complete" ? "Complete" : "Planned",
-      r.styleNo, r.color, r.description, r.category, r.season, r.n41, r.ihd,
+      i + 1, r.styleNo, r.color, r.description, getShootReasonLabel(r.type), formatMonYY(r.availableDate), r.notes,
+      r.category, r.season, r.n41, r.ihd,
     ]));
   showIndicator(`Exported ${rows.length} ${rows.length === 1 ? "style" : "styles"}`, "success");
 }
@@ -355,6 +429,7 @@ function exportShootPdf(id) {
   const shoot = getPhotoshootById(id);
   if (!shoot) return;
   const rows = getShootExportRows(shoot);
+  const cols = reportStyleColumns(rows, { shoot });
   printReport({
     fileTitle: shootFileBase(shoot),
     title: getPhotoshootTitle(shoot),
@@ -366,19 +441,15 @@ function exportShootPdf(id) {
       ["Styles", String(rows.length)],
     ],
     metaInHeader: true,
+    landscape: true,
     notes: shoot.notes,
     photos: reportHasPhotos(),
     rows,
+    setKey: reportSetKey,
     columns: [
       { label: "Shot", cell: () => ({ text: "☐", className: "check" }) },
       { label: "#", cell: r => ({ text: String(rows.indexOf(r) + 1), className: "nowrap" }) },
-      { label: "Style #", cell: r => ({ text: r.styleNo, className: "strong" }) },
-      { label: "Color", cell: r => ({ text: r.color, className: "nowrap" }) },
-      { label: "Shoot", cell: r => ({ html: reportReasonIcons(r.reason), className: "reasons" }) },
-      { label: "Description", cell: r => ({ text: r.description }) },
-      { label: "Category", cell: r => ({ text: r.category }) },
-      { label: "Season", cell: r => ({ text: r.season }) },
-      { label: "IHD", cell: r => ({ text: r.ihd ? formatReportDate(r.ihd) : "", className: "nowrap" }) },
+      cols.styleNo, cols.color, cols.description, cols.type, cols.available, cols.shoot, cols.notes,
     ],
   });
 }
@@ -401,28 +472,13 @@ function exportPoPdf() {
   });
   const scope = poShowDeleted ? "Deleted POs" : isPoSearchingAll() ? "All months" : formatPoMonth(poMonth);
   const poCount = new Set(groups.flatMap(g => g.pos.map(po => po.poNo))).size;
-  // Only a shoot it's scheduled for or was shot in — waiting on Need to Shoot
-  // just repeats the Type, and having photos needs no note.
-  const status = r => {
-    const st = describeShootStatus(r.styleNo, r.color);
-    if (!st || st.tone === "needed") return "";
-    if (st.tone === "scheduled") {
-      // "Scheduled" over "Wed 11/11" (+N when it's on more than one shoot).
-      const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(st.shoots[0]?.date ?? "");
-      const day = m ? `${new Date(+m[1], m[2] - 1, +m[3]).toLocaleDateString("en-US", { weekday: "short" })} ${+m[2]}/${+m[3]}` : "No date";
-      const more = st.shoots.length > 1 ? ` +${st.shoots.length - 1}` : "";
-      return `<span class="pill scheduled two-line">Scheduled<br><span>${escapeReportHtml(day + more)}</span></span>`;
-    }
-    return `<span class="pill ${st.tone}">${escapeReportHtml(st.label)}</span>`;
-  };
-  // The app's own pills: the PO type and Available (amber when it doesn't match).
-  const kindPill = r => {
-    const kind = poColorKind(r.group, { color: r.color });
-    return PO_KIND_LABELS[kind] ? `<span class="po-line" data-kind="${kind}">${poKindPillHtml(kind, PO_KIND_LABELS[kind])}</span>` : "";
-  };
-  const availPill = r => r.style?.availableDate
-    ? `<span class="available-pill${r.style.availMismatch ? " is-mismatch" : ""}">${escapeReportHtml(formatMonYY(r.style.availableDate))}</span>`
-    : "–";
+  // The shared columns read a row's own fields; the Type here is the colour's
+  // kind on the POs showing (as on the page), not just its newest PO's.
+  rows.forEach(r => {
+    Object.assign(r, styleExportFields(r.styleNo, r.color));
+    r.type = PO_KIND_SHOOT_TYPE[poColorKind(r.group, { color: r.color })] ?? "";
+  });
+  const cols = reportStyleColumns(rows);
   printReport({
     fileTitle: `POs ${poShowDeleted ? "deleted" : isPoSearchingAll() ? "all months" : poMonth} ${todayYmd()}`,
     title: "POs",
@@ -438,9 +494,7 @@ function exportPoPdf() {
     rows,
     noun: "color",
     columns: [
-      { label: "Style #", cell: r => ({ text: r.styleNo, className: "strong" }) },
-      { label: "Color", cell: r => ({ text: r.color, className: "nowrap" }) },
-      { label: "Description", cell: r => ({ text: r.style?.description ?? "" }) },
+      cols.styleNo, cols.color, cols.description,
       {
         label: "PO # · ETA",
         cell: r => ({
@@ -448,10 +502,9 @@ function exportPoPdf() {
           className: "nowrap",
         }),
       },
-      { label: "Type", cell: r => ({ html: kindPill(r), className: "nowrap" }) },
-      { label: "Available", cell: r => ({ html: availPill(r), className: "nowrap" }) },
-      { label: "N41", cell: r => ({ text: r.style?.status ?? "", className: "nowrap" }) },
-      { label: "Shoot", cell: r => ({ html: status(r) }) },
+      cols.type, cols.available,
+      { label: "N41", cell: r => ({ text: r.n41, className: "nowrap" }) },
+      cols.shoot, cols.notes,
     ],
   });
 }

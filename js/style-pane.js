@@ -203,6 +203,9 @@ function createStylePaneNotes(style) {
       if (view === "styles") applyStyleFilters({ keepShown: true });
       else if (view === "needToShoot") renderNeedTable();
       else if (view === "pos") renderPoView();
+      // A shoot's rows show them as well.
+      const shoot = paneShootId && getPhotoshootById(paneShootId);
+      if (shoot) renderShootPane(shoot);
     },
   });
   box.hidden = true;

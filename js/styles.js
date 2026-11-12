@@ -233,10 +233,11 @@ function createStyleStatusPill(status) {
 }
 
 /**
- * The Shoot cell: where the style stands, plus an "Add to Need to Shoot"
- * button when it isn't waiting to be shot (never listed, or already shot).
+ * The Shoot cell: a Need to Shoot button when the style isn't waiting (never
+ * listed, or already done); Photoshoot / CG when it is — and beside them the
+ * date it's scheduled for or was shot.
  */
-function createStyleShootCell(style, { suggested = "" } = {}) {
+function createStyleShootCell(style, { suggested = false } = {}) {
   const wrap = document.createElement("span");
   wrap.className = "style-shoot-cell";
   const fill = () => {
@@ -249,7 +250,7 @@ function createStyleShootCell(style, { suggested = "" } = {}) {
       addStyleTopPill(wrap, style);
       return;
     }
-    // The lit icon says "waiting"; only a date (scheduled / shot) needs words.
+    // The lit button says which; only a date (scheduled / shot) needs more.
     const tone = describeShootStatus(style.styleNo, style.color)?.tone;
     wrap.replaceChildren(createShootPicker(style.styleNo, style.color, () => {
       fill();
@@ -410,6 +411,11 @@ function createPoIhdText(style) {
   span.classList.toggle("is-past", Boolean(style.ihd) && style.ihd < today);
   span.textContent = formatIhd(style.ihd);
   const lines = getStylePoLines(style.styleNo, style.color);
+  if (!lines.length) {
+    const pos = [...new Set(getStylePoLines(style.styleNo).map(l => l.poNo))];
+    span.title = `This colour isn't on ${style.styleNo}'s PO${pos.length > 1 ? "s" : ""} (${pos.join(", ")}) — no ETA, so no IHD`;
+    return span;
+  }
   span.title = "IHD from the PO ETAs — the next one from today" +
     (style.ihd && style.ihd < today ? " (all have passed: the latest)" : "") + "\n" +
     lines.map(l => `PO ${l.poNo} · ETA ${formatIhd(l.eta)}`).join("\n");
@@ -573,7 +579,7 @@ function syncStyleSelectionUi() {
     const count = document.getElementById("styleSelectionCount");
     if (count) count.textContent = `${n.toLocaleString()} selected`;
     // Deleted styles can only be restored.
-    bar.querySelectorAll("#styleShootLabel, [data-shoot-reason], #styleDeleteBtn").forEach(el => { el.hidden = styleShowDeleted; });
+    bar.querySelectorAll("#styleAddToShootBtn, #styleDeleteBtn").forEach(el => { el.hidden = styleShowDeleted; });
     document.getElementById("styleRestoreBtn").hidden = !styleShowDeleted;
   }
 }
@@ -627,12 +633,13 @@ function clearStyleSelection() {
   renderStylesTable();
 }
 
-async function addSelectedToShootList(reason) {
-  const listName = `Need to Shoot (${getShootReasonLabel(reason)})`;
+/** The ticked styles onto Need to Shoot — each one's type comes from its PO. */
+async function addSelectedToShootList() {
+  const listName = "Need to Shoot";
   const styles = getSelectedStyles();
   if (!styles.length) return;
   try {
-    const added = await addToShootList(styles, reason);
+    const added = await addToShootList(styles);
     const skipped = styles.filter(s => isNoShootStyle(s.styleNo, s.color)).length;
     const already = styles.length - added - skipped;
     clearStyleSelection();
@@ -723,9 +730,7 @@ function initStylesView() {
     });
     renderStylesTable();
   });
-  document.querySelectorAll("#styleSelectionBar [data-shoot-reason]").forEach(btn => {
-    btn.addEventListener("click", () => addSelectedToShootList(btn.dataset.shootReason));
-  });
+  document.getElementById("styleAddToShootBtn")?.addEventListener("click", addSelectedToShootList);
   document.getElementById("styleClearSelectionBtn")?.addEventListener("click", clearStyleSelection);
   document.getElementById("styleNoPhotosBtn")?.addEventListener("click", () => {
     styleNoPhotosOnly = !styleNoPhotosOnly;

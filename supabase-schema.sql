@@ -225,7 +225,15 @@ create table if not exists shoot_list (
 );
 
 -- Why it needs pictures (added later; safe to run again).
-alter table shoot_list add column if not exists reason text;  -- newStyle | newColor | reshoot
+alter table shoot_list add column if not exists reason text;  -- newStyle | newColor | recut | reshoot
+
+-- How it gets its pictures: a photoshoot, or CG. null until it's decided.
+alter table shoot_list add column if not exists method text;  -- photoshoot | cg
+-- An older version had method as not null default 'shoot' ('shoot' / 'ai'): bring it in line.
+alter table shoot_list alter column method drop not null;
+alter table shoot_list alter column method drop default;
+update shoot_list set method = null where method = 'shoot';
+update shoot_list set method = 'cg' where method = 'ai';
 
 create table if not exists photoshoots (
   id text primary key,
@@ -403,7 +411,7 @@ create table if not exists style_completions (
   color text not null,
   method text not null,                       -- photoshoot | cg
   shoot_id text,                              -- the photoshoot, for method photoshoot
-  reason text,                                -- newStyle | newColor | reshoot
+  reason text,                                -- newStyle | newColor | recut | reshoot
   completed_at timestamptz not null default now()
 );
 

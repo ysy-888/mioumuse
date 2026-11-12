@@ -117,16 +117,35 @@ const MAX_BANNER_FILE_BYTES = 10 * 1024 * 1024;
 /** N41 statuses that never need a photoshoot — kept off Need to Shoot and out of shoots. */
 const NO_SHOOT_STATUSES = ["COMPANY"];
 
-/** Why a style needs pictures — what puts it on Need to Shoot. */
+/**
+ * A style's type on Need to Shoot and in a shoot. It comes from the style's
+ * PO (New Style / New Color / Recut — js/store.js getShootType); Reshoot is
+ * only on entries saved before types came from the PO.
+ */
 const SHOOT_REASONS = [
   { key: "newStyle", label: "New Style", short: "Style" },
   { key: "newColor", label: "New Color", short: "Color" },
+  { key: "recut", label: "Recut", short: "Recut" },
   { key: "reshoot", label: "Reshoot", short: "Reshoot" },
 ];
 const SHOOT_REASON_KEYS = SHOOT_REASONS.map(r => r.key);
 
 function getShootReasonLabel(key) {
   return SHOOT_REASONS.find(r => r.key === key)?.label ?? "";
+}
+
+/** A PO line's kind (js/store.js computePoKinds) as a type. */
+const PO_KIND_SHOOT_TYPE = { new: "newStyle", newColor: "newColor", recut: "recut" };
+
+/** How a style on Need to Shoot gets its pictures — the one choice made there. */
+const SHOOT_METHODS = [
+  { key: "photoshoot", label: "Photoshoot" },
+  { key: "cg", label: "CG" },
+];
+const SHOOT_METHOD_KEYS = SHOOT_METHODS.map(m => m.key);
+
+function getShootMethodLabel(key) {
+  return SHOOT_METHODS.find(m => m.key === key)?.label ?? "";
 }
 
 /** N41 statuses the N41 Status filters (Styles, Need to Shoot) hide until changed. */

@@ -21,8 +21,9 @@
  * today, or the latest if all have passed.
  *
  * Each style shows with its POs, and under it the colours on them, with
- * photos and the New Style / New Color / Reshoot picker. Only colours with
- * no photos are suggested: New Style on a new style, New Color otherwise.
+ * photos and the Shoot buttons. A colour's type on Need to Shoot is its PO's
+ * kind, so nothing is chosen here: colours with no photos are suggested, and
+ * Add suggested puts them all on Need to Shoot.
  */
 
 let poMonth = "";
@@ -44,7 +45,7 @@ const PO_RECUT_ICON = '<svg xmlns="http://www.w3.org/2000/svg" width="11" height
 
 function poKindIcon(kind) {
   if (kind === "recut") return PO_RECUT_ICON;
-  return shootReasonIcon(kind === "new" ? "newStyle" : "newColor").replace(/width="15" height="15"/, 'width="11" height="11"');
+  return shootReasonIcon(PO_KIND_SHOOT_TYPE[kind] ?? "newColor").replace(/width="15" height="15"/, 'width="11" height="11"');
 }
 
 /** Icon(s) and label inside a type pill (the page and the PDF). */
@@ -368,10 +369,10 @@ function renderPoMonthList() {
 }
 
 /**
- * Only a colour with no photos is suggested: New Style on the style's first
- * PO, New Color otherwise. Not one that's already waiting, never shot, or
- * CANCEL or INACTIVE in N41. Photos are only known with the image folder
- * linked, so without it nothing is suggested.
+ * Only a colour with no photos is suggested — the type it would go on Need
+ * to Shoot as (its kind on this PO), "" when it isn't. Not one that's
+ * already waiting, never shot, or CANCEL or INACTIVE in N41. Photos are only
+ * known with the image folder linked, so without it nothing is suggested.
  */
 function suggestPoReason(group, style) {
   if (!arePhotosKnown() || hasStyleImages(style.styleNo, style.color)) return "";
@@ -379,7 +380,7 @@ function suggestPoReason(group, style) {
   if (poColorSkipsPhotos(style)) return "";
   const entry = getShootListEntry(style.styleNo, style.color);
   if (entry && !entry.shotShootId) return "";
-  return poColorKind(group, style) === "new" ? "newStyle" : "newColor";
+  return PO_KIND_SHOOT_TYPE[poColorKind(group, style)] ?? "newColor";
 }
 
 function isCompanyStyle(style) {
@@ -683,7 +684,7 @@ function createPoColorRow(group, style, cols, first) {
     else if (col === "status") td.appendChild(createStyleStatusPill(style.status));
     else if (col === "available") { const pill = createAvailablePill(style.availableDate, style); if (pill) td.appendChild(pill); else setDisplayText(td, EMPTY_DISPLAY); }
     else if (col === "ihd") setDisplayText(td, formatIhd(style.ihd));
-    else if (col === "shoot") td.appendChild(createStyleShootCell(style, { suggested: suggestPoReason(group, style) }));
+    else if (col === "shoot") td.appendChild(createStyleShootCell(style, { suggested: Boolean(suggestPoReason(group, style)) }));
     else if (col === "notes") td.appendChild(createStyleNotesInput(style, { onSaved: refreshStylePaneSummary }));
     tr.appendChild(td);
   });
@@ -802,23 +803,23 @@ function renderPoNotice() {
 
 /** Put every suggested colour of the month (as filtered) on Need to Shoot. */
 async function addPoSuggested() {
-  const byReason = new Map();
+  const styles = [];
+  const byType = new Map();
   buildPoGroups().forEach(group => group.colors.forEach(style => {
-    const reason = suggestPoReason(group, style);
-    if (!reason) return;
-    if (!byReason.has(reason)) byReason.set(reason, []);
-    byReason.get(reason).push({ styleNo: style.styleNo, color: style.color });
+    const type = suggestPoReason(group, style);
+    if (!type) return;
+    styles.push({ styleNo: style.styleNo, color: style.color });
+    byType.set(type, (byType.get(type) ?? 0) + 1);
   }));
-  const total = [...byReason.values()].reduce((n, list) => n + list.length, 0);
-  if (!total) {
+  if (!styles.length) {
     showIndicator("Nothing suggested that isn't already on Need to Shoot.", "success");
     return;
   }
-  const summary = [...byReason].map(([reason, list]) => `${getShootReasonLabel(reason)}: ${list.length}`).join("\n");
-  if (!confirm(`Add ${total} colours to Need to Shoot?\n\n${summary}`)) return;
+  const summary = SHOOT_REASONS.filter(r => byType.has(r.key)).map(r => `${r.label}: ${byType.get(r.key)}`).join("\n");
+  if (!confirm(`Add ${styles.length} colours to Need to Shoot?\n\n${summary}`)) return;
   try {
-    for (const [reason, list] of byReason) await addToShootList(list, reason);
-    showIndicator(`${total} colours added to Need to Shoot`, "success");
+    await addToShootList(styles);
+    showIndicator(`${styles.length} colours added to Need to Shoot — pick Photoshoot or CG for each there`, "success");
   } catch (err) {
     showIndicator(err.message || "Couldn't save.", "error");
   }

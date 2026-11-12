@@ -570,6 +570,8 @@ function runStyleImageMenuAction() {
 function refreshStyleImageViews() {
   if (getCurrentAppView() === "styles" && typeof applyStyleFilters === "function") applyStyleFilters({ keepShown: true });
   if (getCurrentAppView() === "pos" && typeof renderPoView === "function") renderPoView();
+  // Need to Shoot's and the shoots' types follow the photos (js/store.js getShootType).
+  if (typeof isPhotoshootView === "function" && isPhotoshootView()) renderPhotoshootsView();
   if (typeof refreshStylePane === "function") refreshStylePane();
   if (typeof refreshBannerViews === "function") refreshBannerViews();
   document.querySelectorAll("#bannerFormStyles .banner-style-row").forEach(row => {
