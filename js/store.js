@@ -10,6 +10,8 @@
  * Shape:
  *   TradeShow { id, show,            // a TRADE_SHOWS key
  *               startDate, endDate,  // "YYYY-MM-DD", inclusive
+ *               tasks: [{ id, category, dueDate, memo }],  // added by hand, as on a
+ *                                    // campaign, plus changes to the Day 1 emails
  *               notes }
  *   Campaign  { id, type,            // a CAMPAIGN_TYPES key
  *               name,                // optional, e.g. "Black Friday"
@@ -72,16 +74,26 @@ function normalizeTradeShow(raw) {
     id: String(raw?.id ?? ""),
     show: String(raw?.show ?? "").trim(),
     ...normalizeDateRange(raw),
+    tasks: (Array.isArray(raw?.tasks) ? raw.tasks : []).map(normalizeCampaignTask),
     notes: String(raw?.notes ?? ""),
   };
 }
 
+/**
+ * A saved task: { id, category, dueDate, memo }. On a trade show, an entry
+ * whose id is one of the Day 1 email keys ("email-3w"…) isn't a task of its
+ * own — it holds that email's changes: a memo, a date of its own (dueDate,
+ * "" to keep counting from Day 1), or `removed`.
+ */
 function normalizeCampaignTask(raw) {
-  return {
+  const task = {
     id: String(raw?.id ?? "") || newCampaignTaskId(),
     category: CAMPAIGN_TASK_CATEGORY_KEYS.includes(raw?.category) ? raw.category : CAMPAIGN_TASK_CATEGORY_KEYS[0],
     dueDate: normalizeYmd(raw?.dueDate),
+    memo: String(raw?.memo ?? ""),
   };
+  if (raw?.removed === true) task.removed = true;
+  return task;
 }
 
 /**
@@ -119,6 +131,7 @@ function tradeShowRowToInput(row) {
     show: row.show,
     startDate: row.start_date,
     endDate: row.end_date,
+    tasks: row.tasks,
     notes: row.notes,
   };
 }
@@ -129,6 +142,7 @@ function tradeShowToRow(tradeShow) {
     show: tradeShow.show,
     start_date: tradeShow.startDate,
     end_date: tradeShow.endDate,
+    tasks: tradeShow.tasks,
     notes: tradeShow.notes,
   };
 }
@@ -1001,6 +1015,15 @@ async function updateTradeShow(id, patch) {
   const merged = normalizeTradeShow({ ...tradeShow, ...patch });
   validateTradeShowFields(merged);
   await persistTradeShow(merged);
+
+  // Tasks taken off the show lose their checkmarks and Mailchimp links.
+  const kept = new Set(merged.tasks.map(t => t.id));
+  const removedTaskIds = tradeShow.tasks
+    .filter(t => !kept.has(t.id))
+    .map(t => buildTradeShowTaskId(tradeShow.id, t.id));
+  await deleteCompletedTasks(removedTaskIds.filter(isTaskComplete));
+  await deleteTaskLinks(removedTaskIds);
+
   Object.assign(tradeShow, merged);
   return tradeShow;
 }

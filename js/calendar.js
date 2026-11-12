@@ -33,7 +33,7 @@ let calMonthAnchors = {};
 let calScrollRaf = 0;
 
 /** Every kind the filter knows about — used to tell "all on" from "narrowed". */
-const CAL_KINDS = [EVENT_KIND_SHOW, EVENT_KIND_CAMPAIGN, EVENT_KIND_SHOOT, TASK_KIND_EMAIL, TASK_KIND_BANNER, TASK_KIND_SOCIAL];
+const CAL_KINDS = [EVENT_KIND_SHOW, EVENT_KIND_CAMPAIGN, EVENT_KIND_SHOOT, TASK_KIND_EMAIL, TASK_KIND_BANNER, TASK_KIND_SOCIAL, TASK_KIND_VIDEO];
 
 /** Which kinds are shown. All on by default. */
 let calFilterSelection = new Set(CAL_KINDS);
@@ -365,8 +365,9 @@ function onCalScroll() {
 /** The badge on a task chip — the cell is far too narrow for full labels. */
 const CAL_TASK_SHORT_LABELS = {
   [TASK_KIND_EMAIL]: "Email",
-  [TASK_KIND_BANNER]: "Banner",
+  [TASK_KIND_BANNER]: "Graphic",
   [TASK_KIND_SOCIAL]: "Social",
+  [TASK_KIND_VIDEO]: "Video",
 };
 
 function describeCalEntry(entry) {
@@ -836,8 +837,9 @@ const CAL_FILTER_OPTIONS = [
   { key: EVENT_KIND_SHOW, label: "Trade Shows" },
   { key: EVENT_KIND_SHOOT, label: "Photoshoots" },
   { key: TASK_KIND_EMAIL, label: "Emails" },
-  { key: TASK_KIND_BANNER, label: "Banners" },
+  { key: TASK_KIND_BANNER, label: "Graphics" },
   { key: TASK_KIND_SOCIAL, label: "Social Media" },
+  { key: TASK_KIND_VIDEO, label: "Videos" },
 ];
 
 function isCalFilterShowingAll() {
@@ -971,7 +973,7 @@ const CAL_UPCOMING_DAYS = 45;
  * overdue work doesn't age out of the list just because it's old.
  *
  * The kind filter narrows which tasks a card buckets on and shows, so
- * picking "Banners" turns the rail into a banner to-do list.
+ * picking "Graphics" turns the rail into a graphics to-do list.
  */
 function buildUpcomingCardEntries() {
   const from = ymd(addDays(new Date(), -CAL_UPCOMING_DAYS));

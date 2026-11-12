@@ -5628,7 +5628,7 @@ span.dash-event { cursor: pointer; /* clicking selects the day */ }
 
 /* Campaigns — one mustard yellow for every type (red is for holidays).
    Yellow is too light for white text, so its solid chip takes dark text. */
-[data-campaign-type] { --item-bg: #fdf3c2; --item-fg: #6b5a00; --item-strong: #e5bc00; --item-solid: #f2c811; --item-on-solid: #2e2600; }
+[data-campaign-type] { --item-bg: #fbf3d2; --item-fg: #6b5a12; --item-strong: #dcbc3c; --item-solid: #f0d466; --item-on-solid: #3a3105; }
 
 /* Photoshoot types — the type pill's colours: studio purple, editorial pink. */
 [data-shoot-type="studio"]    { --item-bg: #ece6fb; --item-fg: #5a3aa8; --item-strong: #7c4fd6; --item-solid: #7c4fd6; --item-on-solid: #fff; }
@@ -5671,16 +5671,18 @@ span.dash-event { cursor: pointer; /* clicking selects the day */ }
   box-shadow: none;
 }
 
-.cal-filter-btn[data-kind="campaign"].is-active { background: #e5bc00; border-color: #e5bc00; color: #2e2600; }
+.cal-filter-btn[data-kind="campaign"].is-active { background: #dcbc3c; border-color: #dcbc3c; color: #3a3105; }
 .cal-filter-btn[data-kind="show"].is-active     { background: #2563eb; border-color: #2563eb; }
 .cal-filter-btn[data-kind="shoot"].is-active    { background: #7c4fd6; border-color: #7c4fd6; }
 .cal-filter-btn[data-kind="email"].is-active,
 .cal-filter-btn[data-kind="banner"].is-active,
-.cal-filter-btn[data-kind="social"].is-active   { background: #1f2937; border-color: #1f2937; }
+.cal-filter-btn[data-kind="social"].is-active,
+.cal-filter-btn[data-kind="video"].is-active    { background: #1f2937; border-color: #1f2937; }
 
 .payroll-task[data-kind="email"] .payroll-task-icon,
 .payroll-task[data-kind="banner"] .payroll-task-icon,
-.payroll-task[data-kind="social"] .payroll-task-icon { color: var(--text-muted); }
+.payroll-task[data-kind="social"] .payroll-task-icon,
+.payroll-task[data-kind="video"] .payroll-task-icon { color: var(--text-muted); }
 
 /* ── Cards ── */
 .schedule-card { border-left: 3px solid var(--item-strong); }
@@ -10220,28 +10222,15 @@ button.dash-event[data-bar]:hover { filter: none; }
 }
 
 /* ============================================================
-   Narrow pane header — two rows instead of one squeezed row
+   Narrow pane header (any pane under 520px, e.g. Home's 440px one)
 
-   Row one: the title, the ⋯ menu and ✕. Row two: everything else in the
-   header's actions (layout switch, status). Any pane under 520px wide.
+   The title takes the room the status, ⋯ and ✕ leave it, a size down.
    ============================================================ */
 
 @container (max-width: 520px) {
-  .item-pane-header,
-  .item-pane[data-layout="cards"] .item-pane-header { flex-wrap: wrap; gap: 8px 6px; }
-
-  .item-pane-title-group {
-    order: -1;
-    flex: 1 1 calc(100% - 84px);
-  }
-
-  .item-pane-header-actions { display: contents; }
-
-  .item-pane-header-actions > * { order: 3; }
-  .item-pane-header-actions > .header-menu-wrap { order: 1; align-self: flex-start; }
-  .item-pane-header-actions > .item-pane-close { order: 2; align-self: flex-start; }
-
+  .item-pane[data-layout="cards"] .item-pane-header { gap: 10px 8px; }
   .item-pane[data-layout="cards"] .item-pane-title { font-size: 18px; }
+  .item-pane-header-actions { align-self: flex-start; }
 }
 
 /* A narrowed calendar: the header's controls drop to a second line rather
@@ -10548,3 +10537,340 @@ a.email-product-url:hover { color: var(--text); text-decoration: underline; }
 .email-mc-action { align-self: flex-end; margin-top: 2px; font-size: 12px; font-weight: 600; color: var(--text); }
 .email-mc-more { align-self: flex-start; font-size: 12.5px; font-weight: 500; }
 .email-mc-more[hidden] { display: none; }
+
+/* ============================================================
+   Item pane — notes in the header card
+
+   The header (title, status, menu) and the notes under it stay fixed; only
+   the tasks below scroll. The box keeps a light border here so it reads as
+   something to type in, inside the card.
+   ============================================================ */
+
+.item-pane-header-notes {
+  order: 10;            /* always the header's last row */
+  flex: 1 1 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+
+.item-pane-header-notes-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.item-pane-header-notes-head .item-pane-section-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.item-pane-header-notes-head .company-notes-status { margin-left: auto; }
+
+.item-pane[data-layout="cards"] .item-pane-header-notes .item-pane-notes {
+  min-height: 64px;
+  max-height: 220px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: #fafafa;
+  font-size: 12.5px;
+  resize: vertical;
+}
+
+.item-pane[data-layout="cards"] .item-pane-header-notes .item-pane-notes:focus {
+  border-color: var(--accent);
+  background: var(--surface);
+  box-shadow: 0 0 0 3px var(--accent-light);
+}
+
+/* ── Pane task cards: Add Task, type → date header, memo, Mark as Complete ── */
+
+/* The Add Task menu hangs out of the section, so the card can't clip it. */
+.item-pane[data-layout="cards"] .item-pane-section { overflow: visible; }
+
+.item-pane[data-layout="cards"] .item-pane-section-head { position: relative; }
+
+.item-task-add { position: relative; margin-left: auto; }
+
+.item-task-add-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  background: var(--surface);
+  font: 600 12px var(--font);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.item-task-add-btn:hover,
+.item-task-add-btn[aria-expanded="true"] { background: var(--bg); }
+
+.item-task-add-btn svg,
+.item-task-complete svg {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.item-task-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: 20;
+  min-width: 150px;
+  padding: 4px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.14);
+  display: flex;
+  flex-direction: column;
+}
+
+.item-task-menu[hidden] { display: none; }
+
+.item-task-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  border: 0;
+  border-radius: 5px;
+  background: none;
+  font: 500 13px var(--font);
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.item-task-menu-item:hover { background: var(--bg); }
+.item-task-menu-item.is-danger { color: var(--danger); }
+.item-task-menu-item.is-danger:hover { background: var(--danger-tint); }
+
+.item-task-menu-icon { width: 15px; height: 15px; color: var(--text-muted); flex: 0 0 auto; }
+
+.item-pane[data-layout="cards"] .item-task-cards { display: flex; flex-direction: column; gap: 10px; }
+
+.item-task-card {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+.item-task-card.is-done { background: var(--bg); }
+
+.item-task-card-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 8px 9px 12px;
+  min-width: 0;
+}
+
+.item-task-card-icon { width: 16px; height: 16px; flex: 0 0 auto; color: var(--text-muted); }
+
+.item-task-type {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.item-task-card.is-done .item-task-type { color: var(--text-muted); text-decoration: line-through; }
+
+.item-task-when {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  font-size: 12px;
+  white-space: nowrap;
+  color: var(--text);
+}
+
+.item-task-when .item-task-due { font-weight: 600; }
+.item-task-when .item-task-relative { color: var(--text-muted); font-size: 11.5px; margin: 0; }
+.item-task-when.is-overdue .item-task-due,
+.item-task-when.is-overdue .item-task-relative { color: var(--danger); }
+
+.item-task-card-head .mc-status {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.item-task-card-menu { position: relative; margin-left: auto; flex: 0 0 auto; }
+
+.item-task-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.item-task-icon-btn svg { fill: currentColor; }
+.item-task-icon-btn:hover,
+.item-task-icon-btn[aria-expanded="true"] { background: var(--bg); color: var(--text); }
+
+.item-task-memo {
+  margin: 0;
+  padding: 0 12px 10px 36px;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--text);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.item-task-edit {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 2px 12px 12px 36px;
+}
+
+.item-task-edit-field { display: flex; flex-direction: column; gap: 4px; }
+
+.item-task-edit-field > span {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.item-task-edit-field input { max-width: 180px; }
+.item-task-edit-field textarea { resize: vertical; min-height: 60px; font-size: 12.5px; }
+
+.item-task-edit-actions { display: flex; justify-content: flex-end; gap: 6px; }
+
+/* The Mailchimp row under an email: who it goes to, and its buttons. */
+.item-task-card .mc-strip {
+  padding: 7px 12px 7px 36px;
+  border-top: 1px dashed var(--border);
+  background: transparent;
+}
+
+.item-task-card .mc-recipients { flex-basis: auto; order: 0; flex: 1 1 auto; min-width: 0; }
+
+.item-task-card-foot {
+  display: flex;
+  padding: 8px 12px;
+  border-top: 1px solid var(--border);
+}
+
+.item-task-complete {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 11px;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  background: var(--surface);
+  font: 600 12px var(--font);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.item-task-complete svg { color: var(--text-muted); }
+.item-task-complete:hover { border-color: #16a34a; color: #15803d; }
+.item-task-complete:hover svg { color: #16a34a; }
+
+.item-task-complete.is-done {
+  background: #e7f6ec;
+  border-color: #a7dcb8;
+  color: #15803d;
+}
+
+.item-task-complete.is-done svg { color: #16a34a; }
+.item-task-complete.is-done:hover { background: #d9f0e1; }
+.item-task-complete:disabled { opacity: 0.6; cursor: default; }
+
+.item-pane[data-layout="cards"] .item-tasks-empty {
+  display: block;
+  font-size: 12.5px;
+  color: var(--text-muted);
+}
+
+.item-task-edit .form-input.is-invalid { border-color: var(--danger); }
+
+/* The count sits with the title; Add Task takes the far right. */
+.item-pane[data-layout="cards"] .item-pane-section-head { justify-content: flex-start; gap: 8px; }
+.item-pane[data-layout="cards"] .item-pane-section-head .item-pane-section-count { margin-left: 0; }
+
+/* ── Task cards, round 2: a colour per type, a type chip, Done in the header ── */
+
+.item-task-card { --task-fg: #475569; --task-bg: #f1f5f9; --task-line: #cbd5e1; }
+.item-task-card[data-kind="email"]  { --task-fg: #3b3fb8; --task-bg: #eceefd; --task-line: #a5aaf0; }
+.item-task-card[data-kind="banner"] { --task-fg: #0b6e66; --task-bg: #e2f5f2; --task-line: #8fd3ca; }
+.item-task-card[data-kind="social"] { --task-fg: #b2490f; --task-bg: #fdeee3; --task-line: #f3b48a; }
+.item-task-card[data-kind="video"]  { --task-fg: #b3214a; --task-bg: #fce8ee; --task-line: #f0a2b8; }
+
+.item-task-card {
+  border-left: 4px solid var(--task-line);
+  overflow: visible;
+}
+
+.item-task-card.is-done { background: var(--surface); }
+.item-task-card.is-done { border-left-color: #a7dcb8; }
+
+.item-task-card-head { gap: 10px; padding: 8px 8px 8px 10px; }
+
+.item-task-type {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px 3px 8px;
+  border-radius: 7px;
+  background: var(--task-bg);
+  color: var(--task-fg);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.item-task-type .item-task-card-icon { width: 14px; height: 14px; color: currentColor; }
+
+.item-task-card.is-done .item-task-type { color: var(--task-fg); text-decoration: none; opacity: 0.6; }
+.item-task-card.is-done .item-task-type > span { text-decoration: line-through; }
+
+.item-task-card-head .item-task-due {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+}
+
+.item-task-card-head .item-task-due.is-overdue { color: var(--danger); }
+.item-task-card.is-done .item-task-due { color: var(--text-muted); }
+
+/* Right-hand group: Mailchimp state, Done, ⋯ */
+.item-task-card-head .mc-status { margin-left: auto; }
+.item-task-card-head .item-task-complete { margin-left: auto; flex: 0 0 auto; }
+.item-task-card-head .mc-status + .item-task-complete { margin-left: 0; }
+.item-task-card-menu { margin-left: 0; }
+
+.item-task-complete { padding: 3px 10px; font-size: 12px; }
+
+.item-task-memo,
+.item-task-edit,
+.item-task-card .mc-strip { padding-left: 12px; }
+
+.item-task-memo { padding-top: 0; }

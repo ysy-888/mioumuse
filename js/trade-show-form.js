@@ -1,8 +1,9 @@
 /**
  * Add / edit trade show modal.
  *
- * Pick the show, set its first and last day, and the email tasks follow from
- * Day 1 — the form previews them so you can see what's about to be scheduled.
+ * Pick the show and set its first and last day. Its emails follow from Day 1;
+ * those, any other tasks and the notes are edited in the side pane
+ * (js/item-pane.js).
  */
 
 let tradeShowFormMode = "create";
@@ -41,40 +42,6 @@ function setTradeShowPickerValue(value) {
 
 function getTradeShowPickerValue() {
   return document.querySelector("#tradeShowFormShow .form-toggle-btn.is-active")?.dataset.value ?? "";
-}
-
-// ── Email preview ────────────────────────────────────────────────────────────
-
-/** The emails these dates would create, so nothing is a surprise on save. */
-function renderTradeShowEmailPreview() {
-  const wrap = document.getElementById("tradeShowFormEmailPreview");
-  if (!wrap) return;
-
-  const startDate = document.getElementById("tradeShowFormStart")?.value ?? "";
-  const tasks = buildTradeShowEmailTasks({ id: "preview", startDate });
-
-  if (tasks.length === 0) {
-    const hint = document.createElement("span");
-    hint.className = "form-hint";
-    hint.textContent = "Set a start date to schedule the emails.";
-    wrap.replaceChildren(hint);
-    return;
-  }
-
-  const list = document.createElement("ul");
-  list.className = "trade-show-email-preview";
-  tasks.forEach(task => {
-    const li = document.createElement("li");
-    const icon = createCalEventIcon(TASK_KIND_EMAIL);
-    const date = document.createElement("span");
-    date.className = "trade-show-email-preview-date";
-    date.textContent = formatTaskDate(task.dueDate);
-    const label = document.createElement("span");
-    label.textContent = task.label;
-    li.append(icon, date, label);
-    list.appendChild(li);
-  });
-  wrap.replaceChildren(list);
 }
 
 // ── Validation ───────────────────────────────────────────────────────────────
@@ -137,10 +104,6 @@ function openTradeShowForm(tradeShowId = null) {
     end.value = tradeShow?.endDate ?? "";
     end.min = tradeShow?.startDate ?? "";
   }
-  const notes = document.getElementById("tradeShowFormNotes");
-  if (notes) notes.value = tradeShow?.notes ?? "";
-
-  renderTradeShowEmailPreview();
   clearTradeShowFormErrors();
   overlay.classList.add("open");
   requestAnimationFrame(() => {
@@ -166,7 +129,6 @@ async function saveTradeShowForm() {
     show: getTradeShowPickerValue(),
     startDate: document.getElementById("tradeShowFormStart")?.value ?? "",
     endDate: document.getElementById("tradeShowFormEnd")?.value ?? "",
-    notes: document.getElementById("tradeShowFormNotes")?.value ?? "",
   };
 
   const invalid = validateTradeShowForm(fields);
@@ -218,9 +180,7 @@ function initTradeShowForm() {
     if (end && start.value && (!end.value || end.value < start.value)) end.value = start.value;
     if (end) end.min = start.value;
     clearTradeShowFormErrors();
-    renderTradeShowEmailPreview();
   });
-  start?.addEventListener("input", renderTradeShowEmailPreview);
   end?.addEventListener("change", clearTradeShowFormErrors);
 
   // Enter saves from either date field.

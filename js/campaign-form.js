@@ -1,21 +1,13 @@
 /**
  * Add / edit campaign modal.
  *
- * Pick the type (Sale unless you say otherwise), name it if you like, set its
- * dates, then add whatever tasks it needs — Email, Banner, Social Media, as
- * many of each as you want. A new task is due on the campaign's start date,
- * and keeps following the start date until you give it a date of its own.
+ * Pick the type (Sale unless you say otherwise), name it if you like, and set
+ * its dates — every day, or only on specific days of the week. Its tasks and
+ * notes are added and edited in the side pane (js/item-pane.js).
  */
 
 let campaignFormMode = "create";
 let campaignFormId = null;
-
-/**
- * The tasks being edited: { id, category, dueDate, followsStart }.
- * `followsStart` is form-only — it's how a task you haven't touched moves
- * with the start date while one you've dated yourself stays put.
- */
-let campaignDraftTasks = [];
 
 // ── Type picker ──────────────────────────────────────────────────────────────
 
@@ -49,102 +41,8 @@ function getCampaignTypeValue() {
   return document.querySelector("#campaignFormType .form-toggle-btn.is-active")?.dataset.value ?? DEFAULT_CAMPAIGN_TYPE;
 }
 
-// ── Task builder ─────────────────────────────────────────────────────────────
-
 function getCampaignFormStart() {
   return document.getElementById("campaignFormStart")?.value ?? "";
-}
-
-function fillCampaignAddTaskButtons() {
-  const row = document.getElementById("campaignFormAddTask");
-  if (!row) return;
-
-  row.replaceChildren(...CAMPAIGN_TASK_CATEGORIES.map(category => {
-    const btn = document.createElement("button");
-    btn.type = "button";
-    btn.className = "btn campaign-add-task-btn";
-    btn.dataset.kind = category.key;
-    btn.append(createCalEventIcon(category.key), document.createTextNode(`+ ${category.label}`));
-    btn.addEventListener("click", () => addCampaignDraftTask(category.key));
-    return btn;
-  }));
-}
-
-function addCampaignDraftTask(category) {
-  campaignDraftTasks.push({
-    id: newCampaignTaskId(),
-    category,
-    dueDate: getCampaignFormStart(),
-    followsStart: true,
-  });
-  renderCampaignDraftTasks();
-  setCampaignFormMessage("");
-  // Land on the new row's date, the one thing you might want to change.
-  const inputs = document.querySelectorAll("#campaignFormTasks .campaign-task-date");
-  inputs[inputs.length - 1]?.focus();
-}
-
-function renderCampaignDraftTasks() {
-  const list = document.getElementById("campaignFormTasks");
-  if (!list) return;
-
-  if (campaignDraftTasks.length === 0) {
-    const hint = document.createElement("span");
-    hint.className = "form-hint";
-    hint.textContent = "No tasks yet — add the emails, banners and posts this campaign needs.";
-    list.replaceChildren(hint);
-    return;
-  }
-
-  list.replaceChildren(...campaignDraftTasks.map(task => {
-    const row = document.createElement("div");
-    row.className = "campaign-task-row";
-    row.dataset.kind = task.category;
-
-    const name = document.createElement("span");
-    name.className = "campaign-task-name";
-    name.append(createCalEventIcon(task.category), document.createTextNode(getCampaignTaskCategoryLabel(task.category)));
-
-    const date = document.createElement("input");
-    date.type = "date";
-    date.className = "form-input campaign-task-date";
-    date.value = task.dueDate;
-    date.setAttribute("aria-label", `${getCampaignTaskCategoryLabel(task.category)} due date`);
-    date.addEventListener("change", () => {
-      task.dueDate = date.value;
-      // Picking the start date again re-attaches it; anything else is its own.
-      task.followsStart = date.value === getCampaignFormStart();
-      date.classList.remove("is-invalid");
-    });
-
-    const remove = document.createElement("button");
-    remove.type = "button";
-    remove.className = "btn-close campaign-task-remove";
-    remove.setAttribute("aria-label", `Remove ${getCampaignTaskCategoryLabel(task.category)} task`);
-    remove.title = "Remove task";
-    remove.textContent = "✕";
-    remove.addEventListener("click", () => {
-      campaignDraftTasks = campaignDraftTasks.filter(t => t !== task);
-      renderCampaignDraftTasks();
-    });
-
-    row.append(name, date, remove);
-    return row;
-  }));
-}
-
-/** Tasks still following the start date move with it. */
-function syncDraftTasksToStart() {
-  const start = getCampaignFormStart();
-  let changed = false;
-  campaignDraftTasks.forEach(task => {
-    if (task.followsStart || !task.dueDate) {
-      task.dueDate = start;
-      task.followsStart = true;
-      changed = true;
-    }
-  });
-  if (changed) renderCampaignDraftTasks();
 }
 
 // ── Specific days ────────────────────────────────────────────────────────────
@@ -248,7 +146,7 @@ function clearCampaignFormErrors() {
 }
 
 /** The first problem with the form, marking the field it belongs to. */
-function validateCampaignForm({ startDate, endDate, tasks }) {
+function validateCampaignForm({ startDate, endDate }) {
   if (!startDate) {
     document.getElementById("campaignFormStart")?.classList.add("is-invalid");
     return "Pick a start date.";
@@ -271,11 +169,6 @@ function validateCampaignForm({ startDate, endDate, tasks }) {
       return "None of the chosen days fall between the start and end dates.";
     }
   }
-  const undated = tasks.findIndex(task => !task.dueDate);
-  if (undated !== -1) {
-    document.querySelectorAll("#campaignFormTasks .campaign-task-date")[undated]?.classList.add("is-invalid");
-    return "Every task needs a due date.";
-  }
   return "";
 }
 
@@ -296,8 +189,6 @@ function openCampaignForm(campaignId = null) {
   setCampaignTypeValue(campaign?.type ?? DEFAULT_CAMPAIGN_TYPE);
   const name = document.getElementById("campaignFormName");
   if (name) name.value = campaign?.name ?? "";
-  const notes = document.getElementById("campaignFormNotes");
-  if (notes) notes.value = campaign?.notes ?? "";
   const start = document.getElementById("campaignFormStart");
   const end = document.getElementById("campaignFormEnd");
   if (start) start.value = campaign?.startDate ?? "";
@@ -307,11 +198,6 @@ function openCampaignForm(campaignId = null) {
   }
   setCampaignFormWeekdays(campaign?.weekdays ?? []);
 
-  campaignDraftTasks = (campaign?.tasks ?? []).map(task => ({
-    ...task,
-    followsStart: task.dueDate === campaign.startDate,
-  }));
-  renderCampaignDraftTasks();
 
   clearCampaignFormErrors();
   overlay.classList.add("open");
@@ -321,7 +207,6 @@ function openCampaignForm(campaignId = null) {
 function closeCampaignForm() {
   document.getElementById("campaignFormOverlay")?.classList.remove("open");
   campaignFormId = null;
-  campaignDraftTasks = [];
 }
 
 function isCampaignFormOpen() {
@@ -339,8 +224,6 @@ async function saveCampaignForm() {
     startDate: getCampaignFormStart(),
     endDate: document.getElementById("campaignFormEnd")?.value ?? "",
     weekdays: getCampaignFormWeekdays(),
-    tasks: campaignDraftTasks.map(({ id, category, dueDate }) => ({ id, category, dueDate })),
-    notes: document.getElementById("campaignFormNotes")?.value ?? "",
   };
 
   const invalid = validateCampaignForm(fields);
@@ -377,7 +260,6 @@ async function saveCampaignForm() {
 
 function initCampaignForm() {
   fillCampaignTypePicker();
-  fillCampaignAddTaskButtons();
   fillCampaignWeekdayButtons();
 
   document.getElementById("campaignFormSpecificDays")?.addEventListener("change", () => {
@@ -399,7 +281,6 @@ function initCampaignForm() {
     if (end && start.value && (!end.value || end.value < start.value)) end.value = start.value;
     if (end) end.min = start.value;
     start.classList.remove("is-invalid");
-    syncDraftTasksToStart();
     updateCampaignDaysHint();
   });
   end?.addEventListener("change", () => {
@@ -407,8 +288,8 @@ function initCampaignForm() {
     updateCampaignDaysHint();
   });
 
-  // Enter saves from any single-line field; buttons, the switch and the
-  // notes box keep their own Enter.
+  // Enter saves from any single-line field; buttons and the switch keep
+  // their own Enter.
   document.getElementById("campaignForm")?.addEventListener("keydown", e => {
     if (e.key !== "Enter" || e.target.tagName === "BUTTON" || e.target.tagName === "TEXTAREA") return;
     if (e.target.type === "checkbox") return;

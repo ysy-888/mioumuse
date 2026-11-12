@@ -171,8 +171,9 @@ function getCampaignTypeLabel(key) {
  */
 const CAMPAIGN_TASK_CATEGORIES = [
   { key: "email", label: "Email" },
-  { key: "banner", label: "Banner" },
+  { key: "banner", label: "Graphic" },  // key kept as "banner": it's what saved tasks store
   { key: "social", label: "Social Media" },
+  { key: "video", label: "Video" },
 ];
 
 const CAMPAIGN_TASK_CATEGORY_KEYS = CAMPAIGN_TASK_CATEGORIES.map(c => c.key);

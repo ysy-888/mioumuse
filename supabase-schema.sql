@@ -25,6 +25,10 @@ create table if not exists trade_shows (
   constraint trade_shows_dates_in_order check (end_date >= start_date)
 );
 
+-- Tasks added by hand (Email, Graphic, Social Media), as on campaigns; the
+-- emails counted back from Day 1 are worked out in the app, not stored.
+alter table trade_shows add column if not exists tasks jsonb not null default '[]';
+
 create table if not exists campaigns (
   id text primary key,
   user_id uuid not null default auth.uid() references auth.users(id) on delete cascade,

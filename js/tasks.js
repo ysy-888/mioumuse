@@ -5,8 +5,9 @@
  * An item has a date range (drawn on the calendar one chip per day) and a
  * list of tasks (drawn on their due dates, each one checkable):
  *
- *   Trade show  tasks derived from Day 1 — TRADE_SHOW_EMAIL_TASKS, counted
- *               back exactly (a weekend date stays on the weekend)
+ *   Trade show  the emails derived from Day 1 — TRADE_SHOW_EMAIL_TASKS,
+ *               counted back exactly (a weekend date stays on the weekend) —
+ *               plus any tasks added by hand, as on a campaign
  *   Campaign    tasks chosen one by one, each with its own due date
  *   Photoshoot  a single day and no tasks — it's done when it's marked
  *               complete, and opens in its own pane (js/photoshoots.js)
@@ -21,6 +22,7 @@ const EVENT_KIND_SHOOT = "shoot";
 const TASK_KIND_EMAIL = "email";
 const TASK_KIND_BANNER = "banner";
 const TASK_KIND_SOCIAL = "social";
+const TASK_KIND_VIDEO = "video";
 
 const TASK_ID_PREFIX_TRADE_SHOW = "ts";
 const TASK_ID_PREFIX_CAMPAIGN = "cp";
@@ -37,6 +39,11 @@ const ITEM_TYPE_PHOTOSHOOT = "photoshoot";
 /** e.g. "ts|ts-abc123|email-3w". */
 function buildEmailTaskId(tradeShowId, emailKey) {
   return `${TASK_ID_PREFIX_TRADE_SHOW}|${tradeShowId}|${emailKey}`;
+}
+
+/** A task added to a show by hand, e.g. "ts|ts-abc123|t-def456". */
+function buildTradeShowTaskId(tradeShowId, taskId) {
+  return `${TASK_ID_PREFIX_TRADE_SHOW}|${tradeShowId}|${taskId}`;
 }
 
 /** e.g. "cp|cp-abc123|t-def456". */
@@ -59,6 +66,40 @@ function buildTradeShowEmailTasks(tradeShow) {
   }));
 }
 
+const TRADE_SHOW_EMAIL_KEYS = new Set(TRADE_SHOW_EMAIL_TASKS.map(email => email.key));
+
+/**
+ * The emails from Day 1 — with any changes saved for them (a memo, a date of
+ * their own, or deleted) — and the tasks added by hand, by due date. Every
+ * task carries `savedId`: the id of the saved entry that edits it.
+ */
+function buildTradeShowTasks(tradeShow) {
+  const saved = tradeShow?.tasks ?? [];
+  const changes = new Map(saved.filter(t => TRADE_SHOW_EMAIL_KEYS.has(t.id)).map(t => [t.id, t]));
+
+  const emails = buildTradeShowEmailTasks(tradeShow).flatMap(email => {
+    const change = changes.get(email.emailKey);
+    if (change?.removed) return [];
+    return [{
+      ...email,
+      dueDate: change?.dueDate || email.dueDate,
+      memo: change?.memo ?? "",
+      savedId: email.emailKey,
+    }];
+  });
+  const added = saved
+    .filter(task => !TRADE_SHOW_EMAIL_KEYS.has(task.id) && task.dueDate)
+    .map(task => ({
+      id: buildTradeShowTaskId(tradeShow.id, task.id),
+      kind: task.category,
+      dueDate: task.dueDate,
+      label: getCampaignTaskCategoryLabel(task.category),
+      memo: task.memo,
+      savedId: task.id,
+    }));
+  return [...emails, ...added].sort((a, b) => a.dueDate.localeCompare(b.dueDate));
+}
+
 /** In due-date order, so a campaign's run-up reads top to bottom. */
 function buildCampaignTasks(campaign) {
   return (campaign?.tasks ?? [])
@@ -68,8 +109,68 @@ function buildCampaignTasks(campaign) {
       kind: task.category,
       dueDate: task.dueDate,
       label: getCampaignTaskCategoryLabel(task.category),
+      memo: task.memo,
+      savedId: task.id,
     }))
     .sort((a, b) => a.dueDate.localeCompare(b.dueDate));
+}
+
+// ── Editing an item's tasks ──────────────────────────────────────────────────
+//
+// From the pane: add, change (due date, memo) and delete, one task at a time.
+// A campaign's and a show's tasks are saved whole on the record.
+
+function getItemSavedTasks(item) {
+  return (item.record.tasks ?? []).map(task => ({ ...task }));
+}
+
+async function saveItemTasks(item, tasks) {
+  if (item.type === ITEM_TYPE_CAMPAIGN) return updateCampaign(item.id, { tasks });
+  return updateTradeShow(item.id, { tasks });
+}
+
+/** A new task of `category`, due on the item's start date. Returns its saved id. */
+async function addItemTask(item, category) {
+  const task = { id: newCampaignTaskId(), category, dueDate: item.startDate, memo: "" };
+  await saveItemTasks(item, [...getItemSavedTasks(item), task]);
+  return task.id;
+}
+
+/** Change a task's due date and memo. */
+async function updateItemTask(item, task, { dueDate, memo }) {
+  const tasks = getItemSavedTasks(item);
+  if (item.type === ITEM_TYPE_TRADE_SHOW && TRADE_SHOW_EMAIL_KEYS.has(task.savedId)) {
+    // Left on its Day 1 date, a show email keeps following Day 1 ("").
+    const counted = buildTradeShowEmailTasks(item.record).find(e => e.emailKey === task.savedId);
+    if (counted && counted.dueDate === dueDate) dueDate = "";
+  }
+  const saved = tasks.find(t => t.id === task.savedId);
+  if (saved) {
+    saved.dueDate = dueDate;
+    saved.memo = memo;
+  } else {
+    // A Day 1 email with no changes saved yet.
+    tasks.push({ id: task.savedId, category: task.kind, dueDate, memo });
+  }
+  await saveItemTasks(item, tasks);
+}
+
+/** Delete a task, with its checkmark and Mailchimp link (not the Mailchimp campaign). */
+async function deleteItemTask(item, task) {
+  let tasks = getItemSavedTasks(item);
+  if (item.type === ITEM_TYPE_TRADE_SHOW && TRADE_SHOW_EMAIL_KEYS.has(task.savedId)) {
+    // A Day 1 email can't be un-worked-out, so it's marked as deleted.
+    const saved = tasks.find(t => t.id === task.savedId);
+    if (saved) saved.removed = true;
+    else tasks.push({ id: task.savedId, category: task.kind, dueDate: "", memo: "", removed: true });
+    await saveItemTasks(item, tasks);
+    await deleteCompletedTasks([task.id].filter(isTaskComplete));
+    await deleteTaskLinks([task.id]);
+    return;
+  }
+  tasks = tasks.filter(t => t.id !== task.savedId);
+  // The record's own update clears the checkmark and link of a task it lost.
+  await saveItemTasks(item, tasks);
 }
 
 // ── Items ────────────────────────────────────────────────────────────────────
@@ -86,7 +187,7 @@ function tradeShowToItem(tradeShow) {
     weekdays: [],
     dayKind: EVENT_KIND_SHOW,
     color: { attr: "show", value: tradeShow.show },
-    tasks: buildTradeShowEmailTasks(tradeShow),
+    tasks: buildTradeShowTasks(tradeShow),
     groupId: `${TASK_ID_PREFIX_TRADE_SHOW}|${tradeShow.id}|days`,
   };
 }
@@ -374,13 +475,15 @@ const CAL_EVENT_ICON_PATHS = {
   [EVENT_KIND_SHOOT]: ["M3 8h4l2-3h6l2 3h4v11H3z", "M12 10a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7z"],
   // Email — an envelope.
   [TASK_KIND_EMAIL]: ["M3 5h18v14H3z", "m3 6 9 7 9-7"],
-  // Banner — a wide picture frame.
+  // Graphic (key "banner") — a wide picture frame.
   [TASK_KIND_BANNER]: ["M2 6h20v12H2z", "m2 16 6-5 4 3 3-2 7 5", "M16 9.5h.01"],
   // Social media — a speech bubble.
   [TASK_KIND_SOCIAL]: ["M21 12a8 8 0 0 1-11.6 7.1L3 21l1.9-6.4A8 8 0 1 1 21 12z"],
+  // Video — a frame with a play button.
+  [TASK_KIND_VIDEO]: ["M3 5h18v14H3z", "m10 9 5 3-5 3z"],
 };
 
-/** A glyph per kind, so days, emails, banners and posts read apart at a glance. */
+/** A glyph per kind, so days, emails, graphics, posts and videos read apart at a glance. */
 function createCalEventIcon(kind) {
   const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
   svg.setAttribute("class", "dash-event-icon");

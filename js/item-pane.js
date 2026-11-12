@@ -4,10 +4,12 @@
  * beside its table. The list stays where it was underneath, with the open
  * row highlighted, so you can click from one record to the next.
  *
- *   header   name, type and dates, layout switch, status, ⋯ menu, close
- *   summary  the record's fields at a glance (compact layout only)
- *   tasks    checkable, in due-date order, overdue dates in red
- *   notes    saves as you type
+ * Card view: a header card, then the tasks as a card on the grey background.
+ *
+ *   header   name, type, dates and length, status, ⋯ menu, close — and the
+ *            notes, which save as you type and stay put while tasks scroll
+ *   tasks    a card each, in due-date order: type, due date, memo, a Mark as
+ *            Complete button and a ⋯ menu to edit or delete; Add Task adds one
  */
 
 /** { type, id } of the item in the pane, or null when it's closed. */
@@ -21,55 +23,9 @@ function isItemPaneOpen() {
   return paneItemRef !== null;
 }
 
-// ── Layout ───────────────────────────────────────────────────────────────────
-//
-// Two looks for the same pane, switched from its header:
-//   compact  the PO App packing list pane — slim header, grey summary grid
-//   cards    the full-page detail design — a header card, then Tasks and
-//            Notes as cards of their own on the grey page background
-// The choice is a per-browser preference, so it's remembered locally.
-
-const PANE_LAYOUTS = ["compact", "cards"];
-const PANE_LAYOUT_STORAGE_BASE = "paneLayout";
-
-let paneLayout = loadPaneLayout();
-
-function loadPaneLayout() {
-  try {
-    const saved = localStorage.getItem(scopedStorageKey(PANE_LAYOUT_STORAGE_BASE));
-    return PANE_LAYOUTS.includes(saved) ? saved : "compact";
-  } catch {
-    return "compact";
-  }
-}
-
-function applyPaneLayout() {
-  const pane = document.getElementById("itemPane");
-  if (pane) pane.dataset.layout = paneLayout;
-  document.querySelectorAll("#itemPaneLayoutToggle .item-pane-layout-btn").forEach(btn => {
-    const active = btn.dataset.layout === paneLayout;
-    btn.classList.toggle("is-active", active);
-    btn.setAttribute("aria-pressed", active ? "true" : "false");
-  });
-}
-
-function setPaneLayout(layout) {
-  if (!PANE_LAYOUTS.includes(layout) || layout === paneLayout) return;
-  paneLayout = layout;
-  try {
-    localStorage.setItem(scopedStorageKey(PANE_LAYOUT_STORAGE_BASE), layout);
-  } catch {
-    /* preference is best-effort */
-  }
-  applyPaneLayout();
-  // The header line differs between the two, so redraw what's open.
-  const item = getPaneItem();
-  if (item) renderPaneHeader(item);
-}
-
 const ITEM_TYPE_META = {
-  [ITEM_TYPE_TRADE_SHOW]: { noun: "trade show", tasksTitle: "Email tasks", editLabel: "Edit show & dates" },
-  [ITEM_TYPE_CAMPAIGN]: { noun: "campaign", tasksTitle: "Tasks", editLabel: "Edit campaign & tasks" },
+  [ITEM_TYPE_TRADE_SHOW]: { noun: "trade show", tasksTitle: "Tasks", editLabel: "Edit trade show" },
+  [ITEM_TYPE_CAMPAIGN]: { noun: "campaign", tasksTitle: "Tasks", editLabel: "Edit campaign" },
 };
 
 // ── Header ───────────────────────────────────────────────────────────────────
@@ -89,23 +45,18 @@ function renderPaneHeader(item) {
     const kind = item.type === ITEM_TYPE_CAMPAIGN
       ? getCampaignTypeLabel(item.record.type)
       : "Trade show";
-    if (paneLayout === "cards") {
-      // The full-page header line: what it is, when, and how long — the
-      // card view has no summary grid to carry the length instead.
-      const parts = [kind, formatDateRange(item.startDate, item.endDate), describeItemLength(item)];
-      subtitle.replaceChildren();
-      parts.forEach((part, i) => {
-        if (i > 0) {
-          const sep = document.createElement("span");
-          sep.className = "sep";
-          sep.textContent = "•";
-          subtitle.appendChild(sep);
-        }
-        subtitle.appendChild(document.createTextNode(part));
-      });
-    } else {
-      subtitle.textContent = `${kind} · ${formatDateRange(item.startDate, item.endDate)}`;
-    }
+    // What it is, when, and how long.
+    const parts = [kind, formatDateRange(item.startDate, item.endDate), describeItemLength(item)];
+    subtitle.replaceChildren();
+    parts.forEach((part, i) => {
+      if (i > 0) {
+        const sep = document.createElement("span");
+        sep.className = "sep";
+        sep.textContent = "•";
+        subtitle.appendChild(sep);
+      }
+      subtitle.appendChild(document.createTextNode(part));
+    });
   }
 
   const status = document.getElementById("itemPaneStatus");
@@ -122,48 +73,293 @@ function renderPaneHeader(item) {
   if (del) del.textContent = `Delete ${meta.noun}`;
 }
 
-// ── Summary ──────────────────────────────────────────────────────────────────
-
-function renderPaneSummary(item) {
-  const wrap = document.getElementById("itemPaneSummary");
-  if (!wrap) return;
-
-  const { done, total } = getItemTaskProgress(item);
-  const next = getNextOpenTask(item);
-
-  const fields = [
-    item.type === ITEM_TYPE_CAMPAIGN
-      ? ["Type", getCampaignTypeLabel(item.record.type)]
-      : ["Show", getTradeShowLabel(item.record.show)],
-    item.type === ITEM_TYPE_CAMPAIGN && item.record.name ? ["Name", item.record.name] : null,
-    ["Start", formatTaskDate(item.startDate)],
-    ["End", formatTaskDate(item.endDate)],
-    ["Length", describeItemLength(item)],
-    ["Done", total ? `${done} of ${total} tasks` : "No tasks yet"],
-    ["Next due", next ? `${formatTaskDate(next.dueDate)} · ${next.label}` : EMPTY_DISPLAY],
-  ].filter(Boolean);
-
-  wrap.replaceChildren(...fields.flatMap(([label, value]) => {
-    const l = document.createElement("span");
-    l.className = "item-pane-label";
-    l.textContent = label;
-    const v = document.createElement("span");
-    v.className = "item-pane-value";
-    v.textContent = value;
-    if (label === "Next due" && next && isTaskOverdue(next)) v.classList.add("is-overdue");
-    return [l, v];
-  }));
-}
-
 // ── Tasks ────────────────────────────────────────────────────────────────────
 
-/** "in 12 days", "today", "3 days ago". */
-function describeDaysUntil(dueYmd) {
-  const n = daysBetween(todayYmd(), dueYmd);
-  if (n === 0) return "today";
-  if (n === 1) return "tomorrow";
-  if (n === -1) return "yesterday";
-  return n > 0 ? `in ${n} days` : `${-n} days ago`;
+/** Saved id of the task open for editing in the pane, or null. */
+let paneEditingTaskId = null;
+
+function paneIconButton(label, paths, onClick) {
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "item-task-icon-btn";
+  btn.setAttribute("aria-label", label);
+  btn.title = label;
+  btn.innerHTML = `<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">${paths}</svg>`;
+  btn.addEventListener("click", e => {
+    e.stopPropagation();
+    onClick(btn);
+  });
+  return btn;
+}
+
+/** Close every task menu and the Add Task menu in the pane. */
+function closePaneTaskMenus(except = null) {
+  document.querySelectorAll("#itemPane .item-task-menu").forEach(menu => {
+    if (menu === except) return;
+    menu.hidden = true;
+    menu.previousElementSibling?.setAttribute("aria-expanded", "false");
+  });
+}
+
+function togglePaneTaskMenu(btn, menu) {
+  const open = menu.hidden;
+  closePaneTaskMenus(menu);
+  menu.hidden = !open;
+  btn.setAttribute("aria-expanded", open ? "true" : "false");
+}
+
+function paneMenuItem(label, onClick, danger = false) {
+  const item = document.createElement("button");
+  item.type = "button";
+  item.className = "item-task-menu-item" + (danger ? " is-danger" : "");
+  item.setAttribute("role", "menuitem");
+  item.textContent = label;
+  item.addEventListener("click", e => {
+    e.stopPropagation();
+    closePaneTaskMenus();
+    onClick();
+  });
+  return item;
+}
+
+/** The "+ Add Task" button in the section head, with its menu of types. */
+function renderPaneAddTask(item) {
+  const head = document.querySelector("#itemPane .item-pane-section-head");
+  if (!head) return;
+  head.querySelector(".item-task-add")?.remove();
+
+  const wrap = document.createElement("div");
+  wrap.className = "item-task-add";
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "item-task-add-btn";
+  btn.setAttribute("aria-haspopup", "menu");
+  btn.setAttribute("aria-expanded", "false");
+  btn.innerHTML = '<svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg><span>Add Task</span>';
+
+  const menu = document.createElement("div");
+  menu.className = "item-task-menu item-task-add-menu";
+  menu.setAttribute("role", "menu");
+  menu.hidden = true;
+  CAMPAIGN_TASK_CATEGORIES.forEach(cat => {
+    const option = paneMenuItem(cat.label, () => addPaneTask(item, cat.key));
+    const icon = createCalEventIcon(cat.key);
+    icon.classList.add("item-task-menu-icon");
+    option.prepend(icon);
+    option.dataset.kind = cat.key;
+    menu.appendChild(option);
+  });
+
+  btn.addEventListener("click", e => {
+    e.stopPropagation();
+    togglePaneTaskMenu(btn, menu);
+  });
+  wrap.append(btn, menu);
+  head.appendChild(wrap);
+}
+
+async function addPaneTask(item, category) {
+  try {
+    const id = await addItemTask(item, category);
+    paneEditingTaskId = id;
+    refreshTaskViews();
+    document.querySelector(`#itemPane .item-task-card[data-saved-id="${CSS.escape(id)}"]`)
+      ?.scrollIntoView({ block: "nearest" });
+  } catch (err) {
+    showIndicator(err.message || "Could not add task.", "error");
+  }
+}
+
+async function deletePaneTask(item, task) {
+  if (!confirm(`Delete the ${task.label} task due ${formatTaskDateShort(task.dueDate)}?`)) return;
+  // Its Mailchimp draft, if any, is a separate question.
+  await offerToDeleteLinkedCampaigns([task]);
+  try {
+    await deleteItemTask(item, task);
+    if (paneEditingTaskId === task.savedId) paneEditingTaskId = null;
+    refreshTaskViews();
+    showIndicator("Task deleted", "success");
+  } catch (err) {
+    showIndicator(err.message || "Could not delete task.", "error");
+  }
+}
+
+/** Due date and memo, edited in place on the card. */
+function createPaneTaskEditor(item, task) {
+  const form = document.createElement("form");
+  form.className = "item-task-edit";
+  form.noValidate = true;
+
+  const dateField = document.createElement("label");
+  dateField.className = "item-task-edit-field";
+  const dateLabel = document.createElement("span");
+  dateLabel.textContent = "Due date";
+  const date = document.createElement("input");
+  date.type = "date";
+  date.className = "form-input";
+  date.value = task.dueDate;
+  date.required = true;
+  dateField.append(dateLabel, date);
+
+  const memoField = document.createElement("label");
+  memoField.className = "item-task-edit-field";
+  const memoLabel = document.createElement("span");
+  memoLabel.textContent = "Memo";
+  const memo = document.createElement("textarea");
+  memo.className = "form-input";
+  memo.rows = 3;
+  memo.value = task.memo ?? "";
+  memoField.append(memoLabel, memo);
+
+  const actions = document.createElement("div");
+  actions.className = "item-task-edit-actions";
+  const cancel = document.createElement("button");
+  cancel.type = "button";
+  cancel.className = "btn";
+  cancel.textContent = "Cancel";
+  cancel.addEventListener("click", () => {
+    paneEditingTaskId = null;
+    renderPaneTasks(item);
+  });
+  const saveBtn = document.createElement("button");
+  saveBtn.type = "submit";
+  saveBtn.className = "btn btn-primary";
+  saveBtn.textContent = "Save";
+  actions.append(cancel, saveBtn);
+
+  form.addEventListener("submit", async e => {
+    e.preventDefault();
+    if (!date.value) {
+      date.classList.add("is-invalid");
+      date.focus();
+      return;
+    }
+    saveBtn.disabled = true;
+    try {
+      await updateItemTask(item, task, { dueDate: date.value, memo: memo.value.trim() });
+      paneEditingTaskId = null;
+      refreshTaskViews();
+    } catch (err) {
+      saveBtn.disabled = false;
+      showIndicator(err.message || "Could not save task.", "error");
+    }
+  });
+  form.addEventListener("keydown", e => {
+    if (e.key === "Escape") {
+      e.stopPropagation();
+      cancel.click();
+    }
+  });
+  date.addEventListener("input", () => date.classList.remove("is-invalid"));
+
+  form.append(dateField, memoField, actions);
+  requestAnimationFrame(() => date.focus());
+  return form;
+}
+
+function createPaneTaskCard(item, task) {
+  const done = isTaskComplete(task.id);
+  const card = document.createElement("article");
+  card.className = "item-task-card" + (done ? " is-done" : "");
+  card.dataset.kind = task.kind;
+  card.dataset.taskId = task.id;
+  card.dataset.savedId = task.savedId;
+
+  // Header: what it is (a chip in the type's colour), when it's due, then
+  // the email's Mailchimp state, Done and the ⋯ menu on the right.
+  const head = document.createElement("div");
+  head.className = "item-task-card-head";
+
+  const type = document.createElement("span");
+  type.className = "item-task-type";
+  const icon = createCalEventIcon(task.kind);
+  icon.classList.add("item-task-card-icon");
+  const typeText = document.createElement("span");
+  typeText.textContent = task.label;
+  type.append(icon, typeText);
+
+  const due = document.createElement("span");
+  due.className = "item-task-due";
+  due.textContent = formatTaskDateShort(task.dueDate);
+  if (isTaskOverdue(task)) {
+    due.classList.add("is-overdue");
+    due.title = "Overdue";
+  }
+
+  head.append(type, due);
+
+  // A linked email that's gone out shows nothing more than Done — its
+  // report is in the ⋯ menu.
+  const mcLink = task.kind === TASK_KIND_EMAIL ? getTaskLink(task.id) : null;
+  const mcCampaign = mcLink ? getMcCampaign(mcLink.campaignId) : null;
+  const mcSent = mcCampaign?.status === "sent" && !mcCampaign.missing;
+
+  // An email's Mailchimp state sits in the header until it's sent.
+  if (task.kind === TASK_KIND_EMAIL && !mcSent) {
+    const pill = createMcStatusPill(task.id);
+    if (pill) head.appendChild(pill);
+  }
+
+  const complete = document.createElement("button");
+  complete.type = "button";
+  complete.className = "item-task-complete" + (done ? " is-done" : "");
+  complete.innerHTML = '<svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg><span>Done</span>';
+  complete.title = done ? "Mark as not done" : "Mark as done";
+  complete.setAttribute("aria-pressed", done ? "true" : "false");
+  complete.addEventListener("click", async e => {
+    e.stopPropagation();
+    complete.disabled = true;
+    try {
+      await setTaskComplete(task.id, !done);
+      refreshTaskViews();
+    } catch (err) {
+      complete.disabled = false;
+      showIndicator(err.message || "Could not update task.", "error");
+    }
+  });
+  head.appendChild(complete);
+
+  const menuWrap = document.createElement("div");
+  menuWrap.className = "item-task-card-menu";
+  const menu = document.createElement("div");
+  menu.className = "item-task-menu";
+  menu.setAttribute("role", "menu");
+  menu.hidden = true;
+  menu.append(
+    paneMenuItem("Edit", () => {
+      paneEditingTaskId = task.savedId;
+      renderPaneTasks(item);
+    }),
+    paneMenuItem("Delete", () => deletePaneTask(item, task), true),
+  );
+  if (mcSent && mcCampaign.reportUrl) {
+    const report = paneMenuItem("Report ↗", () => window.open(mcCampaign.reportUrl, "_blank", "noopener"));
+    menu.insertBefore(report, menu.lastChild);
+  }
+  const menuBtn = paneIconButton("Task options",
+    '<circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/>',
+    btn => togglePaneTaskMenu(btn, menu));
+  menuBtn.setAttribute("aria-haspopup", "menu");
+  menuBtn.setAttribute("aria-expanded", "false");
+  menuWrap.append(menuBtn, menu);
+  head.appendChild(menuWrap);
+  card.appendChild(head);
+
+  // Body: the memo — or the editor for it.
+  if (paneEditingTaskId === task.savedId) {
+    card.classList.add("is-editing");
+    card.appendChild(createPaneTaskEditor(item, task));
+  } else if (task.memo) {
+    const memo = document.createElement("p");
+    memo.className = "item-task-memo";
+    memo.textContent = task.memo;
+    card.appendChild(memo);
+  }
+
+  // A linked email shows who it goes to and its Mailchimp buttons.
+  if (mcLink && !mcSent) card.appendChild(createMailchimpStrip(task, item));
+
+  return card;
 }
 
 function renderPaneTasks(item) {
@@ -177,39 +373,22 @@ function renderPaneTasks(item) {
   const count = document.getElementById("itemPaneTasksCount");
   if (count) count.textContent = total ? `${done} of ${total} done` : "";
 
+  renderPaneAddTask(item);
+
+  // A task that's gone (deleted elsewhere) can't stay open for editing.
+  if (paneEditingTaskId && !item.tasks.some(t => t.savedId === paneEditingTaskId)) paneEditingTaskId = null;
+
   if (total === 0) {
     const empty = document.createElement("div");
     empty.className = "item-tasks-empty";
-    const text = document.createElement("span");
-    text.textContent = "No tasks yet.";
-    const add = document.createElement("button");
-    add.type = "button";
-    add.className = "btn";
-    add.textContent = "Add tasks";
-    add.addEventListener("click", () => openCampaignForm(item.id));
-    empty.append(text, add);
+    empty.textContent = "No tasks yet. Use Add Task to add an email, graphic, social media post or video.";
     body.replaceChildren(empty);
     return;
   }
 
   const list = document.createElement("div");
-  list.className = "item-task-list";
-  item.tasks.forEach(task => {
-    const row = createTaskCheckbox(task);
-    const relative = document.createElement("span");
-    relative.className = "item-task-relative";
-    relative.textContent = describeDaysUntil(task.dueDate);
-    row.appendChild(relative);
-    if (task.kind !== TASK_KIND_EMAIL) {
-      list.appendChild(row);
-      return;
-    }
-    // Email tasks carry their Mailchimp controls underneath.
-    const group = document.createElement("div");
-    group.className = "item-task-group";
-    group.append(row, createMailchimpStrip(task, item));
-    list.appendChild(group);
-  });
+  list.className = "item-task-list item-task-cards";
+  item.tasks.forEach(task => list.appendChild(createPaneTaskCard(item, task)));
   body.replaceChildren(list);
 }
 
@@ -258,9 +437,6 @@ function renderItemNotes(item) {
   clearTimeout(notesSaveTimer);
   notesSaveTimer = null;
   box.value = item?.record.notes ?? "";
-  box.placeholder = item?.type === ITEM_TYPE_CAMPAIGN
-    ? "Offer details, discount codes, platforms, links to artwork…"
-    : "Booth number, hotel, shipping deadlines, who's going…";
   setNotesStatus("");
 }
 
@@ -284,7 +460,6 @@ function initItemNotes() {
 
 function renderItemPane(item) {
   renderPaneHeader(item);
-  renderPaneSummary(item);
   renderPaneTasks(item);
 }
 
@@ -306,6 +481,7 @@ function openItemPane(type, id) {
   closeShootPane();
   // Moving straight from one record to another shouldn't drop a pending note.
   if (paneItemRef && (paneItemRef.type !== type || paneItemRef.id !== id)) flushItemNotes();
+  if (!paneItemRef || paneItemRef.type !== type || paneItemRef.id !== id) paneEditingTaskId = null;
   paneItemRef = { type, id };
 
   renderItemPane(item);
@@ -321,6 +497,7 @@ function closeItemPane() {
   // Flush before dropping the ref the flush needs to resolve the record.
   flushItemNotes();
   paneItemRef = null;
+  paneEditingTaskId = null;
   closeItemPaneMenu();
   const pane = document.getElementById("itemPane");
   if (pane) pane.hidden = true;
@@ -389,17 +566,17 @@ function initItemPaneMenu() {
     btn.setAttribute("aria-expanded", open ? "true" : "false");
   });
 
+  // A click anywhere else closes the task menus too.
   document.addEventListener("click", e => {
+    if (!e.target.closest?.(".item-task-menu")) closePaneTaskMenus();
     if (menu.hidden) return;
     if (menu.contains(e.target) || btn.contains(e.target)) return;
     closeItemPaneMenu();
   });
 
-  document.getElementById("itemMenuEdit")?.addEventListener("click", async () => {
+  document.getElementById("itemMenuEdit")?.addEventListener("click", () => {
     closeItemPaneMenu();
     if (!paneItemRef) return;
-    // The form edits notes too, so it has to open on what's actually saved.
-    await flushItemNotes();
     if (paneItemRef.type === ITEM_TYPE_CAMPAIGN) openCampaignForm(paneItemRef.id);
     else openTradeShowForm(paneItemRef.id);
   });
@@ -420,17 +597,17 @@ function initItemPane() {
 
   document.getElementById("itemPaneClose")?.addEventListener("click", closeItemPane);
 
-  applyPaneLayout();
-  document.querySelectorAll("#itemPaneLayoutToggle .item-pane-layout-btn").forEach(btn => {
-    btn.addEventListener("click", () => setPaneLayout(btn.dataset.layout));
-  });
-
   document.addEventListener("keydown", e => {
     if (e.key !== "Escape" || !isItemPaneOpen()) return;
     // Let an open modal or menu take Escape first.
     if (isAnyFormOpen()) return;
     if (!document.getElementById("itemPaneMenu")?.hidden) {
       closeItemPaneMenu();
+      return;
+    }
+    const taskMenu = document.querySelector("#itemPane .item-task-menu:not([hidden])");
+    if (taskMenu) {
+      closePaneTaskMenus();
       return;
     }
     closeItemPane();

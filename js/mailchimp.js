@@ -183,6 +183,19 @@ function createMcTaskBadge(taskId) {
   return badge;
 }
 
+/** The full status pill ("Sent · Thu, Nov 26…") for a linked task, or null. */
+function createMcStatusPill(taskId) {
+  const link = getTaskLink(taskId);
+  if (!link) return null;
+  const { label, tone } = describeMcStatus(getMcCampaign(link.campaignId));
+  const pill = document.createElement("span");
+  pill.className = "mc-status";
+  pill.dataset.tone = tone;
+  pill.textContent = label;
+  pill.title = `Mailchimp: ${label}`;
+  return pill;
+}
+
 function mcButton(label, onClick, extraClass = "") {
   const btn = document.createElement("button");
   btn.type = "button";
@@ -206,11 +219,6 @@ function createMailchimpStrip(task, item) {
   strip.className = "mc-strip";
   strip.dataset.taskId = task.id;
 
-  const logo = document.createElement("span");
-  logo.className = "mc-logo";
-  logo.textContent = "Mailchimp";
-  strip.appendChild(logo);
-
   const link = getTaskLink(task.id);
 
   if (!link) {
@@ -232,24 +240,8 @@ function createMailchimpStrip(task, item) {
     return strip;
   }
 
+  // Its state shows in the task card's header (createMcStatusPill).
   const campaign = getMcCampaign(link.campaignId);
-  const { label, tone } = describeMcStatus(campaign);
-
-  const info = document.createElement("span");
-  info.className = "mc-info";
-  const badge = document.createElement("span");
-  badge.className = "mc-status";
-  badge.dataset.tone = tone;
-  badge.textContent = label;
-  info.appendChild(badge);
-  if (campaign?.subject) {
-    const subject = document.createElement("span");
-    subject.className = "mc-subject";
-    subject.textContent = campaign.subject;
-    subject.title = `Subject: ${campaign.subject}`;
-    info.appendChild(subject);
-  }
-  strip.appendChild(info);
 
   // Who it goes to: the audience, narrowed when a segment or tags are set.
   if (campaign && !campaign.missing && campaign.listName) {
@@ -278,22 +270,10 @@ function createMailchimpStrip(task, item) {
     open.addEventListener("click", e => e.stopPropagation());
     actions.appendChild(open);
   }
-  actions.appendChild(mcButton("Unlink", () => unlinkTask(task)));
   if (editable) actions.appendChild(mcButton("Delete", () => deleteLinkedCampaign(task), "mc-btn--danger"));
   strip.appendChild(actions);
 
   return strip;
-}
-
-async function unlinkTask(task) {
-  if (!confirm("Unlink this task from its Mailchimp campaign? The campaign stays in Mailchimp.")) return;
-  try {
-    await deleteTaskLinks([task.id]);
-    refreshTaskViews();
-    showIndicator("Unlinked from Mailchimp", "success");
-  } catch (err) {
-    showIndicator(err.message || "Could not unlink.", "error");
-  }
 }
 
 async function deleteLinkedCampaign(task) {
