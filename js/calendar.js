@@ -32,11 +32,42 @@ let calScrollEl = null;
 let calMonthAnchors = {};
 let calScrollRaf = 0;
 
-/** Every kind the filter knows about — used to tell "all on" from "narrowed". */
-const CAL_KINDS = [EVENT_KIND_SHOW, EVENT_KIND_CAMPAIGN, EVENT_KIND_SHOOT, TASK_KIND_EMAIL, TASK_KIND_BANNER, TASK_KIND_SOCIAL, TASK_KIND_VIDEO];
+/**
+ * The filter: three types, each with the things under it — a campaign's or a
+ * show's task types, a photoshoot's kind (Studio / Editorial). A type that's
+ * off hides its days and its tasks; under a type that's on, an unticked task
+ * type hides just those tasks.
+ */
+const CAL_TASK_SUBFILTERS = [
+  { key: TASK_KIND_EMAIL, label: "Email" },
+  { key: TASK_KIND_SOCIAL, label: "Social Media" },
+  { key: TASK_KIND_BANNER, label: "Graphic" },
+  { key: TASK_KIND_VIDEO, label: "Video" },
+];
 
-/** Which kinds are shown. All on by default. */
-let calFilterSelection = new Set(CAL_KINDS);
+const CAL_TYPE_FILTERS = [
+  { key: EVENT_KIND_CAMPAIGN, label: "Campaign", subs: CAL_TASK_SUBFILTERS },
+  { key: EVENT_KIND_SHOW, label: "Trade Show", subs: CAL_TASK_SUBFILTERS },
+  { key: EVENT_KIND_SHOOT, label: "Photoshoot", subs: PHOTOSHOOT_TYPES.map(t => ({ key: t.key, label: t.label })) },
+];
+
+/** Types shown, and under each the sub-filters ticked. All on by default. */
+let calTypeOn = new Set(CAL_TYPE_FILTERS.map(t => t.key));
+let calSubOn = Object.fromEntries(CAL_TYPE_FILTERS.map(t => [t.key, new Set(t.subs.map(sub => sub.key))]));
+
+/** Whether the item's days show: its type is on (and, for a shoot, its kind). */
+function isCalItemShown(item) {
+  if (!calTypeOn.has(item.dayKind)) return false;
+  if (item.type === ITEM_TYPE_PHOTOSHOOT && PHOTOSHOOT_TYPE_KEYS.includes(item.record.type)) {
+    return calSubOn[EVENT_KIND_SHOOT].has(item.record.type);
+  }
+  return true;
+}
+
+/** Whether one of the item's tasks shows: its type is on and the task type ticked. */
+function isCalTaskShown(item, task) {
+  return calTypeOn.has(item.dayKind) && (calSubOn[item.dayKind]?.has(task.kind) ?? true);
+}
 
 /**
  * Tasks of an item whose every task is done are hidden by default; the filter
@@ -58,7 +89,18 @@ let calChipStyle = (() => {
 function setCalChipStyle(style) {
   calChipStyle = style;
   try { localStorage.setItem(CAL_CHIP_STYLE_KEY, style); } catch { /* not remembered */ }
-  renderCalFilterBar();
+  applyCalChipStyle();
+}
+
+/** The grid's chip look, and the tick on "Classic chips" in the ⋮ menu. */
+function applyCalChipStyle() {
+  const classic = calChipStyle === "classic";
+  document.getElementById("calGrid")?.classList.toggle("is-classic-chips", classic);
+  const item = document.getElementById("headerMenuClassicChips");
+  if (item) {
+    item.setAttribute("aria-checked", classic ? "true" : "false");
+    item.classList.toggle("is-checked", classic);
+  }
 }
 
 function areTasksHiddenAsCompleted(item) {
@@ -68,7 +110,7 @@ function areTasksHiddenAsCompleted(item) {
 /** The item's tasks that pass the kind filter and the completed toggle. */
 function getVisibleItemTasks(item) {
   if (areTasksHiddenAsCompleted(item)) return [];
-  return item.tasks.filter(task => calFilterSelection.has(task.kind));
+  return item.tasks.filter(task => isCalTaskShown(item, task));
 }
 
 // ── Group selection ──────────────────────────────────────────────────────────
@@ -185,7 +227,7 @@ function getCalRange() {
  */
 function buildItemCalendarEntries(item) {
   const entries = [];
-  if (calFilterSelection.has(item.dayKind)) {
+  if (isCalItemShown(item)) {
     // A shoot's day is the work itself, so it greys out once it's complete.
     const done = item.type === ITEM_TYPE_PHOTOSHOOT && isItemComplete(item);
     buildItemDayEvents(item).forEach(event => entries.push({ ...event, done, item }));
@@ -530,20 +572,16 @@ function buildCalCell(date, byDate, today, week) {
   if (cellYmd < today) cell.classList.add("is-past");
   cell.dataset.month = `${date.getFullYear()}-${date.getMonth()}`;
 
-  // The day number on its own; the 1st also names its month, and today says so.
+  // Every day reads M/D, so the month is never in doubt; today says so too.
   const dateRow = document.createElement("span");
   dateRow.className = "dash-cal-date";
   if (date.getDate() === 1) {
     cell.classList.add("is-month-start");
     calMonthAnchors[cell.dataset.month] = cell;
-    const monthLabel = document.createElement("span");
-    monthLabel.className = "dash-cal-month";
-    monthLabel.textContent = date.toLocaleString(undefined, { month: "short" });
-    dateRow.appendChild(monthLabel);
   }
   const num = document.createElement("span");
   num.className = "dash-cal-num";
-  num.textContent = String(date.getDate());
+  num.textContent = `${date.getMonth() + 1}/${date.getDate()}`;
   dateRow.appendChild(num);
   if (cellYmd === today) {
     const todayLabel = document.createElement("span");
@@ -725,8 +763,8 @@ function closeCalDayPane() {
 function buildDayPaneEntries(dayYmd) {
   const entries = [];
   getAllScheduleItems().forEach(item => {
-    const running = calFilterSelection.has(item.dayKind) && isActiveDay(item, dayYmd);
-    const dayTasks = item.tasks.filter(t => t.dueDate === dayYmd && calFilterSelection.has(t.kind));
+    const running = isCalItemShown(item) && isActiveDay(item, dayYmd);
+    const dayTasks = item.tasks.filter(t => t.dueDate === dayYmd && isCalTaskShown(item, t));
     if (!running && dayTasks.length === 0) return;
 
     entries.push({
@@ -829,35 +867,9 @@ function renderCalDayPane() {
 
 // ── Filter bar ───────────────────────────────────────────────────────────────
 //
-// "All" is the resting state. Picking a kind narrows to just that one, and
-// picking it again releases back to All.
-
-const CAL_FILTER_OPTIONS = [
-  { key: EVENT_KIND_CAMPAIGN, label: "Campaigns" },
-  { key: EVENT_KIND_SHOW, label: "Trade Shows" },
-  { key: EVENT_KIND_SHOOT, label: "Photoshoots" },
-  { key: TASK_KIND_EMAIL, label: "Emails" },
-  { key: TASK_KIND_BANNER, label: "Graphics" },
-  { key: TASK_KIND_SOCIAL, label: "Social Media" },
-  { key: TASK_KIND_VIDEO, label: "Videos" },
-];
-
-function isCalFilterShowingAll() {
-  return calFilterSelection.size === CAL_KINDS.length;
-}
-
-function setCalFilterAll() {
-  calFilterSelection = new Set(CAL_KINDS);
-  applyCalFilterChange();
-}
-
-function toggleCalFilterKind(key) {
-  const onlyThisKind = !isCalFilterShowingAll() &&
-                       calFilterSelection.size === 1 &&
-                       calFilterSelection.has(key);
-  calFilterSelection = onlyThisKind ? new Set(CAL_KINDS) : new Set([key]);
-  applyCalFilterChange();
-}
+// Three type buttons — Campaign, Trade Show, Photoshoot — switch each type on
+// and off. The Filters button opens the detail: a checkbox list per type with
+// what's under it, and Show completed.
 
 function applyCalFilterChange() {
   renderCalFilterBar();
@@ -866,11 +878,40 @@ function applyCalFilterChange() {
   renderUpcomingTasks();
 }
 
-/**
- * The filter bar collapses to one button naming the current filter ("All"
- * unless narrowed). Hovering it — or clicking, for touch — drops the full
- * set of options below it. Kept open by click until a click lands elsewhere.
- */
+function setCalTypeOn(key, on) {
+  if (on) calTypeOn.add(key);
+  else calTypeOn.delete(key);
+  applyCalFilterChange();
+}
+
+function setCalSubOn(typeKey, subKey, on) {
+  const subs = calSubOn[typeKey];
+  if (on) {
+    subs.add(subKey);
+    // Ticking something under a type that's off brings the type back.
+    calTypeOn.add(typeKey);
+  } else {
+    subs.delete(subKey);
+  }
+  applyCalFilterChange();
+}
+
+function resetCalFilters() {
+  calTypeOn = new Set(CAL_TYPE_FILTERS.map(t => t.key));
+  calSubOn = Object.fromEntries(CAL_TYPE_FILTERS.map(t => [t.key, new Set(t.subs.map(sub => sub.key))]));
+  calShowCompleted = false;
+  applyCalFilterChange();
+}
+
+/** Anything narrowed inside the Filters menu (the type buttons show their own). */
+function isCalAdvancedFilterSet() {
+  return calShowCompleted || CAL_TYPE_FILTERS.some(t => calSubOn[t.key].size < t.subs.length);
+}
+
+function isCalFilterDefault() {
+  return !isCalAdvancedFilterSet() && calTypeOn.size === CAL_TYPE_FILTERS.length;
+}
+
 let calFilterMenuOpen = false;
 
 function makeCalFilterBtn(label, active, onClick, extraClass = "") {
@@ -883,10 +924,17 @@ function makeCalFilterBtn(label, active, onClick, extraClass = "") {
   return btn;
 }
 
-/** The label the collapsed button shows: "All", or the one kind picked. */
-function getCalFilterLabel() {
-  if (isCalFilterShowingAll()) return "All";
-  return CAL_FILTER_OPTIONS.find(option => calFilterSelection.has(option.key))?.label ?? "All";
+function makeCalCheck(label, checked, onChange, extraClass = "") {
+  const row = document.createElement("label");
+  row.className = "cal-adv-check" + (extraClass ? " " + extraClass : "");
+  const input = document.createElement("input");
+  input.type = "checkbox";
+  input.checked = checked;
+  input.addEventListener("change", () => onChange(input.checked));
+  const text = document.createElement("span");
+  text.textContent = label;
+  row.append(input, text);
+  return row;
 }
 
 function renderCalFilterBar() {
@@ -894,20 +942,38 @@ function renderCalFilterBar() {
   if (!bar) return;
   bar.classList.toggle("is-open", calFilterMenuOpen);
 
+  // The three types, each its own button.
+  const types = document.createElement("div");
+  types.className = "cal-type-group";
+  types.setAttribute("role", "group");
+  types.setAttribute("aria-label", "Show on the calendar");
+  CAL_TYPE_FILTERS.forEach(type => {
+    const on = calTypeOn.has(type.key);
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "cal-type-btn" + (on ? " is-on" : "");
+    btn.dataset.kind = type.key;
+    btn.setAttribute("aria-pressed", on ? "true" : "false");
+    const dot = document.createElement("span");
+    dot.className = "cal-type-dot";
+    dot.setAttribute("aria-hidden", "true");
+    const text = document.createElement("span");
+    text.textContent = type.label;
+    btn.append(dot, text);
+    btn.addEventListener("click", () => setCalTypeOn(type.key, !on));
+    types.appendChild(btn);
+  });
+
+  // Filters: the detail, in a menu.
+  const wrap = document.createElement("div");
+  wrap.className = "cal-adv-wrap";
   const trigger = document.createElement("button");
   trigger.type = "button";
-  trigger.className = "cal-filter-btn cal-filter-trigger is-active";
+  trigger.className = "cal-adv-trigger" + (isCalAdvancedFilterSet() ? " is-set" : "");
   trigger.setAttribute("aria-haspopup", "true");
   trigger.setAttribute("aria-expanded", calFilterMenuOpen ? "true" : "false");
-  if (!isCalFilterShowingAll()) trigger.dataset.kind = [...calFilterSelection][0];
-  trigger.textContent = getCalFilterLabel();
-  if (calShowCompleted) {
-    // Completed work is on — worth a hint even while the menu is shut.
-    const flag = document.createElement("span");
-    flag.className = "cal-filter-trigger-flag";
-    flag.title = "Showing completed";
-    trigger.appendChild(flag);
-  }
+  trigger.innerHTML = '<svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><path d="M3 5h18l-7 8.5V19l-4 2v-7.5z"/></svg><span>Filters</span>';
+  trigger.title = "More filters";
   trigger.addEventListener("click", e => {
     e.stopPropagation();
     calFilterMenuOpen = !calFilterMenuOpen;
@@ -915,35 +981,55 @@ function renderCalFilterBar() {
   });
 
   const menu = document.createElement("div");
-  menu.className = "cal-filter-menu";
+  menu.className = "cal-adv-menu";
+  menu.hidden = !calFilterMenuOpen;
   menu.setAttribute("role", "group");
   menu.setAttribute("aria-label", "Filter calendar");
+  menu.addEventListener("click", e => e.stopPropagation());
 
-  const all = makeCalFilterBtn("All", isCalFilterShowingAll(), setCalFilterAll);
-  const kinds = CAL_FILTER_OPTIONS.map(option => {
-    const active = !isCalFilterShowingAll() && calFilterSelection.has(option.key);
-    const btn = makeCalFilterBtn(option.label, active, () => toggleCalFilterKind(option.key));
-    btn.dataset.kind = option.key;
-    return btn;
+  const cols = document.createElement("div");
+  cols.className = "cal-adv-cols";
+  CAL_TYPE_FILTERS.forEach(type => {
+    const typeOn = calTypeOn.has(type.key);
+    const col = document.createElement("div");
+    col.className = "cal-adv-col" + (typeOn ? "" : " is-off");
+    col.dataset.kind = type.key;
+    col.appendChild(makeCalCheck(type.label, typeOn, on => setCalTypeOn(type.key, on), "cal-adv-check--type"));
+    const list = document.createElement("div");
+    list.className = "cal-adv-subs";
+    type.subs.forEach(sub => {
+      list.appendChild(makeCalCheck(sub.label, typeOn && calSubOn[type.key].has(sub.key),
+        on => setCalSubOn(type.key, sub.key, on)));
+    });
+    col.appendChild(list);
+    cols.appendChild(col);
   });
-  const showCompleted = makeCalFilterBtn("Show completed", calShowCompleted, () => {
-    calShowCompleted = !calShowCompleted;
-    applyCalFilterChange();
-  }, "cal-filter-btn--completed");
-  const classicChips = makeCalFilterBtn("Classic chips", calChipStyle === "classic", () => {
-    setCalChipStyle(calChipStyle === "classic" ? "solid" : "classic");
-  }, "cal-filter-btn--chips");
-  classicChips.title = "Pale events and white, colour-edged tasks";
 
-  menu.append(all, ...kinds, showCompleted, classicChips);
-  document.getElementById("calGrid")?.classList.toggle("is-classic-chips", calChipStyle === "classic");
-  bar.replaceChildren(trigger, menu);
+  const foot = document.createElement("div");
+  foot.className = "cal-adv-foot";
+  foot.appendChild(makeCalCheck("Show completed", calShowCompleted, on => {
+    calShowCompleted = on;
+    applyCalFilterChange();
+  }, "cal-adv-check--completed"));
+  const reset = document.createElement("button");
+  reset.type = "button";
+  reset.className = "cal-adv-reset";
+  reset.textContent = "Reset";
+  reset.disabled = isCalFilterDefault();
+  reset.addEventListener("click", resetCalFilters);
+  foot.appendChild(reset);
+
+  menu.append(cols, foot);
+  wrap.append(trigger, menu);
+  bar.replaceChildren(types, wrap);
+  // Opens leftward from its button, unless that would run off the page.
+  if (calFilterMenuOpen && menu.getBoundingClientRect().left < 8) menu.classList.add("is-flipped");
+  applyCalChipStyle();
 
   renderCalViewToggle();
   renderCalTodayButton();
 }
 
-/** Month / Week, on the header's right. */
 function renderCalViewToggle() {
   const group = document.getElementById("calViewToggle");
   if (!group) return;
@@ -983,7 +1069,7 @@ function buildUpcomingCardEntries() {
     .filter(item => {
       const taskInWindow = getVisibleItemTasks(item)
         .some(t => (t.dueDate >= from && t.dueDate <= to) || isTaskOverdue(t));
-      const runningInWindow = calFilterSelection.has(item.dayKind) &&
+      const runningInWindow = isCalItemShown(item) &&
         item.endDate >= from && item.startDate <= to &&
         listActiveDays(item).some(day => day >= from && day <= to);
       return taskInWindow || runningInWindow;
@@ -993,7 +1079,7 @@ function buildUpcomingCardEntries() {
       taskIds: getItemGroupIds(item),
       buckets: item.type === ITEM_TYPE_PHOTOSHOOT
         ? getShootStatusBuckets(item)
-        : getTaskStatusBuckets(item.tasks.filter(t => calFilterSelection.has(t.kind))),
+        : getTaskStatusBuckets(item.tasks.filter(t => isCalTaskShown(item, t))),
     }))
     .sort((a, b) => a.item.startDate.localeCompare(b.item.startDate));
 }
@@ -1081,6 +1167,10 @@ function initCalendar() {
   grid?.addEventListener("mouseout", e => {
     const piece = e.target.closest?.(".dash-event[data-bar]");
     if (piece && !piece.contains(e.relatedTarget)) setBarHover(piece.dataset.bar, false);
+  });
+
+  document.getElementById("headerMenuClassicChips")?.addEventListener("click", () => {
+    setCalChipStyle(calChipStyle === "classic" ? "solid" : "classic");
   });
 
   // A filter menu opened by click closes on the next click elsewhere, or Escape.
