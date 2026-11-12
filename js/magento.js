@@ -77,7 +77,7 @@ let mgSalableWarned = false;
 let mgTableRenderWaiting = false;
 
 /** The helper version this app expects (HELPER_VERSION in supabase/functions/magento). */
-const MG_HELPER_VERSION = "2026-11-11.1";
+const MG_HELPER_VERSION = "2026-11-11.2";
 
 /** Per action, the last call's timing: { roundTripMs, totalMs, authMs, magentoCalls, magentoMs, slowest… }. */
 const mgTimings = {};
@@ -1387,7 +1387,7 @@ function renderMgCategoriesTable() {
   const tbody = document.getElementById("mgCategoriesBody");
   if (!tbody) return;
   const message = text => {
-    tbody.innerHTML = `<tr class="state-row"><td colspan="4">${escapeHtml(text)}</td></tr>`;
+    tbody.innerHTML = `<tr class="state-row"><td colspan="3">${escapeHtml(text)}</td></tr>`;
   };
   if (mgStore?.error) return message(mgStore.error);
   if (!mgStore) return message("Loading categories…");
@@ -1404,7 +1404,12 @@ function renderMgCategoriesTable() {
     const name = document.createElement("td");
     name.className = "mg-cat-name-cell";
     if (!q) name.style.paddingLeft = `${12 + Math.max(c.level - 1, 0) * 20}px`;
-    name.appendChild(createMgCategoryNameInput(c, q));
+    // Renamed from the detail pane (its pencil), not here.
+    const label = document.createElement("span");
+    label.className = "mg-cat-name" + (c.level <= 1 ? " is-root" : "");
+    label.textContent = c.name;
+    if (q) label.title = c.path;
+    name.appendChild(label);
     if (q) {
       const path = document.createElement("span");
       path.className = "mg-cat-path";
@@ -1419,74 +1424,603 @@ function renderMgCategoriesTable() {
     const active = document.createElement("td");
     active.appendChild(createMgCategoryActiveSwitch(c));
 
-    const actions = document.createElement("td");
-    const view = document.createElement("button");
-    view.type = "button";
-    view.className = "btn mg-cat-view-btn";
-    view.textContent = "View products";
-    // All of the category's products — the other filters start over.
-    view.addEventListener("click", () => {
-      mgSubview = "products";
-      mgQuery.search = "";
-      renderMagentoSubview();
-      setMgHeaderFilters({ categories: [c.id], status: null, type: null, visibility: null });
+    tr.append(name, count, active);
+    tr.classList.toggle("is-open", c.id === mgCatSelectedId);
+    tr.setAttribute("aria-selected", String(c.id === mgCatSelectedId));
+    // Click the row (not its name box or switch) to open its details.
+    tr.addEventListener("click", e => {
+      if (e.target.closest("input, button, a")) return;
+      selectMgCategory(c.id);
     });
-    actions.appendChild(view);
-
-    tr.append(name, count, active, actions);
     return tr;
   }));
+  renderMgCategoryDetail();
 }
 
-/** Rename in place: saves on Enter or leaving the box, Esc undoes. */
-function createMgCategoryNameInput(category, searching) {
+// ── Category details (beside the tree) ───────────────────────────────────────
+//
+// Pick a row: its web address (URL key, editable) and the products in it.
+
+let mgCatSelectedId = "";
+/** What's loaded for the picked category: { id, url, urlError, products, total, page, loading, error }. */
+let mgCatDetail = null;
+const MG_CAT_PAGE = 100;
+
+function selectMgCategory(id) {
+  if (!id || id === mgCatSelectedId) return;
+  mgCatSelectedId = id;
+  document.querySelectorAll("#mgCategoriesBody tr[data-category-id]").forEach(tr => {
+    const on = tr.dataset.categoryId === id;
+    tr.classList.toggle("is-open", on);
+    tr.setAttribute("aria-selected", String(on));
+    if (on) tr.scrollIntoView({ block: "nearest" });
+  });
+  loadMgCategoryDetail(id);
+}
+
+/** ↑ / ↓ move through the categories shown. */
+function moveMgCategory(dir) {
+  const ids = [...document.querySelectorAll("#mgCategoriesBody tr[data-category-id]")].map(tr => tr.dataset.categoryId);
+  if (!ids.length) return;
+  const at = ids.indexOf(mgCatSelectedId);
+  const next = ids[at === -1 ? 0 : Math.min(Math.max(at + dir, 0), ids.length - 1)];
+  selectMgCategory(next);
+}
+
+async function loadMgCategoryDetail(id) {
+  mgCatDetail = { id, url: null, urlError: "", products: [], total: 0, page: 0, loading: true, error: "" };
+  mgCatPicked.clear();
+  mgCatStyles = { id, skus: null, products: [], total: 0, loading: false, error: "" };
+  renderMgCategoryDetail();
+  if (mgCatView === "styles") loadMgCategoryStyles(id);
+  const urlLoading = callMagento("categoryDetail", { id })
+    .then(url => { if (mgCatDetail?.id === id) mgCatDetail.url = url; })
+    .catch(err => { if (mgCatDetail?.id === id) mgCatDetail.urlError = err.message || "Couldn't read the URL."; });
+  await Promise.all([urlLoading, loadMgCategoryProducts(id)]);
+  renderMgCategoryDetail();
+}
+
+/** "all" — every product in the category; "styles" — only its available colours (Simple items). */
+let mgCatView = "all";
+let mgCatStyles = null;
+
+/** The category's available colours, newest first, the next 100 at a time. */
+async function loadMgCategoryStyles(id) {
+  const st = mgCatStyles;
+  if (!st || st.id !== id || st.loading) return;
+  st.loading = true;
+  renderMgCategoryDetail();
+  try {
+    if (!mgIndex) await loadMgIndex();
+    if (!mgIndex) throw new Error(mgIndexError || "Couldn't check which colours are available.");
+    st.skus ??= emailColorSkus("", id);
+    st.total = st.skus.length;
+    const next = st.skus.slice(st.products.length, st.products.length + MG_CAT_PAGE);
+    if (next.length) {
+      const page = await callMagento("products", { page: 1, pageSize: next.length, ...MG_DEFAULT_SORT, skus: next, withStock: false });
+      const items = (page?.items ?? []).map(applyMgGroups);
+      const bySku = new Map(items.map(p => [p.sku, p]));
+      if (mgCatStyles !== st) return;
+      st.products.push(...next.map(sku => bySku.get(sku)).filter(Boolean));
+    }
+  } catch (err) {
+    st.error = err.message || "Couldn't load the colours.";
+  }
+  st.loading = false;
+  if (mgCatStyles === st) renderMgCategoryDetail();
+}
+
+function setMgCatView(view) {
+  if (view === mgCatView) return;
+  mgCatView = view;
+  mgCatPicked.clear();
+  if (view === "styles" && mgCatStyles && mgCatStyles.skus === null) loadMgCategoryStyles(mgCatStyles.id);
+  else renderMgCategoryDetail();
+}
+
+/** The next page of the category's products, added below the ones shown. */
+async function loadMgCategoryProducts(id) {
+  if (mgCatDetail?.id !== id) return;
+  mgCatDetail.loading = true;
+  renderMgCategoryDetail();
+  try {
+    const page = await callMagento("products", { page: mgCatDetail.page + 1, pageSize: MG_CAT_PAGE, ...MG_DEFAULT_SORT, categoryId: id, withStock: false });
+    if (mgCatDetail?.id !== id) return;
+    const items = page.items.map(applyMgGroups);
+    await fillMgStyleImages(items);
+    if (mgCatDetail?.id !== id) return;
+    mgCatDetail.products.push(...items);
+    mgCatDetail.total = page.total;
+    mgCatDetail.page += 1;
+  } catch (err) {
+    if (mgCatDetail?.id !== id) return;
+    mgCatDetail.error = err.message || "Couldn't load the products.";
+  }
+  mgCatDetail.loading = false;
+  renderMgCategoryDetail();
+}
+
+/**
+ * The colour whose photo stands for a style: the first one showing on the
+ * webstore, else the first enabled, else the first.
+ */
+function mgStylePhotoChild(p) {
+  const kids = p.childSkus ?? [];
+  return kids.find(c => mgIndex && mgAvailability(c).available === true)
+    ?? kids.find(c => Number(mgIndex?.get(c)?.status) === 1)
+    ?? kids[0];
+}
+
+/** A style (Grouped) has no photo of its own: show one of its colours'. */
+async function fillMgStyleImages(items) {
+  const need = items.filter(p => !getMgImageUrl(p) && p.childSkus?.length);
+  if (!need.length) return;
+  const skus = [...new Set(need.map(mgStylePhotoChild))];
+  const children = await callMagento("products", { page: 1, pageSize: skus.length, ...MG_DEFAULT_SORT, skus, withStock: false }).catch(() => null);
+  const bySku = new Map((children?.items ?? []).map(c => [c.sku, c.image]));
+  need.forEach(p => {
+    const image = bySku.get(mgStylePhotoChild(p));
+    if (image && image !== "no_selection") p.thumbImage = image;
+  });
+}
+
+function mgStoreHost() {
+  return String(mgStore?.baseUrl || "").replace(/^https?:\/\/(www\.)?/, "").replace(/\/?$/, "/");
+}
+
+/** Which header field is being edited, and what's typed: { id, field: "name" | "url", value } or null. */
+let mgCatEdit = null;
+
+const MG_PENCIL_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>';
+
+function createMgPencil(label, onClick) {
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "mg-cat-pencil";
+  btn.innerHTML = MG_PENCIL_SVG;
+  btn.setAttribute("aria-label", label);
+  btn.title = label;
+  btn.addEventListener("click", onClick);
+  return btn;
+}
+
+function startMgCatEdit(field, value) {
+  mgCatEdit = { id: mgCatSelectedId, field, value };
+  renderMgCategoryDetail();
+  const input = document.querySelector(".mg-cat-edit-input");
+  input?.focus();
+  input?.select();
+}
+
+function cancelMgCatEdit() {
+  mgCatEdit = null;
+  renderMgCategoryDetail();
+}
+
+/** An input with Save and Cancel; Enter saves, Esc cancels. */
+function createMgCatEditRow({ value, ariaLabel, check, onSave, before = "", after = "", mono = false }) {
+  const row = document.createElement("div");
+  row.className = "mg-cat-edit-row";
   const input = document.createElement("input");
   input.type = "text";
-  input.className = "mg-cat-name-input";
-  if (category.level <= 1) input.classList.add("is-root");
-  input.value = category.name;
-  input.title = searching ? category.path : "Click to rename";
-  input.setAttribute("aria-label", `Name of ${category.path}`);
+  input.className = "form-input mg-cat-edit-input" + (mono ? " is-mono" : "");
+  input.value = value;
+  input.spellcheck = false;
+  input.setAttribute("aria-label", ariaLabel);
+  const save = document.createElement("button");
+  save.type = "button";
+  save.className = "btn btn-primary mg-cat-save";
+  save.textContent = "Save";
+  const cancel = document.createElement("button");
+  cancel.type = "button";
+  cancel.className = "btn";
+  cancel.textContent = "Cancel";
+  const sync = () => {
+    mgCatEdit.value = input.value;
+    const ok = check(input.value);
+    input.classList.toggle("is-invalid", !ok && input.value.trim() !== "");
+    save.disabled = !ok;
+  };
+  input.addEventListener("input", sync);
   input.addEventListener("keydown", e => {
-    if (e.key === "Enter") {
-      e.preventDefault();
-      input.blur();
-    } else if (e.key === "Escape") {
+    if (e.key === "Enter" && !save.disabled) save.click();
+    if (e.key === "Escape") {
       e.stopPropagation();
-      input.value = category.name;
-      input.blur();
+      cancelMgCatEdit();
     }
   });
-  input.addEventListener("blur", async () => {
-    const name = input.value.trim();
-    if (!name) {
-      input.value = category.name;
-      return;
-    }
-    if (name === category.name) return;
+  cancel.addEventListener("click", cancelMgCatEdit);
+  save.addEventListener("click", async () => {
+    save.disabled = true;
     input.disabled = true;
+    cancel.disabled = true;
+    const done = await onSave(input.value);
+    if (done) mgCatEdit = null;
+    renderMgCategoryDetail();
+  });
+  const parts = [];
+  if (before) parts.push(Object.assign(document.createElement("span"), { className: "mg-cat-url-affix", textContent: before, title: before }));
+  parts.push(input);
+  if (after) parts.push(Object.assign(document.createElement("span"), { className: "mg-cat-url-affix", textContent: after }));
+  row.append(...parts, save, cancel);
+  sync();
+  return row;
+}
+
+async function renameMgCategory(category, rawName) {
+  const name = String(rawName).trim();
+  if (!name || name === category.name) return true;
+  try {
+    await callMagento("category", { id: category.id, changes: { name } });
+    const oldPath = category.path;
+    category.name = name;
+    // Renaming a parent renames every path under it.
+    const cut = oldPath.lastIndexOf(" / ");
+    const newPath = cut === -1 ? name : `${oldPath.slice(0, cut)} / ${name}`;
+    mgCategories.forEach(c => {
+      if (c.path === oldPath) c.path = newPath;
+      else if (c.path.startsWith(`${oldPath} / `)) c.path = newPath + c.path.slice(oldPath.length);
+    });
+    renderMgCategoryControls();
+    renderMgCategoriesTable();
+    renderMgProducts();
+    showIndicator(`Renamed to ${name}`, "success");
+    return true;
+  } catch (err) {
+    showIndicator(err.message || "Couldn't rename the category.", "error");
+    return false;
+  }
+}
+
+const cleanMgUrlKey = v => String(v).trim().toLowerCase().replace(/[\s_]+/g, "-");
+const isMgUrlKey = v => /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(v);
+
+async function saveMgCategoryUrlKey(category, raw, parentPath) {
+  const urlKey = cleanMgUrlKey(raw);
+  if (urlKey === mgCatDetail?.url?.urlKey) return true;
+  if (!confirm(`Change the web address of "${category.path}" to ${mgStoreHost()}${parentPath}${urlKey}.html?\n\nThe old address will redirect to the new one. Categories under this one move with it.`)) return false;
+  try {
+    const url = await callMagento("category", { id: category.id, changes: { urlKey } });
+    if (mgCatDetail?.id === category.id) mgCatDetail.url = url;
+    showIndicator(`Web address saved: ${url.urlPath}.html`, "success");
+    return true;
+  } catch (err) {
+    showIndicator(err.message || "Couldn't change the URL.", "error");
+    return false;
+  }
+}
+
+function renderMgCategoryDetail() {
+  const el = document.getElementById("mgCatDetail");
+  if (!el) return;
+  const category = mgCategoryById?.get(mgCatSelectedId);
+  if (!category || mgCatDetail?.id !== category.id) {
+    el.replaceChildren(Object.assign(document.createElement("p"), {
+      className: "mg-cat-detail-empty",
+      textContent: mgCategories.length ? "Pick a category to see its products and web address." : "",
+    }));
+    return;
+  }
+  if (mgCatEdit && mgCatEdit.id !== category.id) mgCatEdit = null;
+  // Keep the caret where it was when products arrive mid-typing.
+  const focused = document.activeElement?.classList.contains("mg-cat-edit-input") ? document.activeElement : null;
+  const caret = focused ? [focused.selectionStart, focused.selectionEnd] : null;
+
+  const head = document.createElement("header");
+  head.className = "mg-cat-detail-head";
+  head.append(createMgCategoryNameBlock(category), createMgCategoryUrlBlock(category));
+
+  el.replaceChildren(head, createMgCategoryProductsSection());
+  if (caret) {
+    const input = el.querySelector(".mg-cat-edit-input");
+    input?.focus();
+    input?.setSelectionRange(caret[0], caret[1]);
+  }
+}
+
+function createMgCategoryNameBlock(category) {
+  const block = document.createElement("div");
+  block.className = "mg-cat-head-main";
+  const crumbs = document.createElement("div");
+  crumbs.className = "mg-cat-detail-path";
+  crumbs.textContent = category.path.split(" / ").slice(0, -1).join(" / ");
+  block.append(crumbs);
+
+  if (mgCatEdit?.field === "name") {
+    block.append(createMgCatEditRow({
+      value: mgCatEdit.value,
+      ariaLabel: "Category name",
+      check: v => v.trim() !== "",
+      onSave: v => renameMgCategory(category, v),
+    }));
+  } else {
+    const line = document.createElement("div");
+    line.className = "mg-cat-title-line";
+    const title = document.createElement("h2");
+    title.textContent = category.name;
+    line.append(title, createMgPencil("Rename", () => startMgCatEdit("name", category.name)));
+    const adminUrl = mgAdminUrl("categories", category.id);
+    if (adminUrl) {
+      const admin = document.createElement("a");
+      admin.className = "btn mg-admin-link mg-cat-admin";
+      admin.href = adminUrl;
+      admin.target = "_blank";
+      admin.rel = "noopener";
+      admin.title = "Open this category in the Magento admin";
+      admin.innerHTML = `Open in Magento ${MG_EXTERNAL_ICON}`;
+      line.append(admin);
+    }
+    block.append(line);
+  }
+
+  const meta = document.createElement("div");
+  meta.className = "mg-cat-detail-meta";
+  meta.textContent = `${category.isActive ? "Active" : "Inactive"} · ${category.productCount.toLocaleString()} ${category.productCount === 1 ? "product" : "products"}`;
+  block.append(meta);
+  return block;
+}
+
+function createMgCategoryUrlBlock(category) {
+  const block = document.createElement("div");
+  block.className = "mg-cat-head-url";
+  const label = document.createElement("div");
+  label.className = "mg-cat-head-label";
+  label.textContent = "Web address";
+  block.append(label);
+
+  const d = mgCatDetail;
+  if (d.urlError) {
+    block.append(Object.assign(document.createElement("p"), { className: "mg-cat-error", textContent: d.urlError }));
+    return block;
+  }
+  if (!d.url) {
+    block.append(Object.assign(document.createElement("p"), { className: "mg-cat-muted", textContent: "Loading…" }));
+    return block;
+  }
+
+  const parentPath = d.url.urlPath.includes("/") ? d.url.urlPath.slice(0, d.url.urlPath.lastIndexOf("/") + 1) : "";
+  if (mgCatEdit?.field === "url") {
+    block.append(createMgCatEditRow({
+      value: mgCatEdit.value,
+      ariaLabel: "URL key",
+      mono: true,
+      before: `${mgStoreHost()}${parentPath}`,
+      after: ".html",
+      check: v => isMgUrlKey(cleanMgUrlKey(v)),
+      onSave: v => saveMgCategoryUrlKey(category, v, parentPath),
+    }));
+    block.append(Object.assign(document.createElement("p"), {
+      className: "form-hint mg-cat-url-hint",
+      textContent: "Lowercase letters, numbers and dashes. The old address redirects to the new one.",
+    }));
+    return block;
+  }
+
+  const line = document.createElement("div");
+  line.className = "mg-cat-url-line";
+  const base = String(mgStore?.baseUrl || "").replace(/\/?$/, "/");
+  const link = document.createElement("a");
+  link.className = "mg-cat-url-link";
+  link.href = base !== "/" ? `${base}${d.url.urlPath}.html` : "#";
+  link.target = "_blank";
+  link.rel = "noopener";
+  link.title = "Open on the store";
+  const host = document.createElement("span");
+  host.className = "mg-cat-url-host";
+  host.textContent = `${mgStoreHost()}${parentPath}`;
+  const key = document.createElement("strong");
+  key.textContent = d.url.urlKey;
+  link.append(host, key, ".html");
+  line.append(link);
+  if (base !== "/") line.append(createOpenIcon(link.href, "Open on the store"));
+  line.append(createMgPencil("Edit the URL", () => startMgCatEdit("url", d.url.urlKey)));
+  block.append(line);
+  return block;
+}
+
+/** SKUs of the colours ticked in the category, to add to an email. */
+const mgCatPicked = new Set();
+/** The email grids styles can go on (js/email.js) — loaded once. */
+let mgCatEmailChoices = null;
+let mgCatEmailChoice = "";
+
+/** A colour that can go in an email: a Simple item showing on the webstore (js/email.js). */
+const isMgCatPickable = p => p.type !== "grouped" && isEmailColorAvailable(p.sku);
+
+function createMgCategoryPickBar(d) {
+  const bar = document.createElement("div");
+  bar.className = "mg-cat-pick-bar";
+  const pickable = d.products.filter(isMgCatPickable);
+  const picked = d.products.filter(p => mgCatPicked.has(p.sku));
+
+  const text = document.createElement("span");
+  text.className = "mg-cat-pick-text";
+  text.textContent = picked.length
+    ? `${picked.length} ${picked.length === 1 ? "colour" : "colours"} selected`
+    : mgIndex ? "Tick available colours to add them to an email." : "Checking which colours are available…";
+  bar.append(text);
+
+  const allPicked = pickable.length > 0 && pickable.every(p => mgCatPicked.has(p.sku));
+  const all = document.createElement("button");
+  all.type = "button";
+  all.className = "btn";
+  all.textContent = allPicked ? "Clear" : `Select all available (${pickable.length})`;
+  all.disabled = !pickable.length && !picked.length;
+  all.addEventListener("click", () => {
+    if (allPicked) mgCatPicked.clear();
+    else pickable.forEach(p => mgCatPicked.add(p.sku));
+    renderMgCategoryDetail();
+  });
+  bar.append(all);
+  if (picked.length && !allPicked) {
+    const clear = document.createElement("button");
+    clear.type = "button";
+    clear.className = "btn";
+    clear.textContent = "Clear";
+    clear.addEventListener("click", () => {
+      mgCatPicked.clear();
+      renderMgCategoryDetail();
+    });
+    bar.append(clear);
+  }
+
+  if (!mgCatEmailChoices) {
+    mgCatEmailChoices = [];
+    emailGridChoices()
+      .then(list => {
+        mgCatEmailChoices = list;
+        renderMgCategoryDetail();
+      })
+      .catch(() => {});
+  }
+  const choices = mgCatEmailChoices;
+  const key = c => `${c.templateId}|${c.gridKey}`;
+  if (!choices.some(c => key(c) === mgCatEmailChoice)) mgCatEmailChoice = choices[0] ? key(choices[0]) : "";
+  if (choices.length > 1) {
+    const select = document.createElement("select");
+    select.className = "mg-cat-pick-select";
+    select.setAttribute("aria-label", "Which email");
+    choices.forEach(c => select.append(new Option(c.label, key(c))));
+    select.value = mgCatEmailChoice;
+    select.addEventListener("change", () => { mgCatEmailChoice = select.value; });
+    bar.append(select);
+  }
+  const add = document.createElement("button");
+  add.type = "button";
+  add.className = "btn btn-primary mg-cat-pick-add";
+  add.textContent = choices.length === 1 ? `Add to ${choices[0].label}` : "Add to email";
+  add.disabled = !picked.length || !choices.length;
+  add.addEventListener("click", async () => {
+    const choice = choices.find(c => key(c) === mgCatEmailChoice);
+    if (!choice) return;
+    add.disabled = true;
+    add.textContent = "Adding…";
     try {
-      await callMagento("category", { id: category.id, changes: { name } });
-      const oldPath = category.path;
-      category.name = name;
-      // Renaming a parent renames every path under it.
-      const cut = oldPath.lastIndexOf(" / ");
-      const newPath = cut === -1 ? name : `${oldPath.slice(0, cut)} / ${name}`;
-      mgCategories.forEach(c => {
-        if (c.path === oldPath) c.path = newPath;
-        else if (c.path.startsWith(`${oldPath} / `)) c.path = newPath + c.path.slice(oldPath.length);
-      });
-      renderMgCategoryControls();
-      renderMgProducts();
-      showIndicator(`Renamed to ${name}`, "success");
+      // With their styles' links, in the order they're listed here.
+      addStylesToEmail(choice.templateId, choice.gridKey, await loadEmailColors(picked.map(p => p.sku)));
     } catch (err) {
-      input.value = category.name;
-      showIndicator(err.message || "Couldn't rename the category.", "error");
-    } finally {
-      input.disabled = false;
+      showIndicator(err.message || "Couldn't load those colours.", "error");
+      renderMgCategoryDetail();
     }
   });
-  return input;
+  bar.append(add);
+  return bar;
+}
+
+function createMgCategoryProductsSection() {
+  const styles = mgCatView === "styles" && mgCatStyles?.id === mgCatDetail.id;
+  const d = styles ? mgCatStyles : mgCatDetail;
+  const section = document.createElement("section");
+  section.className = "mg-cat-section";
+
+  const head = document.createElement("div");
+  head.className = "mg-cat-section-head";
+  const h = document.createElement("h3");
+  h.textContent = "Products";
+  const toggle = document.createElement("div");
+  toggle.className = "mg-cat-view-toggle";
+  toggle.setAttribute("role", "group");
+  toggle.setAttribute("aria-label", "Show");
+  const styleCount = mgIndex ? emailColorSkus("", mgCatDetail.id).length : null;
+  [
+    ["all", `All products${mgCatDetail.page ? ` · ${mgCatDetail.total.toLocaleString()}` : ""}`],
+    ["styles", `Available colours${styleCount !== null ? ` · ${styleCount.toLocaleString()}` : ""}`],
+  ].forEach(([view, label]) => {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "mg-cat-view-btn";
+    b.textContent = label;
+    b.setAttribute("aria-pressed", String(mgCatView === view));
+    b.addEventListener("click", () => setMgCatView(view));
+    toggle.append(b);
+  });
+  head.append(h, toggle);
+  section.appendChild(head);
+
+  if (d.error) section.appendChild(Object.assign(document.createElement("p"), { className: "mg-cat-error", textContent: d.error }));
+  if (!d.products.length && !d.loading && !d.error && (!styles || d.skus)) {
+    section.appendChild(Object.assign(document.createElement("p"), {
+      className: "mg-cat-muted",
+      textContent: styles ? "No available colours in this category." : "No products in this category.",
+    }));
+  }
+
+  const hasColors = d.products.some(p => p.type !== "grouped");
+  if (hasColors) section.appendChild(createMgCategoryPickBar(d));
+
+  const list = document.createElement("div");
+  list.className = "mg-cat-products";
+  d.products.forEach(p => {
+    const card = document.createElement("div");
+    card.className = "mg-cat-product";
+    const row = document.createElement("button");
+    row.type = "button";
+    row.className = "mg-cat-product-open";
+    row.title = "Open the product";
+    const thumb = createMgThumb(p.thumbImage ? { ...p, image: p.thumbImage } : p);
+    const main = document.createElement("span");
+    main.className = "mg-cat-product-main";
+    const sku = document.createElement("span");
+    sku.className = "mg-cat-product-sku";
+    sku.textContent = p.sku;
+    const name = document.createElement("span");
+    name.className = "mg-cat-product-name";
+    name.textContent = p.name && p.name !== p.sku ? p.name : "";
+    main.append(sku, name);
+    const tags = document.createElement("span");
+    tags.className = "mg-cat-product-tags";
+    tags.append(createMgTypePill(p.type));
+    if (Number(p.status) !== 1) {
+      const off = document.createElement("span");
+      off.className = "mg-cat-product-off";
+      off.textContent = "Disabled";
+      tags.append(off);
+    }
+    if (Number(p.status) === 1 && mgAvailability(p.sku).available === false) {
+      const no = document.createElement("span");
+      no.className = "mg-cat-product-off";
+      no.textContent = "Not available";
+      no.title = mgAvailability(p.sku).reasons.join("; ");
+      tags.append(no);
+    }
+    row.append(thumb, main, tags);
+    row.addEventListener("click", () => openMagentoPane(p.sku));
+    if (p.type !== "grouped") {
+      const can = isMgCatPickable(p);
+      const pick = document.createElement("input");
+      pick.type = "checkbox";
+      pick.className = "mg-cat-pick";
+      pick.disabled = !can;
+      pick.checked = can && mgCatPicked.has(p.sku);
+      pick.title = can ? "Select for an email" : "Not available on the webstore, so it can't go in an email";
+      pick.setAttribute("aria-label", `Select ${p.sku}`);
+      pick.addEventListener("change", () => {
+        if (pick.checked) mgCatPicked.add(p.sku);
+        else mgCatPicked.delete(p.sku);
+        renderMgCategoryDetail();
+      });
+      card.classList.toggle("is-picked", pick.checked);
+      card.append(pick);
+    } else if (hasColors) {
+      // Lines the photo up with the colours' (which have a checkbox).
+      card.append(Object.assign(document.createElement("span"), { className: "mg-cat-pick is-space" }));
+    }
+    card.append(row);
+    list.appendChild(card);
+  });
+  section.appendChild(list);
+
+  if (d.loading) {
+    section.appendChild(Object.assign(document.createElement("p"), { className: "mg-cat-muted", textContent: styles ? "Loading colours…" : "Loading products…" }));
+  } else if (d.products.length < d.total) {
+    const more = document.createElement("button");
+    more.type = "button";
+    more.className = "btn mg-cat-more";
+    more.textContent = `Show more (${(d.total - d.products.length).toLocaleString()} left)`;
+    more.addEventListener("click", () => (styles ? loadMgCategoryStyles(d.id) : loadMgCategoryProducts(d.id)));
+    section.appendChild(more);
+  }
+  return section;
 }
 
 function createMgCategoryActiveSwitch(category) {
@@ -1508,6 +2042,7 @@ function createMgCategoryActiveSwitch(category) {
       category.isActive = next;
       paint();
       btn.closest("tr")?.classList.toggle("mg-row-disabled", !next);
+      if (category.id === mgCatSelectedId) renderMgCategoryDetail();
       showIndicator(`${category.name} ${next ? "active" : "inactive"}`, "success");
     } catch (err) {
       showIndicator(err.message || "Couldn't change the category.", "error");
@@ -1716,6 +2251,18 @@ function initMagento() {
     e.preventDefault();
     e.stopImmediatePropagation();
     moveMagentoPane(e.key === "ArrowUp" ? -1 : 1);
+  }, true);
+
+  // ↑ ↓ on Categories: the category above or below (no product pane open).
+  document.addEventListener("keydown", e => {
+    if (e.key !== "ArrowUp" && e.key !== "ArrowDown") return;
+    if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey || mgPane) return;
+    if (getCurrentAppView() !== "magento" || mgSubview !== "categories") return;
+    if (document.querySelector(".modal-backdrop.open")) return;
+    if (e.target.closest?.("input, textarea, select, [contenteditable='true']")) return;
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    moveMgCategory(e.key === "ArrowUp" ? -1 : 1);
   }, true);
 
   document.getElementById("mgSelectAll")?.addEventListener("change", e => {

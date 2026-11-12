@@ -121,6 +121,7 @@ async function loadMgIndex({ force = false } = {}) {
     renderMgAvailControls();
     renderMgProducts();
     if (mgPane) renderMagentoPane(); // its Available tag
+    if (mgSubview === "categories") renderMgCategoryDetail(); // which styles can be ticked
     refreshStyleMgViews({ pane: true });
   })();
   return mgIndexLoading;

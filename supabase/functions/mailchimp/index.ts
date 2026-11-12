@@ -20,6 +20,7 @@
  *                                  null to unschedule, omitted to keep;
  *                                  listId: move it to another audience;
  *                                  targeting: who in the audience (below)
+ *   content    { id, html }        set the email's HTML (never a sent campaign)
  *   delete     { id }              never a sent campaign
  *
  * Deploy: supabase functions deploy mailchimp --project-ref <ref> --use-api
@@ -314,6 +315,34 @@ const actions: Record<string, (p: any) => Promise<unknown>> = {
         // The edit itself landed; say so, along with why the schedule didn't.
         const why = err instanceof Error ? err.message : String(err);
         throw new UserError(`Saved, but Mailchimp didn't schedule it: ${why}`, 409);
+      }
+    }
+    return summarize(await getCampaign(id));
+  },
+
+  /**
+   * The email itself, as finished HTML (the app's E-Mail page) — Mailchimp
+   * then shows it as a "Code your own" design. A scheduled campaign is
+   * unscheduled for the change and put back at the same time.
+   */
+  async content({ id, html }) {
+    if (!id) throw new UserError("Pick a campaign.");
+    if (typeof html !== "string" || !html.trim()) throw new UserError("There's no email to send.");
+    const current = await getCampaign(id);
+    if (LOCKED.has(current.status)) throw new UserError("This campaign has already been sent, so its email can't be changed.");
+
+    const wasScheduledAt = current.status === "schedule" ? current.send_time : "";
+    if (wasScheduledAt) await mc(`/campaigns/${encodeURIComponent(id)}/actions/unschedule`, { method: "POST" });
+    try {
+      await mc(`/campaigns/${encodeURIComponent(id)}/content`, { method: "PUT", body: JSON.stringify({ html }) });
+    } finally {
+      if (wasScheduledAt) {
+        await mc(`/campaigns/${encodeURIComponent(id)}/actions/schedule`, {
+          method: "POST",
+          body: JSON.stringify({ schedule_time: new Date(wasScheduledAt).toISOString() }),
+        }).catch(() => {
+          throw new UserError("The email was saved, but Mailchimp didn't put the schedule back — schedule it again in Mailchimp.", 409);
+        });
       }
     }
     return summarize(await getCampaign(id));

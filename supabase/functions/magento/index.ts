@@ -56,7 +56,8 @@
  *   update     { sku, changes }     save a product's fields (below)
  *   bulk       { skus, op, categoryId? }
  *                                   op: enable | disable | addCategory | removeCategory
- *   category   { id, changes }      changes: { name?, isActive? }
+ *   categoryDetail { id }           its URL key and URL path
+ *   category   { id, changes }      changes: { name?, isActive?, urlKey? }
  *   events                          every event (the store's events
  *                                   extension, found in its API map)
  *   saveEvent  { id?, changes }      create (no id) or change an event:
@@ -89,7 +90,7 @@ import { AsyncLocalStorage } from "node:async_hooks";
  * copy running in Supabase is older than the app expects. Bump it (and
  * MG_HELPER_VERSION in js/magento.js) whenever this file changes.
  */
-const HELPER_VERSION = "2026-11-11.1";
+const HELPER_VERSION = "2026-11-11.2";
 
 /**
  * Where a request's time went: each Magento call is counted and timed, per
@@ -2316,6 +2317,20 @@ const actions: Record<string, (p: any) => Promise<unknown>> = {
     return { results };
   },
 
+  /** One category's web address: its URL key and the path it makes. */
+  async categoryDetail({ id }) {
+    if (!id) throw new UserError("Which category?");
+    const c = await mg(`/categories/${encodeURIComponent(id)}`);
+    // deno-lint-ignore no-explicit-any
+    const attr = (code: string) => (c?.custom_attributes ?? []).find((a: any) => a.attribute_code === code)?.value ?? "";
+    return { id: String(id), urlKey: String(attr("url_key")), urlPath: String(attr("url_path")) };
+  },
+
+  /**
+   * urlKey: lowercase letters, numbers and dashes. The old address keeps
+   * working — Magento makes a permanent redirect from it, as the admin's
+   * "Create Permanent Redirect for old URL" box does.
+   */
   async category({ id, changes }) {
     if (!id) throw new UserError("Which category?");
     // deno-lint-ignore no-explicit-any
@@ -2326,8 +2341,19 @@ const actions: Record<string, (p: any) => Promise<unknown>> = {
       category.name = name;
     }
     if (changes?.isActive !== undefined) category.is_active = Boolean(changes.isActive);
+    if (changes?.urlKey !== undefined) {
+      const urlKey = String(changes.urlKey).trim().toLowerCase();
+      if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(urlKey)) {
+        throw new UserError("A URL key is lowercase letters, numbers and dashes — like holiday-sale.");
+      }
+      category.custom_attributes = [
+        { attribute_code: "url_key", value: urlKey },
+        { attribute_code: "save_rewrites_history", value: true },
+      ];
+    }
     if (!Object.keys(category).length) throw new UserError("Nothing to change.");
     await mg(`/categories/${encodeURIComponent(id)}`, { method: "PUT", body: JSON.stringify({ category }) }, "all");
+    if (changes?.urlKey !== undefined) return actions.categoryDetail({ id });
     return { id: String(id) };
   },
 

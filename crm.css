@@ -8446,7 +8446,7 @@ tr:hover .shoot-picker.is-unpicked,
 /* Products: grey when not available on the webstore. Categories: grey when inactive. */
 .mg-row-unavailable td[data-col="name"],
 .mg-row-unavailable td[data-col="sku"],
-.mg-row-disabled .mg-cat-name-input { color: var(--text-muted); }
+.mg-row-disabled .mg-cat-name { color: var(--text-muted); }
 
 .mg-sku { font-family: var(--font-mono); font-size: 12px; }
 
@@ -8683,6 +8683,7 @@ tr:hover .shoot-picker.is-unpicked,
   color: var(--text-muted);
 }
 .mg-admin-icon:hover { color: #1f56a5; background: var(--accent-light); }
+.mg-admin-icon[hidden] { display: none; }
 .mg-admin-link { display: inline-flex; align-items: center; gap: 5px; padding: 4px 10px; font-size: 12px; text-decoration: none; white-space: nowrap; }
 .mg-admin-link[hidden] { display: none; }
 .mg-customers-table .col-name     { width: 170px; }
@@ -8882,29 +8883,153 @@ tr:hover .shoot-picker.is-unpicked,
   .mg-address-pair, .mg-address-list { grid-template-columns: 1fr; }
 }
 
-.mg-categories-table { width: 760px; min-width: 0; max-width: 100%; margin: 0 auto; }
-.mg-categories-table .col-name    { width: 380px; min-width: 240px; }
-.mg-categories-table .col-count   { width: 100px; min-width: 90px; }
-.mg-categories-table .col-status  { width: 130px; min-width: 120px; }
-.mg-categories-table .col-actions { width: 150px; min-width: 140px; }
-.mg-cat-name-input {
-  display: block;
-  width: 100%;
-  max-width: 360px;
-  padding: 3px 6px;
-  margin-left: -7px;
-  border: 1px solid transparent;
-  border-radius: 4px;
-  background: transparent;
+/* Categories: the tree pinned on the left, the picked one's details beside it. */
+.mg-cat-layout { overflow: hidden; }
+.po-layout > .table-scroll-y.mg-cat-list {
+  flex: 0 0 520px;
+  max-width: 50%;
+  border-right: 1px solid var(--border);
+}
+.mg-categories-table { width: 100%; min-width: 0; }
+.mg-categories-table .col-name    { width: auto; min-width: 200px; }
+.mg-categories-table .col-count   { width: 96px; }
+.mg-categories-table .col-status  { width: 130px; }
+.mg-categories-table tbody tr[data-category-id] { cursor: pointer; }
+.mg-categories-table tbody tr.is-open td { background: var(--row-selected-bg); }
+.mg-categories-table tbody tr.is-open td:first-child { box-shadow: inset 3px 0 0 var(--text); }
+
+.mg-cat-detail { flex: 1; min-width: 0; overflow-y: auto; padding: 20px 28px 40px; background: var(--surface); }
+.mg-cat-detail-empty { margin: 40px 0 0; text-align: center; font-size: 13px; color: var(--text-muted); }
+.mg-cat-detail-path { font-size: 12px; color: var(--text-muted); min-height: 16px; }
+.mg-cat-detail-meta { font-size: 12.5px; color: var(--text-muted); }
+.mg-cat-section { margin-top: 22px; }
+.mg-cat-section h3 { margin: 0; font-size: 13px; font-weight: 600; }
+.mg-cat-section-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin: 0 0 10px; }
+.mg-cat-view-toggle { display: inline-flex; padding: 2px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); }
+.mg-cat-view-btn {
+  padding: 4px 12px;
+  border: none;
+  border-radius: 6px;
+  background: none;
   font-family: var(--font);
-  font-size: 13px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.mg-cat-view-btn[aria-pressed="true"] { background: var(--surface); color: var(--text); box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08); }
+.mg-cat-muted { margin: 0; font-size: 12.5px; color: var(--text-muted); }
+.mg-cat-error { margin: 0 0 8px; font-size: 12.5px; color: var(--danger); }
+
+/* Header: the name (pencil to rename) on the left, the web address (pencil to edit) on the right. */
+.mg-cat-detail-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px 32px; flex-wrap: wrap; padding-bottom: 18px; border-bottom: 1px solid var(--border); }
+.mg-cat-head-main { flex: 1 1 280px; min-width: 0; }
+.mg-cat-head-url { flex: 0 1 460px; min-width: 0; display: flex; flex-direction: column; align-items: flex-end; text-align: right; }
+.mg-cat-head-label { font-size: 11px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--text-muted); margin: 2px 0 6px; }
+.mg-cat-title-line, .mg-cat-url-line { display: flex; align-items: center; gap: 6px; min-width: 0; max-width: 100%; }
+.mg-cat-title-line h2 { margin: 2px 0 4px; font-size: 20px; font-weight: 600; min-width: 0; overflow-wrap: anywhere; }
+.mg-cat-url-link { min-width: 0; font-size: 13px; color: var(--text); text-decoration: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mg-cat-url-link:hover { text-decoration: underline; }
+.mg-cat-url-host { color: var(--text-muted); }
+.mg-cat-title-line .mg-cat-admin { margin-left: 6px; }
+.mg-cat-url-link strong { font-weight: 600; }
+.mg-cat-pencil {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.mg-cat-pencil:hover { background: var(--accent-heavy); color: var(--text); }
+.mg-cat-edit-row { display: flex; align-items: center; gap: 6px; width: 100%; margin: 2px 0 4px; }
+.mg-cat-edit-input { flex: 1 1 160px; min-width: 100px; width: auto; }
+.mg-cat-edit-input.is-mono { font-family: var(--font-mono); font-size: 12.5px; }
+.mg-cat-edit-row .btn { flex: 0 0 auto; padding: 6px 12px; }
+.mg-cat-save:not(:disabled) { background: var(--text); color: #fff; border-color: var(--text); }
+.mg-cat-url-affix { flex: 0 1 auto; min-width: 0; font-size: 12.5px; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mg-cat-url-hint { margin: 4px 0 0; }
+
+/* One product per row, top to bottom, with a photo big enough to tell styles apart. */
+.mg-cat-products {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  overflow: hidden;
+}
+.mg-cat-product {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  border-bottom: 1px solid var(--border);
+}
+.mg-cat-product:last-child { border-bottom: none; }
+.mg-cat-product:hover { background: var(--row-hover); }
+.mg-cat-product.is-picked { box-shadow: inset 3px 0 0 #1f56a5; background: var(--row-selected-bg); }
+.mg-cat-product-open {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  min-width: 0;
+  padding: 10px 16px 10px 12px;
+  border: none;
+  background: none;
+  font-family: var(--font);
+  text-align: left;
+  cursor: pointer;
+}
+.mg-cat-pick { flex: 0 0 auto; width: 16px; height: 16px; margin: 0 0 0 16px; cursor: pointer; }
+.mg-cat-pick:disabled { cursor: not-allowed; opacity: 0.35; }
+.mg-cat-pick.is-space { display: block; cursor: default; }
+.mg-cat-pick-bar {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 10px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+}
+.mg-cat-pick-text { flex: 1 1 200px; font-size: 12.5px; color: var(--text-muted); }
+.mg-cat-pick-select {
+  padding: 6px 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  background: var(--surface);
+  font-family: var(--font);
+  font-size: 12.5px;
   color: var(--text);
 }
-.mg-cat-name-input.is-root { font-weight: 700; }
-.mg-cat-name-input:hover { border-color: var(--editable-hover-border); }
-.mg-cat-name-input:focus { outline: none; border-color: var(--accent); background: var(--surface); }
+.mg-cat-product .mg-thumb { flex: 0 0 auto; width: 84px; height: 112px; border-radius: 6px; }
+.mg-cat-product-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.mg-cat-product-sku { font-size: 14px; font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mg-cat-product-name { font-size: 12.5px; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mg-cat-product-tags { flex: 0 0 auto; display: flex; align-items: center; gap: 10px; }
+.mg-cat-product-off { font-size: 11.5px; font-weight: 600; color: var(--danger); }
+.mg-cat-more { margin-top: 12px; }
+
+@media (max-width: 900px) {
+  .mg-cat-layout { flex-direction: column; overflow-y: auto; }
+  .po-layout > .table-scroll-y.mg-cat-list { flex: 0 0 auto; max-width: none; max-height: 45vh; border-right: none; border-bottom: 1px solid var(--border); }
+  .mg-cat-detail { overflow: visible; padding: 16px; }
+}
+.mg-categories-table td.mg-cat-name-cell { text-align: left; }
+.mg-cat-name { display: block; font-size: 13px; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mg-cat-name.is-root { font-weight: 700; }
 .mg-cat-path { display: block; margin-top: 1px; font-size: 11.5px; color: var(--text-muted); }
-.mg-cat-view-btn { padding-top: 3px; padding-bottom: 3px; font-size: 12px; }
 
 /* Product pane */
 .mg-pane { width: 600px; }
@@ -10165,6 +10290,11 @@ button.dash-event[data-bar]:hover { filter: none; }
    ============================================================ */
 
 .email-layout { overflow: hidden; }
+
+/* The Light / Dark toggle centred in the toolbar, the buttons at the end. */
+#emailToolbar { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; }
+#emailToolbar .toolbar-filter-cluster { grid-column: 2; flex: none; justify-content: center; }
+#emailToolbar .toolbar-end { grid-column: 3; justify-self: end; }
 .email-list-problems { color: var(--danger) !important; font-weight: 600; }
 
 .email-preview {
@@ -10187,10 +10317,12 @@ button.dash-event[data-bar]:hover { filter: none; }
   left: 0;
   display: flex;
   align-items: flex-start;
-  gap: 32px;
+  gap: 40px;
   transform-origin: top left;
 }
 .email-device { margin: 0; flex: 0 0 auto; }
+/* A rule between the two (it's scaled with them, hence 2px). */
+.email-device--mobile { align-self: stretch; padding-left: 40px; border-left: 2px solid var(--border-strong); }
 .email-device figcaption {
   margin: 0 0 8px;
   font-size: 12px;
@@ -10206,7 +10338,8 @@ button.dash-event[data-bar]:hover { filter: none; }
   background: #fff;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06), 0 8px 24px rgba(0, 0, 0, 0.08);
 }
-.email-device--desktop .email-preview-frame { width: 660px; } /* the email's own max width */
+/* A desktop mail window: wider than the 660px email, so its background shows around it. */
+.email-device--desktop .email-preview-frame { width: 900px; }
 .email-device--mobile .email-preview-frame { width: 375px; }
 .email-notice {
   width: 100%;
@@ -10276,7 +10409,9 @@ button.dash-event[data-bar]:hover { filter: none; }
 .email-link { display: flex; flex-direction: column; gap: 5px; border-radius: 6px; }
 .email-link-problem { font-size: 11px; color: var(--danger); }
 .email-link-problem[hidden] { display: none; }
-.email-link .form-input, .email-product-url { font-size: 12.5px; }
+.email-link .form-input { font-size: 12.5px; }
+.email-link-field { display: flex; align-items: center; gap: 6px; }
+.email-link-field .form-input { flex: 1; min-width: 0; }
 
 /* Clicked in the preview: a moment of highlight. */
 @keyframes email-flash { from { background: #fff3c4; box-shadow: 0 0 0 6px #fff3c4; } to { background: transparent; box-shadow: 0 0 0 6px transparent; } }
@@ -10302,7 +10437,15 @@ button.dash-event[data-bar]:hover { filter: none; }
 .email-product-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 5px; }
 .email-product-style { font-size: 12.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .email-product-name { font-weight: 400; color: var(--text-muted); }
-.email-product-url { padding: 4px 8px; }
+.email-product-url {
+  font-size: 11.5px;
+  color: var(--text-muted);
+  text-decoration: none;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+a.email-product-url:hover { color: var(--text); text-decoration: underline; }
 .email-product-tools { display: flex; flex-direction: column; gap: 2px; }
 .email-icon-btn {
   width: 24px;
@@ -10357,3 +10500,51 @@ button.dash-event[data-bar]:hover { filter: none; }
 .email-search-result span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .email-search-state { padding: 8px; font-size: 12px; color: var(--text-muted); }
 .email-search-state.is-error { color: var(--danger); }
+.email-search-bar { display: flex; flex-wrap: wrap; gap: 6px; }
+.email-search-bar input[type="search"] { flex: 1 1 140px; min-width: 0; width: auto; }
+.email-search-category {
+  flex: 1 1 140px;
+  min-width: 0;
+  padding: 6px 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  background: var(--surface);
+  font-family: var(--font);
+  font-size: 12.5px;
+  color: var(--text);
+}
+.email-search-head {
+  position: sticky;
+  top: -4px;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: -4px -4px 2px;
+  padding: 6px 6px 6px 10px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+  font-size: 11.5px;
+  color: var(--text-muted);
+}
+.email-search-added { margin-left: auto; font-size: 11px; color: var(--text-muted); }
+.email-search-more { display: block; width: calc(100% - 8px); margin: 4px; font-size: 12px; }
+.email-product-unavailable {
+  margin-left: 6px;
+  padding: 1px 6px;
+  border-radius: 10px;
+  background: #fdecec;
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--danger);
+}
+
+/* Send to Mailchimp (js/email.js) */
+.email-notice.is-success { border-color: #9fd6c0; background: #e9f7f1; }
+.email-notice .btn-close { flex: 0 0 auto; }
+.email-mc-warning { padding: 8px 10px; border-radius: 6px; background: #fdf6e7; border: 1px solid #e8c27a; font-size: 12.5px; }
+.email-mc-warning[hidden] { display: none; }
+.email-mc-action { align-self: flex-end; margin-top: 2px; font-size: 12px; font-weight: 600; color: var(--text); }
+.email-mc-more { align-self: flex-start; font-size: 12.5px; font-weight: 500; }
+.email-mc-more[hidden] { display: none; }

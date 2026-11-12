@@ -13,7 +13,9 @@
  *   data-mm-card            a product card inside it — the first one is
  *                           repeated once per style picked
  *   data-mm-field="…"       inside a card, filled from Magento:
- *                           url (href), image (src + alt), style, name (text)
+ *                           url (href), image (src + alt), style, color,
+ *                           label ("STYLE · COLOUR"), name (text). A
+ *                           colour links to its style's page.
  * Mailchimp merge-tag links (*|UNSUB|* …) are left alone.
  *
  * What you set (links, products) is saved per template in Supabase
@@ -75,7 +77,7 @@ function emailFields(card, field) {
 function readEmailCard(card) {
   const url = emailFields(card, "url")[0]?.getAttribute("href") ?? "";
   const image = emailFields(card, "image")[0]?.getAttribute("src") ?? "";
-  const style = emailFields(card, "style")[0]?.textContent.trim() ?? "";
+  const style = (emailFields(card, "style")[0] ?? emailFields(card, "label")[0])?.textContent.trim() ?? "";
   const name = emailFields(card, "name")[0]?.textContent.trim() ?? "";
   return { sku: style, style, name, url, image };
 }
@@ -125,9 +127,19 @@ function fillEmailCard(card, product, width) {
   emailFields(card, "url").forEach(el => el.setAttribute("href", product.url || "#"));
   emailFields(card, "image").forEach(el => {
     el.setAttribute("src", product.image || "");
-    el.setAttribute("alt", product.style ? `Style ${product.style}` : product.name || "");
+    el.setAttribute("alt", product.style ? `Style ${product.style}${product.color ? ` in ${product.color}` : ""}` : product.name || "");
   });
   emailFields(card, "style").forEach(el => { el.textContent = product.style || ""; });
+  emailFields(card, "color").forEach(el => { el.textContent = product.color || ""; });
+  // Two lines on every card — style # over colour — so the buttons are all one height.
+  emailFields(card, "label").forEach(el => {
+    const doc = el.ownerDocument;
+    el.replaceChildren(
+      doc.createTextNode(product.style || product.sku || ""),
+      doc.createElement("br"),
+      doc.createTextNode(product.color || " "),
+    );
+  });
   emailFields(card, "name").forEach(el => { el.textContent = product.name || ""; });
   return card;
 }
@@ -289,6 +301,7 @@ function showEmailNotice(message, sql = "") {
   const el = document.getElementById("emailNotice");
   if (!el) return;
   el.hidden = !message;
+  el.classList.remove("is-success");
   const text = document.createElement("span");
   text.textContent = message || "";
   el.replaceChildren(text);
@@ -326,6 +339,7 @@ async function openEmailTemplate(id, { askFirst = false } = {}) {
     return;
   }
   emailDraft = cloneEmailSettings(emailSaved.get(id));
+  applyEmailPendingAdd(id);
   renderEmailList();
   renderEmailPanel();
   renderEmailPreview();
@@ -457,7 +471,7 @@ function focusEmailLinkFor(a) {
     const key = grid.dataset.mmProducts;
     const index = cards.indexOf(card);
     const row = document.querySelector(`.email-product[data-grid="${CSS.escape(key)}"][data-index="${index}"]`);
-    flashEmailRow(row, row?.querySelector("input"));
+    flashEmailRow(row);
     return;
   }
   const { links } = emailLinkKeysIn(a.ownerDocument);
@@ -536,6 +550,10 @@ function createEmailLinkRow(link, href) {
   input.dataset.key = link.key;
   input.value = href ?? "";
   input.spellcheck = false;
+  const open = createOpenIcon("", `Open ${link.label}`);
+  const field = document.createElement("div");
+  field.className = "email-link-field";
+  field.append(input, open);
   const problem = document.createElement("span");
   problem.className = "email-link-problem";
   const syncProblem = () => {
@@ -543,6 +561,9 @@ function createEmailLinkRow(link, href) {
     problem.textContent = p;
     problem.hidden = !p;
     input.classList.toggle("is-invalid", Boolean(p));
+    const url = input.value.trim();
+    open.href = url;
+    open.hidden = !/^(https?:\/\/|mailto:)\S+$/i.test(url);
   };
   syncProblem();
   input.addEventListener("input", () => {
@@ -552,7 +573,7 @@ function createEmailLinkRow(link, href) {
     renderEmailList();
     scheduleEmailPreview();
   });
-  row.append(label, input, problem);
+  row.append(label, field, problem);
   return row;
 }
 
@@ -565,7 +586,7 @@ function setEmailProducts(gridKey, products) {
 function createEmailGridSection(grid, products) {
   const count = document.createElement("span");
   count.className = "email-section-count";
-  count.textContent = `${products.length} ${products.length === 1 ? "style" : "styles"} · ${grid.columns} per row`;
+  count.textContent = `${products.length} ${products.length === 1 ? "colour" : "colours"} · ${grid.columns} per row`;
   const { el, body } = createEmailSection(grid.label, count);
 
   const list = document.createElement("div");
@@ -574,7 +595,7 @@ function createEmailGridSection(grid, products) {
   if (!products.length) {
     const empty = document.createElement("p");
     empty.className = "email-empty";
-    empty.textContent = "No styles — the grid is left out of the email. Add one below.";
+    empty.textContent = "Nothing picked — the grid is left out of the email. Add a colour below.";
     list.appendChild(empty);
   }
   body.append(list, createEmailProductSearch(grid, products));
@@ -597,27 +618,31 @@ function createEmailProductRow(grid, products, product, index) {
   main.className = "email-product-main";
   const title = document.createElement("div");
   title.className = "email-product-style";
-  title.textContent = product.style || product.sku || "—";
-  if (product.name && product.name !== product.style) {
+  title.textContent = emailProductLabel(product) || "—";
+  if (product.name && product.name !== product.style && !product.color) {
     const name = document.createElement("span");
     name.className = "email-product-name";
     name.textContent = product.name;
     title.append(" ", name);
   }
-  const url = document.createElement("input");
-  url.type = "url";
-  url.className = "form-input email-product-url";
-  url.value = product.url || "";
-  url.spellcheck = false;
-  url.title = "Where the photo and button link to";
-  url.addEventListener("input", () => {
-    // The template's own list stays as it is; the draft gets a copy.
-    const list = emailDraft.products[grid.key] ??= JSON.parse(JSON.stringify(products));
-    list[index] = { ...list[index], url: url.value.trim() };
-    syncEmailFooter();
-    scheduleEmailPreview();
-  });
+  // A style always links to its product page — shown, not edited.
+  const url = document.createElement("a");
+  url.className = "email-product-url";
+  url.href = product.url || "#";
+  url.target = "_blank";
+  url.rel = "noopener";
+  url.textContent = String(product.url || "No product page").replace(/^https?:\/\/(www\.)?/, "");
+  url.title = "The product page the photo and button link to";
   main.append(title, url);
+  // Checked against the catalog when it's loaded: a style that stopped showing on the webstore.
+  if (mgIndex && mgIndex.has(product.sku) && mgAvailability(product.sku).available === false) {
+    row.classList.add("is-unavailable");
+    title.append(Object.assign(document.createElement("span"), {
+      className: "email-product-unavailable",
+      textContent: "Not available",
+      title: `Not showing on the webstore: ${mgAvailability(product.sku).reasons.join("; ") || "unknown"}`,
+    }));
+  }
 
   const tools = document.createElement("div");
   tools.className = "email-product-tools";
@@ -641,7 +666,7 @@ function createEmailProductRow(grid, products, product, index) {
   remove.type = "button";
   remove.className = "email-icon-btn";
   remove.textContent = "✕";
-  remove.setAttribute("aria-label", `Remove ${product.style}`);
+  remove.setAttribute("aria-label", `Remove ${emailProductLabel(product)}`);
   remove.title = "Remove";
   remove.addEventListener("click", () => setEmailProducts(grid.key, (emailDraft.products[grid.key] ?? products).filter((_, i) => i !== index)));
   tools.append(move(-1, "Move up", "↑"), move(1, "Move down", "↓"), remove);
@@ -650,103 +675,332 @@ function createEmailProductRow(grid, products, product, index) {
   return row;
 }
 
-/** Add a style: search Magento's grouped products (one per style). */
+/** What the style search shows — kept while the panel redraws after an add. */
+const emailSearch = { gridKey: "", category: "", term: "", shown: 0, open: false };
+const EMAIL_SEARCH_PAGE = 30;
+
+/**
+ * Add colours: only Available ones (showing on the webstore), by category
+ * and/or SKU. Availability comes from the app's catalog check
+ * (js/magento-availability.js), so the list is filtered here, then the
+ * colours shown are loaded from Magento for their photos, with their
+ * styles for the links (a colour has no page of its own).
+ */
 function createEmailProductSearch(grid, products) {
   const wrap = document.createElement("div");
   wrap.className = "email-product-search";
+  if (emailSearch.gridKey !== grid.key) Object.assign(emailSearch, { gridKey: grid.key, category: "", term: "", shown: 0, open: false });
+
+  const bar = document.createElement("div");
+  bar.className = "email-search-bar";
+  const category = document.createElement("select");
+  category.className = "email-search-category";
+  category.setAttribute("aria-label", "Category");
+  category.append(new Option("All categories", ""));
+  if (emailSearch.category) category.append(new Option(getMgCategoryName(emailSearch.category), emailSearch.category));
+  category.value = emailSearch.category;
   const input = document.createElement("input");
   input.type = "search";
-  input.placeholder = "Add a style — search SKU or name";
+  input.placeholder = "Search style # or colour";
+  input.value = emailSearch.term;
+  input.setAttribute("aria-label", "Search available colours by style # or colour");
+  bar.append(category, input);
+
   const results = document.createElement("div");
   results.className = "email-search-results";
   results.hidden = true;
   let timer = 0;
   let seq = 0;
 
+  const setState = (text, isError = false) => {
+    results.replaceChildren(Object.assign(document.createElement("div"), {
+      className: "email-search-state" + (isError ? " is-error" : ""),
+      textContent: text,
+    }));
+  };
+  const close = () => {
+    emailSearch.open = false;
+    results.hidden = true;
+  };
+
+  /** Only categories with an available colour, each with how many. */
+  const fillCategories = () => {
+    const counts = emailColorCategoryCounts();
+    const opts = mgCategories
+      .filter(c => counts.get(String(c.id)))
+      .map(c => new Option(`${"   ".repeat(Math.max(0, (c.level ?? 2) - 2))}${c.name} (${counts.get(String(c.id))})`, String(c.id)));
+    category.replaceChildren(new Option(`All categories (${counts.get("") ?? 0})`, ""), ...opts);
+    category.value = counts.get(emailSearch.category) ? emailSearch.category : "";
+    emailSearch.category = category.value;
+  };
+
   const run = async () => {
-    const q = input.value.trim();
     const mine = ++seq;
-    if (q.length < 2) {
-      results.hidden = true;
-      return;
-    }
+    const term = input.value.trim();
+    emailSearch.term = term;
+    emailSearch.category = category.value;
+    emailSearch.open = true;
+    emailSearch.shown = Math.max(emailSearch.shown, EMAIL_SEARCH_PAGE);
     results.hidden = false;
-    results.replaceChildren(Object.assign(document.createElement("div"), { className: "email-search-state", textContent: "Searching Magento…" }));
+    setState("Checking which colours are available…");
     try {
-      const found = await searchEmailProducts(q);
+      await ensureEmailCatalog();
       if (mine !== seq) return;
-      if (!found.length) {
-        results.replaceChildren(Object.assign(document.createElement("div"), { className: "email-search-state", textContent: "No styles match." }));
+      fillCategories();
+      const skus = emailColorSkus(term, category.value);
+      if (!skus.length) {
+        setState(term ? "No available colours match." : "No available colours in this category.");
         return;
       }
-      const have = new Set(products.map(p => String(p.sku).toUpperCase()));
-      results.replaceChildren(...found.map(p => {
-        const b = document.createElement("button");
-        b.type = "button";
-        b.className = "email-search-result";
-        const img = document.createElement("img");
-        img.alt = "";
-        if (p.image) img.src = p.image;
-        const text = document.createElement("span");
-        const s = document.createElement("strong");
-        s.textContent = p.style;
-        text.append(s, " ", p.name !== p.style ? p.name : "");
-        b.append(img, text);
-        const added = have.has(String(p.sku).toUpperCase());
-        if (added) {
-          b.disabled = true;
-          b.title = "Already in the email";
-        }
-        b.addEventListener("click", () => setEmailProducts(grid.key, [...(emailDraft.products[grid.key] ?? products), p]));
-        return b;
-      }));
+      const page = skus.slice(0, emailSearch.shown);
+      if (page.some(sku => !emailColorCache.has(sku))) setState("Loading colours…");
+      const found = await loadEmailColors(page);
+      if (mine !== seq) return;
+      renderResults(found, skus.length);
     } catch (err) {
       if (mine !== seq) return;
-      results.replaceChildren(Object.assign(document.createElement("div"), { className: "email-search-state is-error", textContent: err.message || "Couldn't search Magento." }));
+      setState(err.message || "Couldn't search Magento.", true);
     }
   };
+
+  const renderResults = (found, total) => {
+    const have = new Set(products.map(p => String(p.sku).toUpperCase()));
+    const head = document.createElement("div");
+    head.className = "email-search-head";
+    head.append(`${total.toLocaleString()} available ${total === 1 ? "colour" : "colours"} · newest first`);
+    const closeBtn = document.createElement("button");
+    closeBtn.type = "button";
+    closeBtn.className = "email-icon-btn";
+    closeBtn.textContent = "✕";
+    closeBtn.title = "Close";
+    closeBtn.setAttribute("aria-label", "Close the results");
+    closeBtn.addEventListener("click", close);
+    head.append(closeBtn);
+
+    const rows = found.map(p => {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "email-search-result";
+      const img = document.createElement("img");
+      img.alt = "";
+      img.loading = "lazy";
+      if (p.image) img.src = p.image;
+      const text = document.createElement("span");
+      const s = document.createElement("strong");
+      s.textContent = p.style;
+      text.append(s, ` · ${p.color}`);
+      b.append(img, text);
+      if (have.has(String(p.sku).toUpperCase())) {
+        b.disabled = true;
+        b.title = "Already in the email";
+        b.append(Object.assign(document.createElement("span"), { className: "email-search-added", textContent: "Added" }));
+      }
+      b.addEventListener("click", () => setEmailProducts(grid.key, [...(emailDraft.products[grid.key] ?? products), p]));
+      return b;
+    });
+    results.replaceChildren(head, ...rows);
+    if (found.length < total) {
+      const more = document.createElement("button");
+      more.type = "button";
+      more.className = "btn email-search-more";
+      more.textContent = `Show more (${(total - found.length).toLocaleString()} left)`;
+      more.addEventListener("click", () => {
+        emailSearch.shown += EMAIL_SEARCH_PAGE;
+        run();
+      });
+      results.append(more);
+    }
+  };
+
+  const restart = () => {
+    // Nothing picked or typed still lists every available style, to browse.
+    emailSearch.shown = EMAIL_SEARCH_PAGE;
+    run();
+  };
+  category.addEventListener("change", restart);
+  category.addEventListener("focus", () => { ensureEmailCatalog().then(() => { if (!emailSearch.open) fillCategories(); }).catch(() => {}); }, { once: true });
+  input.addEventListener("focus", () => { if (!emailSearch.open) restart(); });
   input.addEventListener("input", () => {
     clearTimeout(timer);
-    timer = setTimeout(run, 300);
+    timer = setTimeout(restart, 250);
   });
   input.addEventListener("keydown", e => {
     if (e.key === "Escape") {
       input.value = "";
-      results.hidden = true;
+      emailSearch.term = "";
+      close();
     }
   });
-  wrap.append(input, results);
+  wrap.append(bar, results);
+  // Redrawn after an add: pick up where it was.
+  if (emailSearch.open) run();
   return wrap;
 }
 
-/** Magento's grouped products (styles) for a search, as email products. */
-async function searchEmailProducts(search) {
-  if (!mgStore || mgStore.error) {
-    try {
-      mgStore = await callMagento("status");
-    } catch (err) {
-      throw new Error(err.message || "Couldn't reach Magento.");
+// Clicking elsewhere closes the results.
+document.addEventListener("click", e => {
+  if (!emailSearch.open || e.target.closest?.(".email-product-search, .email-product")) return;
+  emailSearch.open = false;
+  document.querySelectorAll(".email-search-results").forEach(r => { r.hidden = true; });
+});
+
+let emailCatalogLoading = null;
+
+/** Store info, categories, the imported groups and the catalog check — what the search needs. */
+function ensureEmailCatalog() {
+  emailCatalogLoading ??= (async () => {
+    if (!mgStore || mgStore.error) mgStore = await callMagento("status");
+    restoreMgIndexCache();
+    const jobs = [];
+    if (!mgGroups) jobs.push(loadMagentoGroups());
+    if (!mgCategories.length) {
+      jobs.push(callMagento("categories").then(list => {
+        mgCategories = list ?? [];
+        mgCategoryById = new Map(mgCategories.map(c => [c.id, c]));
+      }));
     }
+    // Last time's catalog will do to start; a fresh check runs behind it.
+    if (!mgIndex) jobs.push(loadMgIndex());
+    else if (!mgIndexLoading) loadMgIndex();
+    await Promise.all(jobs);
+    if (!mgIndex) throw new Error(mgIndexError || "Couldn't check which colours are available.");
+  })().catch(err => {
+    emailCatalogLoading = null;
+    throw new Error(err.message || "Couldn't reach Magento.");
+  });
+  return emailCatalogLoading;
+}
+
+/**
+ * A colour (Simple item) that can go in an email: showing on the webstore,
+ * which also means it's in a style (its group) that is. Colours have no page
+ * of their own, so the email links to the style's.
+ */
+const isEmailColorAvailable = sku => {
+  const r = mgIndex?.get(sku);
+  return Boolean(r) && r.type !== "grouped" && Boolean(mgChildGroup.get(sku)) && mgAvailability(sku).available === true;
+};
+
+/** The colour's name: its SKU after the style's ("D3519-BANANA" → "BANANA"). */
+function emailColorName(sku, group = mgChildGroup.get(sku)) {
+  const s = String(sku);
+  return group && s.toUpperCase().startsWith(`${String(group).toUpperCase()}-`) ? s.slice(String(group).length + 1) : "";
+}
+
+/** Available colours matching a SKU search and a category, newest first. */
+function emailColorSkus(term = "", categoryId = "") {
+  const t = term.toLowerCase();
+  const out = [];
+  mgIndex.forEach((r, sku) => {
+    if (r.type === "grouped") return;
+    if (categoryId && !r.categoryIds.includes(categoryId)) return;
+    if (t && !sku.toLowerCase().includes(t) && !String(r.name ?? "").toLowerCase().includes(t)) return;
+    if (!isEmailColorAvailable(sku)) return;
+    out.push(sku);
+  });
+  return out.sort((a, b) => String(mgIndex.get(b).updatedAt).localeCompare(String(mgIndex.get(a).updatedAt)) || a.localeCompare(b));
+}
+
+/** Category id → how many available colours are in it ("" → all of them). */
+function emailColorCategoryCounts() {
+  const counts = new Map([["", 0]]);
+  mgIndex.forEach((r, sku) => {
+    if (!isEmailColorAvailable(sku)) return;
+    counts.set("", counts.get("") + 1);
+    r.categoryIds.forEach(id => counts.set(id, (counts.get(id) ?? 0) + 1));
+  });
+  return counts;
+}
+
+/** Email products by colour SKU, loaded from Magento once each. */
+const emailColorCache = new Map();
+
+/** Colours as email products: each colour, plus its style for the link. */
+async function loadEmailColors(skus) {
+  const need = skus.filter(sku => !emailColorCache.has(sku));
+  for (let i = 0; i < need.length; i += 50) {
+    const chunk = need.slice(i, i + 50);
+    const groups = [...new Set(chunk.map(sku => mgChildGroup.get(sku)).filter(Boolean))];
+    const want = [...chunk, ...groups];
+    const page = await callMagento("products", { page: 1, pageSize: want.length, ...MG_DEFAULT_SORT, skus: want, withStock: false });
+    const bySku = new Map((page?.items ?? []).map(p => [p.sku, p]));
+    chunk.forEach(sku => {
+      const item = bySku.get(sku);
+      if (item) emailColorCache.set(sku, toEmailProduct(item, bySku.get(mgChildGroup.get(sku))));
+    });
   }
-  const page = await callMagento("products", { page: 1, pageSize: 20, ...MG_DEFAULT_SORT, search, type: "grouped" });
-  const styles = page?.items ?? [];
-  // A style's photo sits on its colours: one call for each style's first.
-  const firstChild = new Map();
-  styles.forEach(p => { if (!getMgImageUrl(p) && p.childSkus?.length) firstChild.set(p.sku, p.childSkus[0]); });
-  const childImages = new Map();
-  if (firstChild.size) {
-    const skus = [...new Set(firstChild.values())];
-    const children = await callMagento("products", { page: 1, pageSize: skus.length, ...MG_DEFAULT_SORT, skus }).catch(() => null);
-    (children?.items ?? []).forEach(c => childImages.set(c.sku, getMgImageUrl(c)));
+  return skus.map(sku => emailColorCache.get(sku)).filter(Boolean);
+}
+
+/**
+ * A colour as an email product: its own photo, the style # and colour to
+ * show, and the style's page for the link (a colour has none of its own).
+ */
+function toEmailProduct(item, group) {
+  const base = String(mgStore?.baseUrl || "https://www.mioumuse.com/").replace(/\/?$/, "/");
+  const groupSku = group?.sku ?? mgChildGroup.get(item.sku) ?? item.sku;
+  return {
+    sku: item.sku,
+    style: String(groupSku).toUpperCase(),
+    color: emailColorName(item.sku, groupSku).toUpperCase(),
+    name: String(group?.name ?? item.name ?? "").trim(),
+    url: group?.urlKey ? `${base}${group.urlKey}.html` : base,
+    image: getMgImageUrl(item),
+  };
+}
+
+/** "T7989ST · GREEN MULTI" — or just the style # for a whole style. */
+function emailProductLabel(product) {
+  return [product.style || product.sku, product.color].filter(Boolean).join(" · ");
+}
+
+// ── From the Categories page ─────────────────────────────────────────────────
+
+/** Styles waiting to go on a template's grid when the E-Mail page opens it. */
+let emailPendingAdd = null;
+
+/** Every template's product grids, for "Add to email": [{ templateId, gridKey, label }]. */
+async function emailGridChoices() {
+  const out = [];
+  for (const t of EMAIL_TEMPLATES) {
+    try {
+      await loadEmailTemplateSource(t);
+    } catch {
+      continue;
+    }
+    const grids = emailInfo.get(t.id)?.grids ?? [];
+    grids.forEach(g => out.push({ templateId: t.id, gridKey: g.key, label: grids.length > 1 ? `${t.name} · ${g.label}` : t.name }));
   }
-  const base = String(mgStore.baseUrl || "https://www.mioumuse.com/").replace(/\/?$/, "/");
-  return styles.map(p => ({
-    sku: p.sku,
-    style: String(p.sku).toUpperCase(),
-    name: String(p.name ?? "").trim(),
-    url: p.urlKey ? `${base}${p.urlKey}.html` : base,
-    image: getMgImageUrl(p) || childImages.get(firstChild.get(p.sku)) || "",
-  }));
+  return out;
+}
+
+/** Put colours on a template's grid (not saved yet) and open it on the E-Mail page. */
+function addStylesToEmail(templateId, gridKey, products) {
+  if (!getEmailTemplate(templateId) || !products.length) return;
+  emailPendingAdd = { templateId, gridKey, products };
+  emailTemplateId = templateId;
+  switchAppView("email");
+}
+
+/** Called once the draft is set up: adds what's waiting, skipping colours already there. */
+function applyEmailPendingAdd(id) {
+  if (emailPendingAdd?.templateId !== id) return;
+  const { gridKey, products } = emailPendingAdd;
+  emailPendingAdd = null;
+  const info = emailInfo.get(id);
+  const grid = info?.grids.find(g => g.key === gridKey) ?? info?.grids[0];
+  if (!grid) return;
+  const current = emailDraft.products[grid.key] ?? grid.products;
+  const have = new Set(current.map(p => String(p.sku).toUpperCase()));
+  const add = products.filter(p => !have.has(String(p.sku).toUpperCase()));
+  emailDraft.products[grid.key] = [...current, ...add];
+  const skipped = products.length - add.length;
+  showIndicator(
+    add.length
+      ? `Added ${add.length} ${add.length === 1 ? "colour" : "colours"} to ${grid.label}${skipped ? ` (${skipped} already there)` : ""} — Save to keep`
+      : "Those colours are already in the email",
+    "success",
+  );
 }
 
 function syncEmailFooter() {
@@ -831,6 +1085,181 @@ function downloadEmailHtml() {
   warnEmailProblems();
 }
 
+// ── Send to Mailchimp ────────────────────────────────────────────────────────
+//
+// The exported HTML goes into a Mailchimp campaign as its content (the
+// `content` action of the mailchimp function). Which campaign: an Email task's
+// linked one, a new one made for an Email task (js/mailchimp.js's create
+// form), or any other unsent draft. Sent campaigns are never changed.
+
+const EMAIL_MC_OPEN = new Set(["save", "paused", "schedule"]);
+
+/** Email tasks worth offering: linked to an unsent campaign, or still to do. */
+function emailMcTaskChoices() {
+  const since = ymd(addDays(parseYmd(todayYmd()), -14));
+  const out = [];
+  getAllScheduleItems().forEach(item => {
+    item.tasks.filter(t => t.kind === TASK_KIND_EMAIL).forEach(task => {
+      const link = getTaskLink(task.id);
+      const campaign = link ? getMcCampaign(link.campaignId) : null;
+      if (link) {
+        if (campaign && (campaign.missing || !EMAIL_MC_OPEN.has(campaign.status))) return;
+      } else if (isTaskComplete(task.id) || task.dueDate < since) {
+        return;
+      }
+      out.push({ task, item, campaign, linked: Boolean(link) });
+    });
+  });
+  return out.sort((a, b) => a.task.dueDate.localeCompare(b.task.dueDate));
+}
+
+function createEmailMcRow({ title, sub, status, action, onClick }) {
+  const row = document.createElement("button");
+  row.type = "button";
+  row.className = "mc-link-row";
+  const top = document.createElement("span");
+  top.className = "mc-link-row-top";
+  const t = document.createElement("span");
+  t.className = "mc-link-title";
+  t.textContent = title;
+  top.append(t);
+  if (status) {
+    const badge = document.createElement("span");
+    badge.className = "mc-status";
+    badge.dataset.tone = status.tone;
+    badge.textContent = status.label;
+    top.append(badge);
+  }
+  const s = document.createElement("span");
+  s.className = "mc-link-sub";
+  s.textContent = sub;
+  const go = document.createElement("span");
+  go.className = "email-mc-action";
+  go.textContent = action;
+  row.append(top, s, go);
+  row.addEventListener("click", onClick);
+  return row;
+}
+
+async function openEmailMcDialog() {
+  const template = getEmailTemplate();
+  if (!template || !emailSources.has(template.id)) return;
+  if (isMailchimpConnected() === false || mcConnected === null) await syncMailchimp();
+  if (!isMailchimpConnected()) {
+    showIndicator(mcError || "Mailchimp isn't connected.", "error");
+    return;
+  }
+  document.getElementById("emailMcLabel").textContent = `${template.name} → which campaign?`;
+  const problems = emailProblemCount(template);
+  const warning = document.getElementById("emailMcWarning");
+  warning.hidden = !problems;
+  warning.textContent = problems
+    ? `${problems} ${problems === 1 ? "link still needs" : "links still need"} a URL — you can send now and again later.`
+    : "";
+  document.getElementById("emailMcMoreBtn").hidden = false;
+  renderEmailMcTasks();
+  document.getElementById("emailMcOverlay").classList.add("open");
+}
+
+function closeEmailMcDialog() {
+  document.getElementById("emailMcOverlay")?.classList.remove("open");
+}
+
+function renderEmailMcTasks() {
+  const list = document.getElementById("emailMcList");
+  const choices = emailMcTaskChoices();
+  if (!choices.length) {
+    list.replaceChildren(Object.assign(document.createElement("div"), {
+      className: "mc-link-empty",
+      textContent: "No upcoming Email tasks. Add one to a campaign or trade show, or pick another draft below.",
+    }));
+    return;
+  }
+  list.replaceChildren(...choices.map(({ task, item, campaign, linked }) => createEmailMcRow({
+    title: `${item.title} · ${task.label}`,
+    sub: [`Due ${formatTaskDate(task.dueDate)}`, linked
+      ? (campaign?.subject ? `“${campaign.subject}”` : "No subject yet")
+      : "Not in Mailchimp yet"].join(" · "),
+    status: linked ? describeMcStatus(campaign) : null,
+    action: linked ? "Send HTML" : "Create & send",
+    onClick: () => {
+      if (linked) {
+        sendEmailToMailchimp(getTaskLink(task.id).campaignId);
+        return;
+      }
+      closeEmailMcDialog();
+      openMcForm({ mode: "create", task, item, onCreated: created => sendEmailToMailchimp(created.id) });
+    },
+  })));
+}
+
+/** Unsent Mailchimp campaigns not linked to a task. */
+async function showEmailMcOtherDrafts() {
+  const list = document.getElementById("emailMcList");
+  document.getElementById("emailMcMoreBtn").hidden = true;
+  list.replaceChildren(Object.assign(document.createElement("div"), { className: "mc-link-empty", textContent: "Loading campaigns from Mailchimp…" }));
+  try {
+    const all = await callMailchimp("campaigns");
+    const drafts = (all ?? []).filter(c => EMAIL_MC_OPEN.has(c.status) && !findTaskLinkedTo(c.id));
+    if (!drafts.length) {
+      list.replaceChildren(Object.assign(document.createElement("div"), { className: "mc-link-empty", textContent: "No other unsent campaigns in Mailchimp." }));
+      return;
+    }
+    list.replaceChildren(...drafts.map(c => createEmailMcRow({
+      title: c.title || "(untitled)",
+      sub: [c.subject ? `“${c.subject}”` : "No subject yet", c.listName].filter(Boolean).join(" · "),
+      status: describeMcStatus(c),
+      action: "Send HTML",
+      onClick: () => sendEmailToMailchimp(c.id),
+    })));
+  } catch (err) {
+    list.replaceChildren(Object.assign(document.createElement("div"), { className: "mc-link-empty", textContent: err.message || "Couldn't load campaigns." }));
+  }
+}
+
+async function sendEmailToMailchimp(campaignId) {
+  const html = exportEmailHtml();
+  if (!html) return;
+  const current = getMcCampaign(campaignId);
+  if (current?.status === "schedule"
+      && !confirm("This campaign is scheduled. Replace its email? It stays scheduled for the same time.")) return;
+  setAppLoading(true, "Sending to Mailchimp…");
+  try {
+    const updated = await callMailchimp("content", { id: campaignId, html });
+    mcCampaigns.set(updated.id, updated);
+    closeEmailMcDialog();
+    refreshTaskViews();
+    showEmailSentNotice(updated);
+  } catch (err) {
+    showIndicator(err.message || "Couldn't send to Mailchimp.", "error");
+  } finally {
+    setAppLoading(false);
+  }
+}
+
+/** Sent: say where, with the way in to test and schedule it. */
+function showEmailSentNotice(campaign) {
+  const el = document.getElementById("emailNotice");
+  if (!el) return;
+  const text = document.createElement("span");
+  text.textContent = `Sent to Mailchimp: “${campaign.title || campaign.subject || "campaign"}”. Send a test and schedule it there.`;
+  const open = document.createElement("a");
+  open.className = "btn";
+  open.href = campaign.editUrl;
+  open.target = "_blank";
+  open.rel = "noopener";
+  open.textContent = "Open in Mailchimp ↗";
+  const close = document.createElement("button");
+  close.type = "button";
+  close.className = "btn-close";
+  close.setAttribute("aria-label", "Dismiss");
+  close.textContent = "✕";
+  close.addEventListener("click", () => { el.hidden = true; });
+  el.replaceChildren(text, open, close);
+  el.hidden = false;
+  el.classList.add("is-success");
+}
+
 /** Leaving the page (or the app) with unsaved changes asks first. */
 function confirmLeaveEmail() {
   if (getCurrentAppView() !== "email" || !isEmailDirty()) return true;
@@ -849,6 +1278,15 @@ function initEmailView() {
   const stage = document.getElementById("emailPreviewStage");
   if (stage && "ResizeObserver" in window) new ResizeObserver(() => fitEmailPreview()).observe(stage);
   document.getElementById("emailCopyBtn")?.addEventListener("click", copyEmailHtml);
+  document.getElementById("emailMcBtn")?.addEventListener("click", openEmailMcDialog);
+  document.getElementById("emailMcCloseBtn")?.addEventListener("click", closeEmailMcDialog);
+  document.getElementById("emailMcMoreBtn")?.addEventListener("click", showEmailMcOtherDrafts);
+  document.getElementById("emailMcOverlay")?.addEventListener("click", e => {
+    if (e.target.id === "emailMcOverlay") closeEmailMcDialog();
+  });
+  document.addEventListener("keydown", e => {
+    if (e.key === "Escape" && document.getElementById("emailMcOverlay")?.classList.contains("open")) closeEmailMcDialog();
+  });
   document.getElementById("emailDownloadBtn")?.addEventListener("click", downloadEmailHtml);
   document.getElementById("emailSaveBtn")?.addEventListener("click", saveEmailDraft);
   document.getElementById("emailRevertBtn")?.addEventListener("click", revertEmailDraft);

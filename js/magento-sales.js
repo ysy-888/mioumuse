@@ -242,7 +242,7 @@ function renderMgOrderStatusButtons() {
 // ── Admin links ──────────────────────────────────────────────────────────────
 
 /**
- * A product's, customer's or order's page in the Magento admin — when the helper's
+ * A product's, category's, customer's or order's page in the Magento admin — when the helper's
  * MAGENTO_ADMIN_URL secret is set. (Magento's "Add Secret Key to URLs" must
  * be off for these to open the page itself rather than the Dashboard.)
  */
@@ -250,6 +250,7 @@ function mgAdminUrl(kind, id) {
   const base = mgStore?.adminUrl;
   if (!base || id === null || id === undefined) return "";
   if (kind === "products") return `${base}/catalog/product/edit/id/${encodeURIComponent(id)}/`;
+  if (kind === "categories") return `${base}/catalog/category/edit/id/${encodeURIComponent(id)}/`;
   return kind === "orders"
     ? `${base}/sales/order/view/order_id/${encodeURIComponent(id)}/`
     : `${base}/customer/index/edit/id/${encodeURIComponent(id)}/`;
@@ -274,6 +275,20 @@ function createMgAdminIcon(kind, id, label) {
   link.setAttribute("aria-label", label);
   link.innerHTML = MG_EXTERNAL_ICON;
   // Opening Magento shouldn't also open the row's pane.
+  link.addEventListener("click", e => e.stopPropagation());
+  return link;
+}
+
+/** A small ↗ icon link that opens a URL in a new tab. */
+function createOpenIcon(href, label) {
+  const link = document.createElement("a");
+  link.className = "mg-admin-icon open-link-icon";
+  link.href = href || "#";
+  link.target = "_blank";
+  link.rel = "noopener";
+  link.title = label;
+  link.setAttribute("aria-label", label);
+  link.innerHTML = MG_EXTERNAL_ICON;
   link.addEventListener("click", e => e.stopPropagation());
   return link;
 }

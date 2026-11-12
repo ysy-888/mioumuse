@@ -6,7 +6,7 @@
 <title>MIOU MUSE</title>
 <link rel="icon" href="favicon.png?v=2" type="image/png" />
 <link rel="apple-touch-icon" href="favicon.png?v=2" />
-<link rel="stylesheet" href="crm.css?v=20261111-2347" />
+<link rel="stylesheet" href="crm.css?v=20261112-0056" />
 </head>
 <body>
 
@@ -533,7 +533,11 @@
       <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
       Download
     </button>
-    <button type="button" class="btn btn-primary" id="emailCopyBtn" title="Copy the email's HTML for Mailchimp (Code your own)">
+    <button type="button" class="btn btn-primary" id="emailMcBtn" title="Put this email into a Mailchimp campaign">
+      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4z"/></svg>
+      Send to Mailchimp
+    </button>
+    <button type="button" class="btn" id="emailCopyBtn" title="Copy the email's HTML for Mailchimp (Code your own)">
       <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
       Copy HTML
     </button>
@@ -1254,28 +1258,28 @@
   </aside>
 
   <!-- ── Magento: categories ─────────────────────────────────── -->
-  <div id="mgCategoriesWrap" class="table-scroll-y" hidden>
-    <div class="table-scroll-x">
+  <!-- The tree pinned on the left; the picked category's details beside it (js/magento.js). -->
+  <div id="mgCategoriesWrap" class="po-view-content po-layout mg-cat-layout" hidden>
+    <div class="table-scroll-y mg-cat-list">
     <table id="mgCategoriesTable" class="record-table mg-categories-table">
       <colgroup>
         <col class="col-name" />
         <col class="col-count" />
         <col class="col-status" />
-        <col class="col-actions" />
       </colgroup>
       <thead>
         <tr>
           <th data-col="name" class="th-no-sort">Category</th>
           <th data-col="count" class="th-no-sort">Products</th>
           <th data-col="active" class="th-no-sort">Active</th>
-          <th data-col="actions" class="th-no-sort"></th>
         </tr>
       </thead>
       <tbody id="mgCategoriesBody">
-        <tr class="state-row"><td colspan="4">Loading categories…</td></tr>
+        <tr class="state-row"><td colspan="3">Loading categories…</td></tr>
       </tbody>
     </table>
     </div>
+    <section class="mg-cat-detail" id="mgCatDetail" aria-label="Category details" aria-live="polite"></section>
   </div>
 
   <!-- ── Magento product side pane ───────────────────────────── -->
@@ -1906,6 +1910,22 @@
   </div>
 </div>
 
+<!-- ── E-Mail → Send to Mailchimp: which campaign gets the HTML (js/email.js) ── -->
+<div id="emailMcOverlay" class="modal-backdrop">
+  <div class="modal-card company-form-card mc-link-card" role="dialog" aria-modal="true" aria-labelledby="emailMcTitle">
+    <div class="modal-header">
+      <h3 id="emailMcTitle">Send to Mailchimp</h3>
+      <button type="button" class="btn-close" id="emailMcCloseBtn" aria-label="Close">✕</button>
+    </div>
+    <div class="modal-body mc-link-body">
+      <span class="mc-form-task" id="emailMcLabel"></span>
+      <div class="email-mc-warning" id="emailMcWarning" hidden></div>
+      <div class="mc-link-list" id="emailMcList"></div>
+      <button type="button" class="btn-link email-mc-more" id="emailMcMoreBtn">Other drafts in Mailchimp…</button>
+    </div>
+  </div>
+</div>
+
 <!-- ── Styles: photo gallery for one style + colour ──────────── -->
 <div id="styleGalleryOverlay" class="modal-backdrop">
   <div class="modal-card style-gallery-card" role="dialog" aria-modal="true" aria-labelledby="styleGalleryTitle">
@@ -2130,53 +2150,53 @@
   </div>
 </div>
 
-<script src="js/config.js?v=20261111-2347"></script>
+<script src="js/config.js?v=20261112-0056"></script>
 <!-- Needs SUPABASE_URL/KEY from config.js and the CDN client above. -->
-<script src="js/auth.js?v=20261111-2347"></script>
-<script src="js/util.js?v=20261111-2347"></script>
-<script src="js/dates.js?v=20261111-2347"></script>
-<script src="js/store.js?v=20261111-2347"></script>
-<script src="js/tasks.js?v=20261111-2347"></script>
-<script src="js/app-shell.js?v=20261111-2347"></script>
-<script src="js/table-pager.js?v=20261111-2347"></script>
-<script src="js/record-list.js?v=20261111-2347"></script>
-<script src="js/item-pane.js?v=20261111-2347"></script>
-<script src="js/campaign-form.js?v=20261111-2347"></script>
-<script src="js/trade-show-form.js?v=20261111-2347"></script>
-<script src="js/banners.js?v=20261111-2347"></script>
-<script src="js/banner-form.js?v=20261111-2347"></script>
-<script src="js/mailchimp.js?v=20261111-2347"></script>
-<script src="js/style-import.js?v=20261111-2347"></script>
-<script src="js/column-filter.js?v=20261111-2347"></script>
-<script src="js/styles.js?v=20261111-2347"></script>
-<script src="js/style-images.js?v=20261111-2347"></script>
-<script src="js/sample-photos.js?v=20261111-2347"></script>
-<script src="js/photoshoots.js?v=20261111-2347"></script>
-<script src="js/complete.js?v=20261111-2347"></script>
-<script src="js/photoshoot-form.js?v=20261111-2347"></script>
-<script src="js/purchase-orders.js?v=20261111-2347"></script>
-<script src="js/production-import.js?v=20261111-2347"></script>
-<script src="js/ats-import.js?v=20261111-2347"></script>
-<script src="js/style-pane.js?v=20261111-2347"></script>
-<script src="js/magento.js?v=20261111-2347"></script>
-<script src="js/magento-availability.js?v=20261111-2347"></script>
-<script src="js/magento-photos.js?v=20261111-2347"></script>
-<script src="js/magento-group-order.js?v=20261111-2347"></script>
-<script src="js/magento-sales.js?v=20261111-2347"></script>
-<script src="js/magento-n41.js?v=20261111-2347"></script>
-<script src="js/magento-events.js?v=20261111-2347"></script>
-<script src="js/trade-show-import.js?v=20261111-2347"></script>
-<script src="js/magento-groups.js?v=20261111-2347"></script>
-<script src="js/table-view.js?v=20261111-2347"></script>
-<script src="js/exports.js?v=20261111-2347"></script>
-<script src="js/copy-menu.js?v=20261111-2347"></script>
-<script src="js/row-quick-select.js?v=20261111-2347"></script>
-<script src="js/pane-dismiss.js?v=20261111-2347"></script>
-<script src="js/shortcuts.js?v=20261111-2347"></script>
-<script src="js/header-search.js?v=20261111-2347"></script>
-<script src="js/calendar.js?v=20261111-2347"></script>
-<script src="js/holidays.js?v=20261111-2347"></script>
-<script src="js/email.js?v=20261111-2347"></script>
-<script src="js/main.js?v=20261111-2347"></script>
+<script src="js/auth.js?v=20261112-0056"></script>
+<script src="js/util.js?v=20261112-0056"></script>
+<script src="js/dates.js?v=20261112-0056"></script>
+<script src="js/store.js?v=20261112-0056"></script>
+<script src="js/tasks.js?v=20261112-0056"></script>
+<script src="js/app-shell.js?v=20261112-0056"></script>
+<script src="js/table-pager.js?v=20261112-0056"></script>
+<script src="js/record-list.js?v=20261112-0056"></script>
+<script src="js/item-pane.js?v=20261112-0056"></script>
+<script src="js/campaign-form.js?v=20261112-0056"></script>
+<script src="js/trade-show-form.js?v=20261112-0056"></script>
+<script src="js/banners.js?v=20261112-0056"></script>
+<script src="js/banner-form.js?v=20261112-0056"></script>
+<script src="js/mailchimp.js?v=20261112-0056"></script>
+<script src="js/style-import.js?v=20261112-0056"></script>
+<script src="js/column-filter.js?v=20261112-0056"></script>
+<script src="js/styles.js?v=20261112-0056"></script>
+<script src="js/style-images.js?v=20261112-0056"></script>
+<script src="js/sample-photos.js?v=20261112-0056"></script>
+<script src="js/photoshoots.js?v=20261112-0056"></script>
+<script src="js/complete.js?v=20261112-0056"></script>
+<script src="js/photoshoot-form.js?v=20261112-0056"></script>
+<script src="js/purchase-orders.js?v=20261112-0056"></script>
+<script src="js/production-import.js?v=20261112-0056"></script>
+<script src="js/ats-import.js?v=20261112-0056"></script>
+<script src="js/style-pane.js?v=20261112-0056"></script>
+<script src="js/magento.js?v=20261112-0056"></script>
+<script src="js/magento-availability.js?v=20261112-0056"></script>
+<script src="js/magento-photos.js?v=20261112-0056"></script>
+<script src="js/magento-group-order.js?v=20261112-0056"></script>
+<script src="js/magento-sales.js?v=20261112-0056"></script>
+<script src="js/magento-n41.js?v=20261112-0056"></script>
+<script src="js/magento-events.js?v=20261112-0056"></script>
+<script src="js/trade-show-import.js?v=20261112-0056"></script>
+<script src="js/magento-groups.js?v=20261112-0056"></script>
+<script src="js/table-view.js?v=20261112-0056"></script>
+<script src="js/exports.js?v=20261112-0056"></script>
+<script src="js/copy-menu.js?v=20261112-0056"></script>
+<script src="js/row-quick-select.js?v=20261112-0056"></script>
+<script src="js/pane-dismiss.js?v=20261112-0056"></script>
+<script src="js/shortcuts.js?v=20261112-0056"></script>
+<script src="js/header-search.js?v=20261112-0056"></script>
+<script src="js/calendar.js?v=20261112-0056"></script>
+<script src="js/holidays.js?v=20261112-0056"></script>
+<script src="js/email.js?v=20261112-0056"></script>
+<script src="js/main.js?v=20261112-0056"></script>
 </body>
 </html>

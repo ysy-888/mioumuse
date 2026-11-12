@@ -575,10 +575,11 @@ function syncMcScheduleFields() {
   if (row) row.hidden = !on;
 }
 
-async function openMcForm({ mode, task, item, campaign = null }) {
+/** `onCreated(campaign)`, when given, runs once a new draft is made and linked (the E-Mail page sends its HTML). */
+async function openMcForm({ mode, task, item, campaign = null, onCreated = null }) {
   const overlay = document.getElementById("mcFormOverlay");
   if (!overlay) return;
-  mcFormState = { mode, task, item, campaign };
+  mcFormState = { mode, task, item, campaign, onCreated };
   fillMcTimeOptions();
   fillMcSendToControls();
   resetMcSendTo(campaign?.targeting);
@@ -666,7 +667,7 @@ function getMcFormSendTime() {
 
 async function saveMcForm() {
   if (!mcFormState) return;
-  const { mode, task, campaign } = mcFormState;
+  const { mode, task, campaign, onCreated } = mcFormState;
   const fields = {
     title: document.getElementById("mcFormName").value.trim(),
     subject: document.getElementById("mcFormSubject").value.trim(),
@@ -692,7 +693,8 @@ async function saveMcForm() {
       await setTaskLink(task.id, created.id);
       closeMcForm();
       refreshTaskViews();
-      showIndicator("Draft created in Mailchimp — use Open in Mailchimp to design it", "success");
+      if (onCreated) await onCreated(created);
+      else showIndicator("Draft created in Mailchimp — use Open in Mailchimp to design it", "success");
       return;
     }
 
