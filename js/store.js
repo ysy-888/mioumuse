@@ -1116,7 +1116,7 @@ function styleRowToStyle(row) {
     availableDate: String(row.available_date ?? ""),
     memo: String(row.memo ?? ""),
     receivedQty: row.received_qty == null || row.received_qty === "" ? "" : String(Number(row.received_qty)),
-    // The Style Master's total_inv_qty (column S), the same way.
+    // The ATS report's total_inv_qty (Import ATS), the same way.
     invQty: row.inv_qty == null || row.inv_qty === "" ? "" : String(Number(row.inv_qty)),
     // In-house date — entered in the app, not part of the Style Master.
     ihd: normalizeYmd(row.ihd),
@@ -1153,7 +1153,7 @@ function styleToRow(style) {
     available_date: style.availableDate ?? "",
     memo: style.memo ?? "",
     received_qty: style.receivedQty === "" || style.receivedQty == null ? null : Number(style.receivedQty),
-    inv_qty: style.invQty === "" || style.invQty == null ? null : Number(style.invQty),
+    // inv_qty isn't sent: it's the ATS report's (saveStyleAts), like OH / WIP.
     updated_at: new Date().toISOString(),
   };
 }
@@ -1293,26 +1293,33 @@ async function saveStyleTops(tops, onProgress) {
 }
 
 /**
- * Save the ATS report's figures: [{ styleNo, color, oh, wip, oo, ats }], each
- * an existing style. Only those columns (and ats_at) are sent.
+ * Save the ATS report's figures: [{ styleNo, color, oh, wip, oo, ats, invQty? }],
+ * each an existing style. Only those columns (and ats_at) are sent — inv_qty
+ * only when the rows carry invQty (the report had a total_inv_qty column).
  */
 async function saveStyleAts(rows, onProgress) {
   const BATCH = 500;
   const client = requireClient();
   const at = new Date().toISOString();
+  const withInv = rows.length > 0 && "invQty" in rows[0];
   for (let i = 0; i < rows.length; i += BATCH) {
     const batch = rows.slice(i, i + BATCH);
     const res = await client.from("styles").upsert(
-      batch.map(r => ({ style_no: r.styleNo, color: r.color, n41_oh: r.oh, n41_wip: r.wip, n41_oo: r.oo, n41_ats: r.ats, ats_at: at })),
+      batch.map(r => ({
+        style_no: r.styleNo, color: r.color, n41_oh: r.oh, n41_wip: r.wip, n41_oo: r.oo, n41_ats: r.ats, ats_at: at,
+        ...(withInv ? { inv_qty: r.invQty } : {}),
+      })),
       { onConflict: "user_id,style_no,color" },
     );
-    if (res.error && /n41_(oh|wip|oo|ats)|ats_at/.test(res.error.message ?? "")) {
-      throw new Error("ATS needs the n41_oh, n41_wip, n41_oo, n41_ats and ats_at columns. Run the styles SQL in supabase-schema.sql first.");
+    if (res.error && /n41_(oh|wip|oo|ats)|ats_at|inv_qty/.test(res.error.message ?? "")) {
+      throw new Error("ATS needs the n41_oh, n41_wip, n41_oo, n41_ats, inv_qty and ats_at columns. Run the styles SQL in supabase-schema.sql first.");
     }
     throwIfError(res);
     batch.forEach(r => {
       const style = findStyle(r.styleNo, r.color);
-      if (style) Object.assign(style, { oh: r.oh, wip: r.wip, oo: r.oo, ats: r.ats, atsAt: at });
+      if (!style) return;
+      Object.assign(style, { oh: r.oh, wip: r.wip, oo: r.oo, ats: r.ats, atsAt: at });
+      if (withInv) style.invQty = r.invQty == null ? "" : String(r.invQty);
     });
     onProgress?.(Math.min(i + BATCH, rows.length), rows.length);
   }
@@ -1334,9 +1341,6 @@ async function saveStyles(styles, onProgress) {
   for (let i = 0; i < styles.length; i += BATCH) {
     const batch = styles.slice(i, i + BATCH);
     const res = await client.from("styles").upsert(batch.map(styleToRow), { onConflict: "user_id,style_no,color" });
-    if (res.error && /inv_qty/.test(res.error.message ?? "")) {
-      throw new Error("The styles table needs its Inv Qty column — run the styles SQL in supabase-schema.sql (inv_qty), then import again.");
-    }
     throwIfError(res);
     onProgress?.(Math.min(i + BATCH, styles.length), styles.length);
   }

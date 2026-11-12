@@ -3,8 +3,11 @@
  *
  * Row 1 holds the headings. F (style) and G (color) find the Style # + Color
  * in the Styles database; K onhand, L wip, M onorder and N ats are saved as
- * OH / WIP / OO / ATS (js/store.js saveStyleAts). Columns are found by their
- * headings, with F, G, K–N as the fallback. Colours are compared on letters
+ * OH / WIP / OO / ATS, and total_inv_qty as Inv Qty (js/store.js
+ * saveStyleAts). The ATS report is where all the stock figures come from;
+ * style information is the Style Master's (js/style-import.js). Columns are
+ * found by their headings, with F, G, K–N as the fallback (Inv Qty has none:
+ * without its heading, Inv Qty is left as it is). Colours are compared on letters
  * and digits only (DK.OLIVE = DK OLIVE). Rows for styles that aren't in the
  * database are skipped; styles not in the report keep what they had.
  *
@@ -28,13 +31,18 @@ function parseAtsReport(workbook) {
   if (String(head[cols.style] ?? "").trim().toLowerCase() !== "style" || String(head[cols.ats] ?? "").trim().toLowerCase() !== "ats") {
     throw new Error("That isn't N41's ATS report — expected style, color, onhand, wip, onorder and ats headings in row 1.");
   }
+  const invCol = Object.keys(head).find(c => String(head[c]).trim().toLowerCase() === "total_inv_qty");
   const num = v => (v === "" || v === null || isNaN(Number(v)) ? null : Number(v));
   return rows.slice(1).map(r => ({
     styleNo: String(r[cols.style] ?? "").trim().toUpperCase(),
     color: String(r[cols.color] ?? "").trim().toUpperCase(),
     oh: num(r[cols.oh]), wip: num(r[cols.wip]), oo: num(r[cols.oo]), ats: num(r[cols.ats]),
+    ...(invCol ? { invQty: num(r[invCol]) } : {}),
   })).filter(r => r.styleNo);
 }
+
+/** A style's Inv Qty is kept as text ("" = none); the report's as a number. */
+const atsInvChanged = r => "invQty" in r && (r.style.invQty ?? "") !== (r.invQty == null ? "" : String(r.invQty));
 
 /** Which rows match a style, which don't, and how many figures change. */
 function planAtsImport(rows) {
@@ -47,7 +55,7 @@ function planAtsImport(rows) {
     matched.set(styleKey(style.styleNo, style.color), { ...r, styleNo: style.styleNo, color: style.color, style });
   });
   const list = [...matched.values()];
-  const changed = list.filter(r => ["oh", "wip", "oo", "ats"].some(k => r.style[k] !== r[k]));
+  const changed = list.filter(r => ["oh", "wip", "oo", "ats"].some(k => r.style[k] !== r[k]) || atsInvChanged(r));
   return { rows: rows.length, list, changed, unmatched };
 }
 
@@ -63,7 +71,8 @@ async function importAtsFile(file) {
     const missing = plan.unmatched.length
       ? `\n${plan.unmatched.length.toLocaleString()} rows aren't in the Styles database and are skipped (e.g. ${plan.unmatched.slice(0, 3).map(r => `${r.styleNo} ${r.color}`).join(", ")}).`
       : "";
-    if (!confirm(`${plan.rows.toLocaleString()} rows read. ${plan.list.length.toLocaleString()} colours match, ${plan.changed.length.toLocaleString()} with new figures.${missing}\n\nSave OH / WIP / OO / ATS for the ${plan.list.length.toLocaleString()} matched colours?`)) return;
+    const fields = plan.list.length && "invQty" in plan.list[0] ? "OH / WIP / OO / ATS / Inv Qty" : "OH / WIP / OO / ATS";
+    if (!confirm(`${plan.rows.toLocaleString()} rows read. ${plan.list.length.toLocaleString()} colours match, ${plan.changed.length.toLocaleString()} with new figures.${missing}\n\nSave ${fields} for the ${plan.list.length.toLocaleString()} matched colours?`)) return;
     await saveStyleAts(plan.list, (n, total) => showIndicator(`Saving ATS… ${n.toLocaleString()} of ${total.toLocaleString()}`));
     showIndicator(`ATS saved for ${plan.list.length.toLocaleString()} colours`, "success");
     if (getCurrentAppView() === "magento" && typeof renderMgProducts === "function") renderMgProducts();

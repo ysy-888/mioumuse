@@ -4,15 +4,18 @@
  *
  * The file is read here in the browser — it's never uploaded; only the
  * cleaned-up fields are saved. The Style Master (.csv or .xlsx; row 1 is
- * headings, "style" in A):
+ * headings, "style" in A) is style information only — the stock figures
+ * (OH / WIP / OO / ATS / Inv Qty) come from the ATS report (js/ats-import.js)
+ * and the POs from the PO detail (js/purchase-orders.js). Columns are found
+ * by their headings, so N41 can add or move columns:
  *
- *   A  Style #      B  Color        C  N41 Status
- *   D  Available    (date → "YYYY-MM", shown as JUL26)
- *   F  Season       J  Description  K  Memo ("updated by Mass Update" dropped)
- *   R  Received qty       S  Inv Qty (total_inv_qty)
+ *   style  Style #           color     Color         status  N41 Status
+ *   availableDate  Available (date → "YYYY-MM", shown as JUL26)
+ *   season  Season           descript  Description   category  Category
+ *   memo  Memo ("updated by Mass Update" dropped)    receivedQty  Received qty
  *
- *   It has no category, so a style keeps the one it has (new ones get none).
- *   (The old ATS report isn't read any more.)
+ *   A heading that isn't in the file leaves that field as the style has it
+ *   (new ones get none) — an older export without category keeps categories.
  *
  * A Style # + Color is one record. Before anything is saved, the dialog lists
  * every change under three tabs — Update, New Styles (a Style # seen for the
@@ -95,29 +98,40 @@ function extractStyles(workbook) {
   return extractStylesFromCsv(sheet);
 }
 
-/** The Style Master (see the top of this file). No category — see diffStyles. */
+/** Style Master heading → the field it fills, and how its value is cleaned. */
+const STYLE_MASTER_COLUMNS = [
+  { field: "status", heading: "status", clean: cleanCell },
+  { field: "availableDate", heading: "availabledate", clean: importMonth },
+  { field: "season", heading: "season", clean: cleanCell },
+  { field: "description", heading: "descript", clean: cleanCell },
+  { field: "category", heading: "category", clean: cleanCell },
+  { field: "memo", heading: "memo", clean: cleanImportMemo },
+  { field: "receivedQty", heading: "receivedqty", clean: cleanImportQty },
+];
+
+/**
+ * The Style Master (see the top of this file). Only the fields whose heading
+ * is in the file are set — the rest keep what the style has (see diffStyles).
+ */
 function extractStylesFromCsv(sheet) {
-  const rows = XLSX.utils.sheet_to_json(sheet, { header: "A", range: 1, defval: "", raw: true, blankrows: true });
+  const rows = XLSX.utils.sheet_to_json(sheet, { header: "A", defval: "", raw: true, blankrows: true });
+  const head = rows.shift() ?? {};
+  const colOf = heading => Object.keys(head).find(c => cleanCell(head[c]).toLowerCase() === heading);
+  const styleCol = colOf("style") ?? "A";
+  const colorCol = colOf("color") ?? "B";
+  const columns = STYLE_MASTER_COLUMNS.map(c => ({ ...c, col: colOf(c.heading) })).filter(c => c.col);
   const byKey = new Map();
   let skipped = 0;
   rows.forEach(row => {
-    const styleNo = cleanCell(row.A);
+    const styleNo = cleanCell(row[styleCol]);
     if (!styleNo || styleNo.toLowerCase() === "style") {
       skipped += 1;
       return;
     }
-    const color = cleanCell(row.B);
-    byKey.set(styleKey(styleNo, color), {
-      styleNo,
-      color,
-      status: cleanCell(row.C),
-      availableDate: importMonth(row.D),
-      season: cleanCell(row.F),
-      description: cleanCell(row.J),
-      memo: cleanImportMemo(row.K),
-      receivedQty: cleanImportQty(row.R),
-      invQty: cleanImportQty(row.S),
-    });
+    const color = cleanCell(row[colorCol]);
+    const style = { styleNo, color };
+    columns.forEach(c => { style[c.field] = c.clean(row[c.col]); });
+    byKey.set(styleKey(styleNo, color), style);
   });
   return { styles: [...byKey.values()], skipped };
 }
@@ -130,10 +144,12 @@ const STYLE_FIELDS = [
   { key: "description", label: "Description" },
   { key: "availableDate", label: "Available", format: v => formatMonYY(v) },
   { key: "receivedQty", label: "Rcvd Qty", format: v => (v === "" || v == null ? "" : Number(v).toLocaleString()) },
-  { key: "invQty", label: "Inv Qty", format: v => (v === "" || v == null ? "" : Number(v).toLocaleString()) },
   { key: "memo", label: "Memo" },
 ];
 const STYLE_FIELD_BY_KEY = new Map(STYLE_FIELDS.map(f => [f.key, f]));
+// Imports made while Inv Qty came from the Style Master still list it in
+// Update history; it's the ATS report's now.
+STYLE_FIELD_BY_KEY.set("invQty", { key: "invQty", label: "Inv Qty", format: v => (v === "" || v == null ? "" : Number(v).toLocaleString()) });
 
 function formatStyleField(key, value) {
   const f = STYLE_FIELD_BY_KEY.get(key);
@@ -169,7 +185,7 @@ function diffStyles(incoming) {
       return;
     }
     const current = existing.get(styleKey(style.styleNo, style.color));
-    // A field the file doesn't carry (the Style Master has no category) keeps
+    // A field the file doesn't carry (an older export without category) keeps
     // what the style has — "" if new.
     const inFile = STYLE_FIELDS.filter(f => f.key in style);
     const filled = { ...style };
@@ -749,7 +765,7 @@ async function renderStyleHistoryEntry(entry) {
   if (request !== styleHistoryRequest) return;
 
   // Older entries carry only keys and values; the labels come from here.
-  const labels = new Map(STYLE_FIELDS.map(f => [f.key, f.label]));
+  const labels = new Map([...STYLE_FIELD_BY_KEY.values()].map(f => [f.key, f.label]));
   changes.changed.forEach(c => c.diffs.forEach(d => { d.label = labels.get(d.key) ?? d.key; }));
 
   const searchSlot = setStyleImportHead(

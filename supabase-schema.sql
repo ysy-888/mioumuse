@@ -280,7 +280,7 @@ alter table styles add column if not exists n41_oo numeric;
 alter table styles add column if not exists n41_ats numeric;
 alter table styles add column if not exists ats_at timestamptz;
 
--- From the Style Master (Import CSV, column S total_inv_qty): the inventory qty.
+-- From N41's ATS report (Import ATS, total_inv_qty): the inventory qty.
 alter table styles add column if not exists inv_qty numeric;
 
 -- ── Magento groups (Magento tab → Import groups) ────────────────────────────

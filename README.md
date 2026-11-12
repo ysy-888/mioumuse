@@ -67,7 +67,7 @@ reference in index.html so the URLs change on every deploy.
 | `js/photoshoots.js` | The Photoshoots and Need to Shoot pages — the shoots list, the Need to Shoot list, the shoot side pane, shoot status badges |
 | `js/complete.js` | The Complete page — the history of styles shot (photoshoot) or made in CG, filtered by how |
 | `js/production-import.js` | Import Production Sheet — reads the production .xlsx and marks each Style # + Color with a TOP date as TOP |
-| `js/ats-import.js` | Import ATS — N41's ATS report → each Style # + Color's OH / WIP / OO / ATS |
+| `js/ats-import.js` | Import ATS — N41's ATS report → each Style # + Color's OH / WIP / OO / ATS / Inv Qty |
 | `js/purchase-orders.js` | The POs page — importing N41's PO export, New / Recut / New Color, the month list (counts of styles without photos, auto-archiving), POs by ETA month with each colour and its shoot buttons |
 | `js/photoshoot-form.js` | Create / edit photoshoot modal |
 | `js/magento-sales.js` | Magento → Orders and Customers (read-only): lists with Status / Group filters, date quick filters, search, sort, paging; the order / customer pane |
@@ -494,25 +494,30 @@ Links live in the `task_links` table (see `supabase-schema.sql`).
 The **Styles** tab holds every Style # + Color from N41's Style Master.
 **Import CSV** (header menu ⋮) reads it in the browser (SheetJS, loaded
 only when importing) — the file itself is never uploaded. The Style Master
-(.csv or .xlsx, headings in row 1: style, color, status, availableDate…):
+(.csv or .xlsx, headings in row 1: style, color, status, availableDate…).
+It's the source of **style information** only — the stock figures come from
+the ATS report (**Import ATS**, below) and the POs from the PO detail
+(**Import N41 POs**). Columns are found by their headings, so N41 can add or
+move columns:
 
-| Column | Field |
+| Heading | Field |
 |---|---|
-| A | Style # |
-| B | Color |
-| C | N41 Status |
-| D | Available — the month only, shown as a JUL 26 pill |
-| F | Season |
-| J | Description |
-| K | Memo — the "updated by Mass Update" notes N41 adds are dropped |
-| R | Received qty |
-| S | Inv Qty (total_inv_qty) |
+| style | Style # |
+| color | Color |
+| status | N41 Status |
+| availableDate | Available — the month only, shown as a JUL 26 pill |
+| season | Season |
+| descript | Description |
+| category | Category |
+| memo | Memo — the "updated by Mass Update" notes N41 adds are dropped |
+| receivedQty | Received qty |
 
-The CSV has no category, so a style keeps the category it has (new ones get
-none). Available and Inv Qty show as columns in the Styles table (with the
-ATS report's OH, WIP, OO and ATS beside them — each sorts and filters by
-above 0 / 0 or blank / below 0); Available, Rcvd Qty, Inv Qty and Memo show
-in the style pane. They need columns on the styles table — run the
+A heading that isn't in the file leaves that field as each style has it (new
+ones get none) — an older export without `category` keeps the categories.
+Available and Inv Qty show as columns in the Styles table (with the ATS
+report's OH, WIP, OO and ATS beside them — each sorts and filters by above 0
+/ 0 or blank / below 0); Available, Rcvd Qty, Inv Qty and Memo show in the
+style pane. They need columns on the styles table — run the
 `available_date` / `memo` / `received_qty` / `inv_qty` lines in
 `supabase-schema.sql` first.
 
@@ -523,7 +528,7 @@ rules as the Magento tab's Available column — *Available*, *Not available*
 (why not in the tooltip) or *Not on Magento*. Last time's Magento catalog
 shows at once; a fresh check runs once per visit.
 
-Only the Style Master is read — the old ATS report isn't accepted any more.
+Import CSV reads only the Style Master (the ATS report goes in through Import ATS).
 Any row without a Style # is skipped. Before anything is saved, every
 change is listed under three tabs — the count boxes across the top (the file and a search box sit in the window's header):
 
@@ -881,11 +886,11 @@ Need to Shoot's default order is IHD, soonest first (no IHD on top).
   - Need to Shoot: **Export CSV** and **Export PDF**, the list.
   - POs: **Import N41 POs**, **Import Production Sheet** and **Export PDF**.
   - Styles and Magento → Products: **Import ATS** — N41's ATS report (.xls):
-    F style + G color find the Style # + Color; K onhand, L wip, M onorder
-    and N ats are saved as OH / WIP / OO / ATS (styles not in the report keep
-    theirs). Products shows them as **OH**, **WIP**, **OO** and **N41 ATS**
+    F style + G color find the Style # + Color; K onhand, L wip, M onorder,
+    N ats and total_inv_qty are saved as OH / WIP / OO / ATS / Inv Qty
+    (styles not in the report keep theirs). Products shows them as **OH**, **WIP**, **OO** and **N41 ATS**
     beside **N41 Available** (the Style Master's month); Grouped items leave
-    them blank, plus **Inv Qty** (the Style Master's column S). N41 Available,
+    them blank, plus **Inv Qty** (the ATS report's total_inv_qty). N41 Available,
     Inv Qty, OH, WIP, OO, N41 ATS, Qty, ATS, Stock Status
     and Pre-Order Date sort and filter in the app, from the catalog index
     (Pre-Order Date needs the magento function redeployed); sorted by one of

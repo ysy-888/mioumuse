@@ -41,7 +41,7 @@ const STYLE_COLUMNS = {
   // "YYYY-MM-DD" sorts as a date; blanks on top soonest first, at the bottom latest first.
   ihd: { value: s => fixTwoDigitYear(s.ihd) }, // an old 0026-… sorts as 2026, as it shows
   notes: { value: s => s.notes ?? "" },
-  // Inv Qty from the Style Master; OH, WIP, OO and ATS from N41's ATS report.
+  // Inv Qty, OH, WIP, OO and ATS: all from N41's ATS report.
   // Sorted as numbers, blanks last either way; 0 and blank show as "–".
   ...Object.fromEntries(Object.entries({ invQty: "invQty", oh: "oh", wip: "wip", oo: "oo", ats: "ats" }).map(([col, field]) => [col, {
     value: s => numOrNull(s[field]),
