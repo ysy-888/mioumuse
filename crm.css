@@ -8000,6 +8000,8 @@ body:has(#stylePane:not([hidden])) #posTableWrap > .table-scroll-y { margin-righ
   white-space: nowrap;
 }
 .shoot-style-name strong { flex: 0 0 auto; font-size: 15px; font-weight: 700; color: var(--text); }
+/* The sample status dropdown, pushed to the end of the Style cell. */
+.shoot-style-name > .sample-status-select { margin-left: auto; align-self: center; }
 /* The Color — not the SET pill, which looks as it does on Need to Shoot. */
 .shoot-style-name > span:not(.set-tag, .shoot-set-bracket) { min-width: 0; overflow: hidden; text-overflow: ellipsis; font-size: 13px; font-weight: 400; color: #6b7280; }
 
@@ -8238,7 +8240,7 @@ body:has(#stylePane:not([hidden])) #posTableWrap > .table-scroll-y { margin-righ
   flex: 0 0 auto;
 }
 
-.shoot-style-ihd .cell-date { width: 136px; }
+.shoot-style-ihd .cell-date { width: 108px; }
 
 /* Shoot cell: the New Style / New Color / Reshoot buttons, and beside them a
    scheduled or shot date when there is one. In a table the cell splits in

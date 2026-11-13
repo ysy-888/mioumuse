@@ -1000,17 +1000,22 @@ function renderShootsTable() {
 // (js/table-view.js, "Photoshoots · A shoot's styles") still orders and hides
 // these columns. Before them, always: grip · ↑↓ ⤒⤓ · # · photo; after: remove.
 
-/** The columns the Table view moves: label, and their width when shown. */
+/**
+ * The columns the Table view moves: label, their width when shown, and the
+ * least room they need before they're dropped (Description: enough to read).
+ */
 const SHOOT_VIEW_COLUMNS = [
-  { col: "style", label: "Style", width: "minmax(170px, 260px)" },
-  { col: "type", label: "Type", width: "146px" },
-  { col: "desc", label: "Description", width: "minmax(0, 240px)" },
-  { col: "avail", label: "Available", width: "62px" },
-  { col: "ihd", label: "IHD", width: "150px" },
-  { col: "notes", label: "Notes", width: "minmax(140px, 1fr)" },
+  { col: "style", label: "Style", width: "minmax(240px, 330px)", min: 240 },
+  { col: "type", label: "Type", width: "108px", min: 108 },
+  { col: "desc", label: "Description", width: "minmax(100px, 240px)", min: 100 },
+  { col: "avail", label: "Available", width: "62px", min: 62 },
+  { col: "ihd", label: "IHD", width: "112px", min: 112 },
+  { col: "notes", label: "Notes", width: "minmax(140px, 1fr)", min: 140 },
 ];
 const SHOOT_LEAD_COLS = "12px 44px 24px 40px";
 const SHOOT_END_COL = "24px";
+/** Lead + end columns, the 12px gaps around them, and the group boxes' edges. */
+const SHOOT_FIXED_WIDTH = 12 + 44 + 24 + 40 + 24 + 5 * 12 + 24;
 
 /** The columns showing now, in order (set by layoutShootColumns). */
 let shootPaneColumns = SHOOT_VIEW_COLUMNS.map(c => c.col);
@@ -1029,9 +1034,14 @@ function shootShownColumns() {
   else if (section?.clientWidth) {
     const css = getComputedStyle(section);
     const width = section.clientWidth - parseFloat(css.paddingLeft) - parseFloat(css.paddingRight);
-    if (width <= 1120) { drop.add("avail"); drop.add("ihd"); }
-    if (width <= 860) drop.add("desc");
-    if (width <= 620) drop.add("notes");
+    // What the columns still showing need, at their least, with a gap each.
+    const minOf = new Map(SHOOT_VIEW_COLUMNS.map(c => [c.col, c.min]));
+    const need = () => SHOOT_FIXED_WIDTH + view.order.filter(c => !drop.has(c))
+      .reduce((sum, c) => sum + (minOf.get(c) ?? 0) + 12, 0);
+    for (const cols of [["avail", "ihd"], ["desc"], ["notes"]]) {
+      if (need() <= width) break;
+      cols.forEach(c => drop.add(c));
+    }
   }
   const shown = view.order.filter(c => !drop.has(c));
   // Something has to show the style.
@@ -1261,16 +1271,17 @@ function createShootStyleRow(shoot, s, index, block, blockCount, { inSet = false
   // A set's pieces: this row's part of the [ joining their Style #s, in the
   // cell's indent — wherever the Style # column sits (crm.css).
   if (inSet) name.prepend(Object.assign(document.createElement("span"), { className: "shoot-set-bracket" }));
+  // The sample status dropdown at the end of the cell (js/styles.js).
+  name.appendChild(createSampleStatusSelect(style ?? s));
   row.appendChild(thumb);
 
   // The rest in the Table view's order, hidden and squeezed-out ones left out.
   const cells = {
     style: () => name,
-    // The type, from its PO — and the sample status dropdown (js/styles.js).
+    // The type, from its PO.
     type: () => {
       const type = cell("shoot-style-type");
       type.appendChild(createShootTypePill(s.styleNo, s.color));
-      addSampleStatusSelect(type, style ?? s);
       return type;
     },
     desc: () => cell("shoot-style-desc", style ? style.description : "Not in the Styles database"),

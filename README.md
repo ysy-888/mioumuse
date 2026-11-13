@@ -960,8 +960,10 @@ A set's pieces are still pulled together after that.
 - **Platforms**: the header menu's **Export PDF** lists the banners showing,
   with their images.
 - **A shoot's ⋯ menu**: **Export CSV** (every style in the shoot) or **PDF
-  report**. The report has the shoot details and notes, plus a ☐ Shot
-  column to tick on set, the styles in the shoot's order.
+  report**. The report is headed "Photoshoot" and the shoot's name, has the
+  shoot details and notes, plus a ☐ Shot column to tick on set, and lists the
+  styles in the shoot's order with each one's Sample status (TOP / SHOW / PP /
+  FIRST) after its Color.
 - **A shoot's ⋯ menu → Print photocards**: 3.5" × 5" cards for the shoot's
   sets, four to a portrait letter page, with crop marks to cut along. Each
   set piece gets two cards. The front is the piece's photo #4 (the file

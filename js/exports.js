@@ -17,8 +17,9 @@
  *
  * The three style reports (Need to Shoot, a photoshoot, POs) are landscape
  * and share their columns: photo, Style #, Color, Description, Type (from
- * the PO), Available, Shoot (Photoshoot / CG) and Notes. A set's pieces are
- * boxed together and kept on one page.
+ * the PO), Available, Shoot (Photoshoot / CG) and Notes. A photoshoot's own
+ * report has Sample (TOP / SHOW / PP / FIRST) after Color in place of Shoot.
+ * A set's pieces are boxed together and kept on one page.
  */
 
 // ── CSV ──────────────────────────────────────────────────────────────────────
@@ -60,6 +61,9 @@ const REPORT_CSS = `
   header { display: flex; justify-content: space-between; align-items: flex-end; gap: 16px; padding-bottom: 10px; border-bottom: 2px solid #1a1a18; margin-bottom: 10px; }
   .brand { font-size: 10px; font-weight: 700; letter-spacing: 0.12em; color: #8b929c; }
   h1 { margin: 2px 0 0; font-size: 20px; letter-spacing: -0.01em; }
+  /* "Photoshoot" before a shoot's name: the label bold, the name lighter. */
+  h1 .title-label { margin-right: 8px; }
+  h1 .title-name { font-weight: 500; color: #8b929c; }
   .sub { margin-top: 3px; color: #4b5563; font-size: 11.5px; }
   .generated { color: #8b929c; font-size: 10px; text-align: right; white-space: nowrap; }
   .meta { display: grid; grid-template-columns: repeat(4, auto); justify-content: start; gap: 4px 28px; margin: 0 0 12px; }
@@ -114,11 +118,11 @@ const REPORT_CSS = `
   tbody.group { break-inside: avoid; page-break-inside: avoid; }
   tbody.group td { background: #f7f8f9; }
   tbody.group tr:not(:last-child) td { border-bottom-color: #e6e8eb; }
-  /* Its edges: 2px all round in a neutral grey, corners rounded. */
-  tbody.group td:first-child { border-left: 2px solid #a3a9b1; }
-  tbody.group td:last-child { border-right: 2px solid #a3a9b1; }
-  tbody.group tr:last-child td { border-bottom: 2px solid #a3a9b1; }
-  tbody.group tr:first-child td { border-top: 2px solid #a3a9b1; }
+  /* Its edges: 1px all round in a neutral grey, corners rounded. */
+  tbody.group td:first-child { border-left: 1px solid #a3a9b1; }
+  tbody.group td:last-child { border-right: 1px solid #a3a9b1; }
+  tbody.group tr:last-child td { border-bottom: 1px solid #a3a9b1; }
+  tbody.group tr:first-child td { border-top: 1px solid #a3a9b1; }
   tbody.group tr:first-child td:first-child { border-top-left-radius: 6px; }
   tbody.group tr:first-child td:last-child { border-top-right-radius: 6px; }
   tbody.group tr:last-child td:first-child { border-bottom-left-radius: 6px; }
@@ -184,7 +188,7 @@ async function loadReportThumbs(rows) {
  *          with the same key (one colour's pieces) are joined by a bracket
  *          in front of the Style # — the column marked `bracket: true`.
  */
-async function printReport({ fileTitle, title, subtitle = "", meta = [], notes = "", columns, rows, photos, footnote = "", noun = "style", metaInHeader = false, landscape = false, groupKey = null, setKey = null }) {
+async function printReport({ fileTitle, title, titleLabel = "", subtitle = "", meta = [], notes = "", columns, rows, photos, footnote = "", noun = "style", metaInHeader = false, landscape = false, groupKey = null, setKey = null }) {
   if (!rows.length) {
     showIndicator("Nothing to export", "error");
     return;
@@ -237,7 +241,7 @@ async function printReport({ fileTitle, title, subtitle = "", meta = [], notes =
   const metaHtml = meta.length ? `<div class="meta">${meta.map(([k, v]) => `<div><b>${escapeReportHtml(k)}</b><span>${escapeReportHtml(v)}</span></div>`).join("")}</div>` : "";
   const html = `<!doctype html><html><head><meta charset="utf-8"><title>${escapeReportHtml(fileTitle)}</title><style>${REPORT_CSS}${landscape ? "@page { size: letter landscape; }" : ""}</style></head><body>
     <header>
-      <div><div class="brand">${escapeReportHtml(APP_NAME)}</div><h1>${escapeReportHtml(title)}</h1>${subtitle ? `<div class="sub">${escapeReportHtml(subtitle)}</div>` : ""}</div>
+      <div><div class="brand">${escapeReportHtml(APP_NAME)}</div><h1>${titleLabel ? `<span class="title-label">${escapeReportHtml(titleLabel)}</span><span class="title-name">${escapeReportHtml(title)}</span>` : escapeReportHtml(title)}</h1>${subtitle ? `<div class="sub">${escapeReportHtml(subtitle)}</div>` : ""}</div>
       ${metaInHeader ? metaHtml : `<div class="generated">Generated ${escapeReportHtml(generated)}<br>${rows.length} ${rows.length === 1 ? noun : `${noun}s`}</div>`}
     </header>
     ${metaInHeader ? "" : metaHtml}
@@ -308,6 +312,8 @@ function styleExportFields(styleNo, color) {
     ihd: style?.ihd ?? "",
     availableDate: style?.availableDate ?? "",
     notes: style?.notes ?? "",
+    // TOP / SHOW / PP / FIRST, "" for none.
+    sampleStatus: style?.sampleStatus ?? "",
     // From its PO, not chosen (js/store.js getShootType).
     type: getShootType(styleNo, color),
     // Photoshoot / CG — "" until it's decided.
@@ -338,12 +344,11 @@ function reportNeedGroupKey(r) {
 }
 
 /**
- * The columns every style report has, in order: Style #, Color, Description,
- * Type, Available, Shoot, Notes. `rows` is the report's rows (a set's SET tag
- * only shows when another of its pieces is in the report); `shoot` is the
- * photoshoot the report is of, when it is one.
+ * The columns the style reports pick from: Style #, Color, Sample,
+ * Description, Type, Available, Shoot, Notes. `rows` is the report's rows (a
+ * set's SET tag only shows when another of its pieces is in the report).
  */
-function reportStyleColumns(rows, { shoot = null } = {}) {
+function reportStyleColumns(rows) {
   const setCounts = new Map();
   rows.forEach(r => {
     const key = reportSetKey(r);
@@ -357,6 +362,7 @@ function reportStyleColumns(rows, { shoot = null } = {}) {
       cell: r => ({ html: escapeReportHtml(r.styleNo) + (inSet(r) ? '<span class="set-tag">SET</span>' : ""), className: "strong" }),
     },
     color: { label: "Color", cell: r => ({ text: r.color, className: "nowrap" }) },
+    sample: { label: "Sample", cell: r => ({ text: getSampleStatusLabel(r.sampleStatus) || "–", className: "nowrap" }) },
     description: { label: "Description", cell: r => ({ text: r.description, className: "desc" }) },
     type: { label: "Type", cell: r => ({ html: shootTypePillHtml(r.type) || "–", className: "nowrap" }) },
     available: {
@@ -368,20 +374,18 @@ function reportStyleColumns(rows, { shoot = null } = {}) {
         className: "nowrap",
       }),
     },
-    shoot: { label: "Shoot", cell: r => ({ html: reportMethodHtml(r, shoot) }) },
+    shoot: { label: "Shoot", cell: r => ({ html: reportMethodHtml(r) }) },
     notes: { label: "Notes", className: "note-col", cell: r => ({ text: r.notes, className: "note-col" }) },
   };
 }
 
 /**
- * Photoshoot or CG as a pill. In a shoot's own report it's just Photoshoot;
- * elsewhere a scheduled one carries its shoot's date and name underneath, a
- * finished one says Shot / Done (CG) and when.
+ * Photoshoot or CG as a pill. A scheduled one carries its shoot's date and
+ * name underneath, a finished one says Shot / Done (CG) and when.
  */
-function reportMethodHtml(r, ownShoot = null) {
+function reportMethodHtml(r) {
   const pill = (key, text) => `<span class="method ${key}">${escapeReportHtml(text)}</span>`;
   const sub = text => `<div class="method-sub">${escapeReportHtml(text)}</div>`;
-  if (ownShoot) return pill("photoshoot", "Photoshoot");
   const status = r.status;
   if (status?.tone === "shot") return pill(status.shoots.length ? "photoshoot" : "cg", status.shoots.length ? "Photoshoot" : "CG") + sub(status.label);
   if (r.method === "cg") return pill("cg", "CG");
@@ -484,9 +488,10 @@ function exportShootPdf(id) {
   const shoot = getPhotoshootById(id);
   if (!shoot) return;
   const rows = getShootExportRows(shoot);
-  const cols = reportStyleColumns(rows, { shoot });
+  const cols = reportStyleColumns(rows);
   printReport({
     fileTitle: shootFileBase(shoot),
+    titleLabel: "Photoshoot",
     title: getPhotoshootTitle(shoot),
     meta: [
       ["Date", shoot.date ? formatReportDate(shoot.date) : "No date"],
@@ -505,7 +510,7 @@ function exportShootPdf(id) {
     columns: [
       { label: "Shot", cell: () => ({ text: "☐", className: "check" }) },
       { label: "#", cell: r => ({ text: String(rows.indexOf(r) + 1), className: "nowrap" }) },
-      cols.styleNo, cols.color, cols.description, cols.type, cols.available, cols.shoot, cols.notes,
+      cols.styleNo, cols.color, cols.sample, cols.description, cols.type, cols.available, cols.notes,
     ],
   });
 }
