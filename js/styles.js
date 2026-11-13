@@ -39,7 +39,7 @@ const STYLE_COLUMNS = {
   // "YYYY-MM" sorts as a date; shown as a JUL 26 pill.
   available: { value: s => s.availableDate ?? "", display: s => formatMonYY(s.availableDate) },
   // "YYYY-MM-DD" sorts as a date; blanks on top soonest first, at the bottom latest first.
-  ihd: { value: s => fixTwoDigitYear(s.ihd) }, // an old 0026-… sorts as 2026, as it shows
+  ihd: { value: s => ihdSortValue(s) }, // as it shows: a PO's 1/1 placeholder as blank, an old 0026-… as 2026
   notes: { value: s => s.notes ?? "" },
   // Inv Qty, OH, WIP, OO and ATS: all from N41's ATS report.
   // Sorted as numbers, blanks last either way; 0 and blank show as "–".
@@ -237,9 +237,10 @@ function createStyleStatusPill(status) {
  * listed, or already done); Photoshoot / CG when it is — and beside them the
  * date it's scheduled for or was shot.
  */
-function createStyleShootCell(style, { suggested = false } = {}) {
+function createStyleShootCell(style, { suggested = false, editSample = false } = {}) {
   const wrap = document.createElement("span");
   wrap.className = "style-shoot-cell";
+  const addSample = editSample ? addSampleStatusSelect : addSampleStatusPill;
   const fill = () => {
     if (isNoShootStyle(style.styleNo, style.color)) {
       const none = document.createElement("span");
@@ -247,7 +248,7 @@ function createStyleShootCell(style, { suggested = false } = {}) {
       none.textContent = "No shoot needed";
       none.title = `${style.status} styles aren't photographed`;
       wrap.replaceChildren(none);
-      addStyleTopPill(wrap, style);
+      addSample(wrap, style);
       return;
     }
     // The lit button says which; only a date (scheduled / shot) needs more.
@@ -257,22 +258,78 @@ function createStyleShootCell(style, { suggested = false } = {}) {
       refreshPhotoshootViews();
     }, { suggested }));
     if (tone === "scheduled" || tone === "shot") wrap.appendChild(createShootStatusBadge(style.styleNo, style.color, { compact: true }));
-    addStyleTopPill(wrap, style);
+    addSample(wrap, style);
   };
   fill();
   return wrap;
 }
 
-/** A yellow TOP pill when the production sheet has the colour's TOP (js/production-import.js). */
-function addStyleTopPill(wrap, style) {
+function getSampleStatusLabel(key) {
+  return SAMPLE_STATUSES.find(s => s.key === key)?.label ?? "";
+}
+
+/** The TOP date / PO from the production sheet, for a tooltip — "" if none. */
+function sampleStatusTitle(saved) {
+  return saved?.topDate ? `TOP comments in ${formatMdy(saved.topDate)}${saved.topPo ? ` · PO ${saved.topPo}` : ""}` : "";
+}
+
+/** The colour's sample status (TOP / SHOW / PP / FIRST) as a read-only pill, nothing if none. */
+function addSampleStatusPill(wrap, style) {
   const saved = findStyle(style.styleNo, style.color) ?? style;
-  if (!saved.topDate) return;
+  if (!saved.sampleStatus) return;
   wrap.classList.add("has-top");
   const pill = document.createElement("span");
   pill.className = "style-top-pill";
-  pill.textContent = "TOP";
-  pill.title = `TOP comments in ${formatMdy(saved.topDate)}${saved.topPo ? ` · PO ${saved.topPo}` : ""}`;
+  pill.dataset.sample = saved.sampleStatus;
+  pill.textContent = getSampleStatusLabel(saved.sampleStatus);
+  pill.title = `Sample status: ${pill.textContent}${saved.sampleStatus === "top" && saved.topDate ? ` · ${sampleStatusTitle(saved)}` : ""}`;
   wrap.appendChild(pill);
+}
+
+/**
+ * The sample status as a dropdown (— / TOP / SHOW / PP / FIRST) that saves
+ * as soon as it's picked — Need to Shoot and the shoot pane.
+ */
+function createSampleStatusSelect(style) {
+  const saved = findStyle(style.styleNo, style.color);
+  const select = document.createElement("select");
+  select.className = "sample-status-select";
+  select.setAttribute("aria-label", `Sample status for ${style.styleNo} ${style.color}`);
+  select.append(new Option("—", ""), ...SAMPLE_STATUSES.map(s => new Option(s.label, s.key)));
+  const show = value => {
+    select.value = value;
+    select.dataset.sample = value;
+    const top = value === "top" ? sampleStatusTitle(saved) : "";
+    select.title = value ? `Sample status: ${getSampleStatusLabel(value)}${top ? ` · ${top}` : ""}` : "Sample status";
+  };
+  show(saved?.sampleStatus ?? "");
+  if (!saved) {
+    select.disabled = true;
+    select.title = "Not in the Styles database";
+    return select;
+  }
+  // Keep a click on it from opening the row it sits in.
+  for (const type of ["click", "mousedown", "pointerdown", "dblclick"]) select.addEventListener(type, e => e.stopPropagation());
+  select.addEventListener("change", async () => {
+    const before = saved.sampleStatus;
+    const value = select.value;
+    show(value);
+    select.disabled = true;
+    try {
+      await setStyleSampleStatus(saved.styleNo, saved.color, value);
+    } catch (err) {
+      show(before);
+      showIndicator(err.message || "Couldn't save the sample status.", "error");
+    } finally {
+      select.disabled = false;
+    }
+  });
+  return select;
+}
+
+function addSampleStatusSelect(wrap, style) {
+  wrap.classList.add("has-top");
+  wrap.appendChild(createSampleStatusSelect(style));
 }
 
 function renderStylesTable() {

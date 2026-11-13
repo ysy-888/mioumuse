@@ -648,6 +648,17 @@ function formatIhd(ymd) {
 }
 
 /**
+ * A style's IHD as it shows, for sorting: "" when it shows blank — none, or
+ * a PO's tentative 1/1 placeholder ETA (createPoIhdText → formatIhd) — so
+ * those sort with the blanks, not as January 1. (A 1/1 typed in by hand
+ * shows, so it counts.) An old 0026-11-16 counts as 2026.
+ */
+function ihdSortValue(style) {
+  const ymd = fixTwoDigitYear(style?.ihd ?? "");
+  return ymd && !(style.ihdFromPo && isPlaceholderDate(ymd)) ? ymd : "";
+}
+
+/**
  * The "YYYY-MM" a style colour is grouped under (POs and Need to Shoot): the
  * colour's Available month, else the month of `date` (an ETA or IHD) — ""
  * with neither. Available is per colour, not per PO, so a recut can carry
@@ -1158,6 +1169,10 @@ function styleRowToStyle(row) {
     // ("YYYY-MM-DD", "" = no TOP yet) and on which PO.
     topDate: normalizeYmd(row.top_date),
     topPo: String(row.top_po ?? ""),
+    // Its sample status — "top" | "show" | "pp" | "first", "" for none
+    // (SAMPLE_STATUSES): picked on Need to Shoot / in a shoot, TOP also set
+    // by the production sheet import.
+    sampleStatus: SAMPLE_STATUS_KEYS.includes(row.sample_status) ? row.sample_status : "",
     // From N41's ATS report (Import ATS): null until it's been imported.
     oh: numOrNull(row.n41_oh),
     wip: numOrNull(row.n41_wip),
@@ -1440,9 +1455,26 @@ async function setStyleNotes(styleNo, color, notes) {
   return style;
 }
 
+/** Set (or clear, with "") one style's sample status: "top" | "show" | "pp" | "first". */
+async function setStyleSampleStatus(styleNo, color, status) {
+  const style = findStyle(styleNo, color);
+  if (!style) throw new Error(`${styleNo} ${color} isn't in the Styles database.`);
+  const value = SAMPLE_STATUS_KEYS.includes(status) ? status : "";
+  const res = await requireClient().from("styles")
+    .update({ sample_status: value })
+    .eq("style_no", style.styleNo).eq("color", style.color);
+  if (res.error && /sample_status/.test(res.error.message ?? "")) {
+    throw new Error("Sample status needs the sample_status column. Run the styles SQL in supabase-schema.sql first.");
+  }
+  throwIfError(res);
+  style.sampleStatus = value;
+  return style;
+}
+
 /**
  * Save TOP dates from the production sheet: [{ styleNo, color, topDate, topPo }],
- * each an existing style. Only those two columns are sent, so nothing else changes.
+ * each an existing style. Those columns are sent, and the sample status set
+ * to TOP — nothing else changes.
  */
 async function saveStyleTops(tops, onProgress) {
   const BATCH = 500;
@@ -1450,7 +1482,7 @@ async function saveStyleTops(tops, onProgress) {
   for (let i = 0; i < tops.length; i += BATCH) {
     const batch = tops.slice(i, i + BATCH);
     const res = await client.from("styles").upsert(
-      batch.map(t => ({ style_no: t.styleNo, color: t.color, top_date: t.topDate, top_po: t.topPo })),
+      batch.map(t => ({ style_no: t.styleNo, color: t.color, top_date: t.topDate, top_po: t.topPo, sample_status: "top" })),
       { onConflict: "user_id,style_no,color" },
     );
     if (res.error && /top_(date|po)/.test(res.error.message ?? "")) {
@@ -1459,7 +1491,7 @@ async function saveStyleTops(tops, onProgress) {
     throwIfError(res);
     batch.forEach(t => {
       const style = findStyle(t.styleNo, t.color);
-      if (style) { style.topDate = t.topDate; style.topPo = t.topPo; }
+      if (style) { style.topDate = t.topDate; style.topPo = t.topPo; style.sampleStatus = "top"; }
     });
     onProgress?.(Math.min(i + BATCH, tops.length), tops.length);
   }

@@ -66,7 +66,7 @@ reference in index.html so the URLs change on every deploy.
 | `js/style-pane.js` | The style pane — a style's details, POs and photos, opened from Styles, Need to Shoot and POs |
 | `js/photoshoots.js` | The Photoshoots and Need to Shoot pages — the shoots list, the Need to Shoot list, the shoot side pane, shoot status badges |
 | `js/complete.js` | The Complete page — the history of styles shot (photoshoot) or made in CG, filtered by how |
-| `js/production-import.js` | Import Production Sheet — reads the production .xlsx and marks each Style # + Color with a TOP date as TOP |
+| `js/production-import.js` | Import Production Sheet — reads the production .xlsx and sets the sample status of each Style # + Color with a TOP date to TOP |
 | `js/ats-import.js` | Import ATS — N41's ATS report → each Style # + Color's OH / WIP / OO / ATS / Inv Qty |
 | `js/purchase-orders.js` | The POs page — importing N41's PO export, New / Recut / New Color, the month list (counts of styles without photos, auto-archiving), POs by ETA month with each colour and its shoot buttons |
 | `js/photoshoot-form.js` | Create / edit photoshoot modal |
@@ -136,7 +136,9 @@ dropped — `ET6157-BLACK` copies `ET6157`).
 Header menu (⋮) → **Table view** sets which columns a table shows and in
 what order. It opens on the table of the page you're on; the **Table** list
 switches to any other (Campaigns, Trade Shows, Banners, Styles, Need to
-Shoot, POs, Shoots, Magento Products).
+Shoot, POs, Shoots, Magento Products, and a shoot's styles on the
+Photoshoots page — Style # · Color, Type, Description, Available, IHD, Notes;
+the grip, move buttons, number and photo always stay in front).
 
 - **Show columns**: tick or untick. The tick-box column (and on POs, the PO
   column) always stays first, and at least one other column has to.
@@ -601,8 +603,15 @@ the colour doesn't match, the PO # is looked up in the N41 POs for that
 style's colour. The window lists what will be marked, dated rows that match
 no style, and TOP cells that aren't dates, and saves only on confirm
 (`top_date` / `top_po` — run the styles SQL in `supabase-schema.sql`; the
-latest date wins). A yellow **TOP** pill then shows in the Shoot column
-everywhere, with the date and PO on hover.
+latest date wins), and sets that colour's sample status to **TOP**.
+
+**Sample status** — TOP, SHOW, PP or FIRST (`sample_status`, blank for none)
+— is picked from a dropdown on Need to Shoot (after the shoot buttons) and in
+a shoot's style list (after the type); it saves as soon as it's picked. The
+import above only ever sets TOP, and only for a newer TOP date, so a status
+picked by hand stays through a re-import of the same sheet. Elsewhere (Styles,
+POs, the style pane) it shows as a plain, uncoloured read-only pill, with the
+TOP date and PO on hover.
 
 Banner Style # fields look styles up as you type: suggestions, the style's
 colours, and its description and status under the row and in the banner pane.
@@ -714,17 +723,18 @@ T-shirt, paint bucket and scissors icons).
 memo (`J4267ST, P4268ST - SET`; a piece is matched with or without the
 trailing ST). Pieces in the same colour sit next to each other on Need to
 Shoot with a **SET** tag, take Photoshoot / CG together, go into a shoot
-together, and in a shoot sit in one box that drags, moves with ↑ / ↓ and is
-removed as one.
+together, and in a shoot move with their style group and are removed as one.
 
-**Style groups are boxed in blue**: neighbouring rows of the same Style #
+**Style groups are boxed in neutral grey**: neighbouring rows of the same Style #
 (on Need to Shoot, in the same Available month) are tinted and boxed together
 — J2644 BLUE, GREEN and YELLOW. A set's pieces are one group across all their
 colours (J4833ST + P4824ST in BLUE and in GREEN), and **a thin rounded light
 grey [ bracket in front of the Style #s joins each colour's pieces** (with the
-rose SET pill). In a shoot the group is a blue box around its rows, with the
-same bracket; the box is only a frame — ↑ / ↓ and dragging move one style or
-set at a time. The Need to Shoot and shoot PDFs show both the same way and
+rose SET pill). In a shoot a group is always together, in a grey box with
+the same bracket: it has one grip and one set of move buttons (on its first
+row), and drags, moves and goes to the top or end as one. Styles of a group
+that had been split up in a shoot are pulled back together where the first
+one stood. The Need to Shoot and shoot PDFs show both the same way and
 keep each group on one page. A single style in one colour gets no box. If a
 column sort splits a group up, only rows that are next to each other are
 boxed.
@@ -743,9 +753,10 @@ carry an old one: an Available month before the PO's own date doesn't
 count, and the ETA's month is used.
 
 After the buttons, a scheduled or shot date shows with a camera — click it to open that photoshoot on
-the Photoshoots page. The yellow **TOP** pill (from the production sheet)
-has its own narrow space after that, there and in a shoot's style list, so
-the buttons and dates line up whether a style has TOP or not.
+the Photoshoots page. The sample status (TOP / SHOW / PP / FIRST) has its
+own narrow space after that — a dropdown on Need to Shoot and in a shoot's
+style list, a pill elsewhere — so the buttons and dates line up whether a
+style has one or not.
 
 The **⋮** after the shoot buttons (Styles, Need to Shoot, POs, the style
 pane) has **Add to Photoshoot** — a particular planned shoot, or a new one —
@@ -901,9 +912,19 @@ one picked fills the rest of the page; the first one listed is picked when
 you open the page. Its date, type, model, style count (and when it was
 completed) are on the line under its name, with its notes below. Its styles
 are numbered, in columns: photo, Style # (its Color beside it), Type,
-Description, Available, IHD and Notes. To change the order, drag
-a style by its grip (⋮⋮), or click the small ↑ / ↓ buttons beside its number
-to swap it with the one above or below — a set moves as one. Clicking a style's row opens its
+Description, Available, IHD and Notes — header menu → **Table view**
+reorders or hides those. To change the order, drag
+a style by its grip (⋮⋮), or use the small buttons in front of its number:
+↑ / ↓ swap it with the one above or below, ⤒ / ⤓ send it to the top or the
+end of the list — a style group (a Style # in several colours, or a set in
+all its colours) has one grip and one set of buttons and moves as one.
+Click the **Available** heading to sort the shoot by Available month, then
+IHD (soonest first; click again for latest first), as Need to Shoot sorts.
+Groups stay whole — each goes by its soonest Available and IHD, and its
+colours are sorted the same way inside it. No Available goes last; in a
+month, no IHD goes below the dated ones. The sort is the shoot's new order (saved, and
+followed by the CSV and PDF); a ▲ / ▼ by the heading shows while the shoot is
+in that order, and goes once you move something by hand. Clicking a style's row opens its
 style pane on the right (the shoot moves over to make room, dropping
 Available and IHD, then Description, then Notes, when it gets narrow). The new order is saved with the shoot (the CSV and
 PDF follow it). The ✕ takes a style (or its set) out of the shoot: it stays on

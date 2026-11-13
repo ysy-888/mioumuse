@@ -27,7 +27,21 @@ const TABLE_VIEW_TABLES = [
   { id: "mgOrdersTable", label: "Magento · Orders", view: "magento" },
   { id: "mgCustomersTable", label: "Magento · Customers", view: "magento" },
   { id: "mgEventsTable", label: "Magento · Events", view: "magento" },
+  // Not a <table>: a shoot's style rows (js/photoshoots.js), which draw their
+  // columns in the view's order. `columns` lists them; `apply` redraws.
+  {
+    id: "shootStyles",
+    label: "Photoshoots · A shoot's styles",
+    view: "photoshoots",
+    columns: () => SHOOT_VIEW_COLUMNS.map(({ col, label }) => ({ col, label })),
+    apply: () => applyShootColumns(),
+  },
 ];
+
+/** A table's view: { order, hidden } (its own columns, fixed ones left out), or null before views are set up. */
+function getTableView(tableId) {
+  return tableViewState.get(tableId)?.current ?? null;
+}
 
 /** Always shown, always first — the tick-box column, and the POs table's PO column. */
 const TABLE_VIEW_FIXED = new Set(["select", "po"]);
@@ -110,6 +124,11 @@ function normalizeTableView(state, view) {
 
 /** Put the headers and column widths in the view's order, hidden ones left out. */
 function applyTableView(tableId) {
+  const custom = TABLE_VIEW_TABLES.find(t => t.id === tableId)?.apply;
+  if (custom) {
+    custom();
+    return;
+  }
   const state = tableViewState.get(tableId);
   const table = document.getElementById(tableId);
   if (!state || !table) return;
@@ -372,7 +391,14 @@ function resetTableViewDraft() {
 
 /** Call after every table's own init, so their headers are fully set up. */
 function initTableViews() {
-  TABLE_VIEW_TABLES.forEach(({ id }) => {
+  TABLE_VIEW_TABLES.forEach(({ id, columns: customColumns }) => {
+    if (customColumns) {
+      const state = { columns: customColumns().map(c => ({ ...c, th: null, colEl: null })), hasCols: false, current: null };
+      state.current = normalizeTableView(state, readSavedTableView(id));
+      tableViewState.set(id, state);
+      applyTableView(id);
+      return;
+    }
     const table = document.getElementById(id);
     if (!table) return;
     const ths = [...table.querySelectorAll("thead th[data-col]")];

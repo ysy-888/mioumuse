@@ -110,15 +110,15 @@ const REPORT_CSS = `
   .method.cg { background: #d9f0f3; color: #0e687a; }
   .method.none { background: none; padding-left: 0; color: #8b929c; font-weight: 500; }
   .method-sub { margin-top: 2px; color: #4b5563; font-size: 9px; white-space: nowrap; }
-  /* A style group (a Style # in several colours, or a set): in one blue box, kept on one page. */
+  /* A style group (a Style # in several colours, or a set): in one grey box, kept on one page. */
   tbody.group { break-inside: avoid; page-break-inside: avoid; }
-  tbody.group td { background: #f5f9fe; }
-  tbody.group tr:not(:last-child) td { border-bottom-color: #e2eaf6; }
-  /* Its edges: 2px all round, corners rounded. */
-  tbody.group td:first-child { border-left: 2px solid #7fa3d6; }
-  tbody.group td:last-child { border-right: 2px solid #7fa3d6; }
-  tbody.group tr:last-child td { border-bottom: 2px solid #7fa3d6; }
-  tbody.group tr:first-child td { border-top: 2px solid #7fa3d6; }
+  tbody.group td { background: #f7f8f9; }
+  tbody.group tr:not(:last-child) td { border-bottom-color: #e6e8eb; }
+  /* Its edges: 2px all round in a neutral grey, corners rounded. */
+  tbody.group td:first-child { border-left: 2px solid #a3a9b1; }
+  tbody.group td:last-child { border-right: 2px solid #a3a9b1; }
+  tbody.group tr:last-child td { border-bottom: 2px solid #a3a9b1; }
+  tbody.group tr:first-child td { border-top: 2px solid #a3a9b1; }
   tbody.group tr:first-child td:first-child { border-top-left-radius: 6px; }
   tbody.group tr:first-child td:last-child { border-top-right-radius: 6px; }
   tbody.group tr:last-child td:first-child { border-bottom-left-radius: 6px; }
@@ -454,7 +454,7 @@ function exportNeedPdf() {
 
 /** A shoot's styles in its order — each set's pieces together, as its pane shows them. */
 function getShootExportRows(shoot) {
-  return getShootBlocks(shoot).flat().map(s => styleExportFields(s.styleNo, s.color));
+  return getShootBlocks(shoot).flat(2).map(s => styleExportFields(s.styleNo, s.color));
 }
 
 function shootFileBase(shoot) {

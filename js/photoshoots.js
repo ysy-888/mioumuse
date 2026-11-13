@@ -121,6 +121,11 @@ function createShootTypePill(styleNo, color) {
 }
 
 const SHOOT_ADD_ICON = '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>';
+/** Photoshoot / CG buttons: a camera, and the letters CG. */
+const SHOOT_METHOD_ICONS = {
+  photoshoot: '<svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3.5"/></svg>',
+  cg: '<span class="shoot-pick-text" aria-hidden="true">CG</span>',
+};
 
 /** "MMT1290 BLACK", or "MMT1290 BLACK + 1 set piece" when its set went with it. */
 function describeShootPick(styleNo, color, count) {
@@ -186,7 +191,8 @@ function createShootPicker(styleNo, color, onDone, { suggested = false, menu = t
       btn.type = "button";
       btn.className = "shoot-pick shoot-pick-method";
       btn.dataset.method = key;
-      btn.textContent = label;
+      // An icon; the name is in the tooltip and the label.
+      btn.innerHTML = SHOOT_METHOD_ICONS[key] ?? "";
       btn.setAttribute("aria-pressed", String(on));
       const next = getNextStudioShoot();
       btn.title = on ? `${label} — click again to undo`
@@ -389,8 +395,9 @@ const NEED_SORT_COLUMNS = {
   category: r => r.category,
   season: r => r.season,
   n41: r => r.n41,
-  // An old 0026-11-16 shows as 11/16/26, so it sorts as 2026 too.
-  ihd: r => fixTwoDigitYear(findStyle(r.styleNo, r.color)?.ihd ?? ""),
+  // As it shows: a tentative 1/1 PO ETA shows blank, so it sorts as blank;
+  // an old 0026-11-16 shows as 11/16/26, so it sorts as 2026.
+  ihd: r => ihdSortValue(findStyle(r.styleNo, r.color)),
   // To decide, then Photoshoot by shoot date (not scheduled last), then CG.
   shoot: r => (!r.method ? "0" : r.method === "photoshoot" ? `1${r.nextDate || "9999"}` : "2"),
   added: r => r.addedAt,
@@ -630,11 +637,11 @@ function sortNeedRowsDefault(rows) {
     const best = groupIhd.get(key);
     if (best === undefined || (d && (!best || d < best))) groupIhd.set(key, d);
   });
-  const blankFirst = { blankFirstAscending: true };
+  // In a month, styles with no IHD come after the dated ones.
   rows.sort((a, b) => compareSortValues(month(a), month(b), 1) ||
-    compareSortValues(groupIhd.get(groupKey(a)), groupIhd.get(groupKey(b)), 1, blankFirst) ||
+    compareSortValues(groupIhd.get(groupKey(a)), groupIhd.get(groupKey(b)), 1) ||
     a.styleNo.localeCompare(b.styleNo, undefined, { numeric: true }) ||
-    compareSortValues(ihd(a), ihd(b), 1, blankFirst) ||
+    compareSortValues(ihd(a), ihd(b), 1) ||
     a.color.localeCompare(b.color));
   return rows;
 }
@@ -735,7 +742,7 @@ function renderNeedTable() {
           if (pill) td.appendChild(pill); else setDisplayText(td, EMPTY_DISPLAY);
           break;
         }
-        case "shoot": td.appendChild(createStyleShootCell(findStyle(r.styleNo, r.color) ?? { styleNo: r.styleNo, color: r.color, status: r.n41 })); break;
+        case "shoot": td.appendChild(createStyleShootCell(findStyle(r.styleNo, r.color) ?? { styleNo: r.styleNo, color: r.color, status: r.n41 }, { editSample: true })); break;
         case "n41": td.appendChild(createStyleStatusPill(r.n41)); break;
         case "ihd": {
           // Editable here too.
@@ -987,6 +994,105 @@ function renderShootsTable() {
   }));
 }
 
+// ── A shoot's columns ────────────────────────────────────────────────────────
+//
+// A shoot's styles are rows on one grid, not a <table>, but the Table view
+// (js/table-view.js, "Photoshoots · A shoot's styles") still orders and hides
+// these columns. Before them, always: grip · ↑↓ ⤒⤓ · # · photo; after: remove.
+
+/** The columns the Table view moves: label, and their width when shown. */
+const SHOOT_VIEW_COLUMNS = [
+  { col: "style", label: "Style", width: "minmax(170px, 260px)" },
+  { col: "type", label: "Type", width: "146px" },
+  { col: "desc", label: "Description", width: "minmax(0, 240px)" },
+  { col: "avail", label: "Available", width: "62px" },
+  { col: "ihd", label: "IHD", width: "150px" },
+  { col: "notes", label: "Notes", width: "minmax(140px, 1fr)" },
+];
+const SHOOT_LEAD_COLS = "12px 44px 24px 40px";
+const SHOOT_END_COL = "24px";
+
+/** The columns showing now, in order (set by layoutShootColumns). */
+let shootPaneColumns = SHOOT_VIEW_COLUMNS.map(c => c.col);
+
+/**
+ * The columns that fit: the Table view's, minus — as the docked pane narrows
+ * (a style pane beside it, a small window) — Available and IHD first (the
+ * style pane shows them), then Description, then Notes. Floating (Home):
+ * just the style and its type.
+ */
+function shootShownColumns() {
+  const view = getTableView?.("shootStyles") ?? { order: SHOOT_VIEW_COLUMNS.map(c => c.col), hidden: [] };
+  const drop = new Set(view.hidden);
+  const section = document.querySelector("#shootPane .shoot-styles-section");
+  if (!isShootPaneDocked()) ["desc", "avail", "ihd", "notes"].forEach(c => drop.add(c));
+  else if (section?.clientWidth) {
+    const css = getComputedStyle(section);
+    const width = section.clientWidth - parseFloat(css.paddingLeft) - parseFloat(css.paddingRight);
+    if (width <= 1120) { drop.add("avail"); drop.add("ihd"); }
+    if (width <= 860) drop.add("desc");
+    if (width <= 620) drop.add("notes");
+  }
+  const shown = view.order.filter(c => !drop.has(c));
+  // Something has to show the style.
+  return shown.length ? shown : ["style"];
+}
+
+/** Set the grid for the columns that show, and draw their heads. True when that changed. */
+function layoutShootColumns() {
+  const shown = shootShownColumns();
+  const changed = shown.join() !== shootPaneColumns.join();
+  shootPaneColumns = shown;
+  const byCol = new Map(SHOOT_VIEW_COLUMNS.map(c => [c.col, c]));
+  // Whatever's left takes the spare width: Notes when it shows, else the Style #.
+  const flexes = shown.some(c => byCol.get(c).width.includes("fr"));
+  const widths = shown.map(c => (!flexes && c === "style" ? "minmax(0, 1fr)" : byCol.get(c).width));
+  document.querySelector("#shootPane .shoot-styles-section")
+    ?.style.setProperty("--shoot-cols", [SHOOT_LEAD_COLS, ...widths, SHOOT_END_COL].join(" "));
+  const head = document.getElementById("shootPaneStylesHead");
+  if (head) {
+    const span = (text, className = "") => Object.assign(document.createElement("span"), { textContent: text, className });
+    const shoot = paneShootId && getPhotoshootById(paneShootId);
+    const headOf = c => {
+      if (c !== "avail" || !shoot) return span(byCol.get(c).label, `shoot-head-${c}`);
+      // Available sorts the shoot (by Available, then IHD); the arrow shows when it's in that order.
+      const dir = shootAvailableSortDir(shoot);
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "shoot-head-sort shoot-head-avail";
+      btn.textContent = byCol.get(c).label;
+      if (dir) btn.append(Object.assign(document.createElement("span"), { className: "shoot-head-arrow", textContent: dir > 0 ? "▲" : "▼" }));
+      btn.title = dir > 0 ? "Sorted by Available, then IHD (soonest first) — click for latest first"
+        : "Sort by Available, then IHD — style groups stay together";
+      btn.addEventListener("click", () => sortShootByAvailable(shoot.id));
+      return btn;
+    };
+    head.replaceChildren(
+      span(""), span(""), span(""), span(""),
+      ...shown.map(headOf),
+      span(""),
+    );
+  }
+  return changed;
+}
+
+/** The Table view saved a new order for these columns. */
+function applyShootColumns() {
+  const shoot = paneShootId && getPhotoshootById(paneShootId);
+  if (shoot) renderShootPane(shoot);
+  else layoutShootColumns();
+}
+
+/** Redraw when the pane's width lets more (or fewer) columns show. */
+function initShootColumnFit() {
+  const section = document.querySelector("#shootPane .shoot-styles-section");
+  if (!section || !("ResizeObserver" in window)) return;
+  new ResizeObserver(() => {
+    if (!paneShootId || !section.clientWidth) return;
+    if (shootShownColumns().join() !== shootPaneColumns.join()) applyShootColumns();
+  }).observe(section);
+}
+
 // ── Shoot pane ───────────────────────────────────────────────────────────────
 
 function renderShootPane(shoot) {
@@ -1021,58 +1127,72 @@ function renderShootPane(shoot) {
   }
 
   const list = document.getElementById("shootPaneStyles");
+  layoutShootColumns();
   document.getElementById("shootPaneStylesHead").hidden = shoot.styles.length === 0;
   if (shoot.styles.length === 0) {
     list.replaceChildren(Object.assign(document.createElement("div"), { className: "item-tasks-empty", textContent: "No styles yet — pick Photoshoot for them on Need to Shoot." }));
     return;
   }
-  // One block per style — or per set, whose pieces sit in a box and move as one.
+  // One block per style group: a style alone, or a Style # in several colours,
+  // or a set in all its colours — in one box, moved as one by its first row's
+  // grip and buttons. A set's pieces in one colour sit together inside it.
   const blocks = getShootBlocks(shoot);
-  // Neighbouring blocks of one Style # (or set), any colour, share an outer
-  // box. Only a frame: dragging and ↑ / ↓ still move single blocks.
-  const familyOf = familyRuns(blocks, s => styleFamilyKey(s.styleNo));
   let index = 0;
-  const nodes = [];
-  let family = null;
-  blocks.forEach((block, b) => {
-    const rows = block.map(s => createShootStyleRow(shoot, s, index++, b, blocks.length, block.length > 1));
-    const el = rows.length === 1 ? rows[0] : Object.assign(document.createElement("div"), { className: "shoot-set" });
-    if (rows.length > 1) el.append(...rows);
+  const nodes = blocks.map((block, b) => {
+    const grouped = block.flat().length > 1;
+    const sets = block.map((set, k) => {
+      const rows = set.map((s, i) => createShootStyleRow(shoot, s, index++, b, blocks.length, {
+        inSet: set.length > 1,
+        lead: k === 0 && i === 0,
+        grouped,
+      }));
+      if (rows.length === 1) return rows[0];
+      const el = Object.assign(document.createElement("div"), { className: "shoot-set" });
+      el.append(...rows);
+      return el;
+    });
+    const el = grouped ? Object.assign(document.createElement("div"), { className: "shoot-family" }) : sets[0];
+    if (grouped) el.append(...sets);
     el.classList.add("shoot-block");
     el.dataset.block = String(b);
-    const run = familyOf.get(block[0]);
-    if (!run) {
-      family = null;
-      nodes.push(el);
-      return;
-    }
-    if (family?.dataset.run !== String(run)) {
-      family = Object.assign(document.createElement("div"), { className: "shoot-family" });
-      family.dataset.run = String(run);
-      nodes.push(family);
-    }
-    family.appendChild(el);
+    return el;
   });
   list.replaceChildren(...nodes);
 }
 
 /**
- * A shoot's styles in blocks (js/store.js groupBySet). If a set's pieces had
- * drifted apart in the saved order, the shoot takes the tidied order — it's
- * saved with the next change to the shoot.
+ * A shoot's styles in blocks: one per style group (js/store.js
+ * styleFamilyKey — a Style # in any colour, or a set's pieces in any
+ * colour), each a list of sets (groupBySet: a set's pieces in one colour, or
+ * a lone style). A group's styles are always together, where its first one
+ * stood; if they had drifted apart in the saved order, the shoot takes the
+ * tidied order — it's saved with the next change to the shoot.
  */
 function getShootBlocks(shoot) {
-  const blocks = groupBySet(shoot.styles);
-  const flat = blocks.flat();
+  const blocks = [];
+  const byFamily = new Map();
+  groupBySet(shoot.styles).forEach(set => {
+    const key = styleFamilyKey(set[0].styleNo);
+    if (byFamily.has(key)) byFamily.get(key).push(set);
+    else {
+      const block = [set];
+      byFamily.set(key, block);
+      blocks.push(block);
+    }
+  });
+  const flat = blocks.flat(2);
   if (flat.some((s, i) => s !== shoot.styles[i])) shoot.styles = flat;
   return blocks;
 }
 
 /**
- * One style's row. `index` is its place in the shoot, `block` its block's
- * (of `blockCount`); `inSet` when the block is a set of several pieces.
+ * One style's row. `index` is its place in the shoot, `block` its style
+ * group's (of `blockCount`). `inSet` when it's one of a set's pieces (in one
+ * colour); `lead` for the group's first row, which alone has the grip and
+ * move buttons (the others leave their places empty, so columns line up);
+ * `grouped` when the group has more than this one row.
  */
-function createShootStyleRow(shoot, s, index, block, blockCount, inSet) {
+function createShootStyleRow(shoot, s, index, block, blockCount, { inSet = false, lead = true, grouped = false } = {}) {
   const style = findStyle(s.styleNo, s.color);
   const row = document.createElement("div");
   row.className = "shoot-style-row";
@@ -1080,10 +1200,11 @@ function createShootStyleRow(shoot, s, index, block, blockCount, inSet) {
   row.dataset.styleNo = s.styleNo;
   row.dataset.color = s.color;
   if (paneStyle && paneStyle.styleNo === s.styleNo && paneStyle.color === s.color) row.classList.add("is-pane-open");
-  // The grip drags its block (the style, or its whole set) to another place.
+  const together = grouped ? " — the group moves together" : "";
+  // The grip drags its block (the style, or its whole group) to another place.
   const grip = document.createElement("span");
   grip.className = "shoot-style-grip";
-  grip.title = inSet ? "Drag to reorder — the set moves together" : "Drag to reorder";
+  grip.title = `Drag to reorder${together}`;
   grip.setAttribute("aria-hidden", "true");
   grip.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="16" fill="currentColor" viewBox="0 0 12 16"><circle cx="3" cy="3" r="1.4"/><circle cx="9" cy="3" r="1.4"/><circle cx="3" cy="8" r="1.4"/><circle cx="9" cy="8" r="1.4"/><circle cx="3" cy="13" r="1.4"/><circle cx="9" cy="13" r="1.4"/></svg>';
   grip.addEventListener("pointerdown", () => {
@@ -1093,24 +1214,32 @@ function createShootStyleRow(shoot, s, index, block, blockCount, inSet) {
   const num = document.createElement("span");
   num.className = "shoot-style-num";
   num.textContent = String(index + 1);
-  // ↑ / ↓: swap its block with the one above / below.
+  // In front of the number, two by two: ↑ / ↓ swap its block with the one
+  // above / below; ⤒ / ⤓ send it to the top / the end of the list.
   const move = document.createElement("span");
   move.className = "shoot-style-move";
-  [["up", -1, "Move up", "M6 15l6-6 6 6"], ["down", 1, "Move down", "M6 9l6 6 6-6"]].forEach(([dir, delta, label, path]) => {
+  const first = block === 0;
+  const last = block === blockCount - 1;
+  [
+    ["up", "Move up", "M6 15l6-6 6 6", first, () => stepShootBlock(shoot.id, block, -1)],
+    ["top", "Move to the top", "M6 18l6-6 6 6M6 6h12", first, () => moveShootBlock(shoot.id, block, 0)],
+    ["down", "Move down", "M6 9l6 6 6-6", last, () => stepShootBlock(shoot.id, block, 1)],
+    ["end", "Move to the end", "M6 6l6 6 6-6M6 18h12", last, () => moveShootBlock(shoot.id, block, blockCount)],
+  ].forEach(([dir, label, path, disabled, act]) => {
     const b = document.createElement("button");
     b.type = "button";
     b.className = "shoot-move-btn";
     b.dataset.dir = dir;
-    b.title = inSet ? `${label} — the set moves together` : label;
+    b.title = `${label}${together}`;
     b.setAttribute("aria-label", `${label}: ${s.styleNo} ${s.color}`);
-    b.disabled = delta < 0 ? block === 0 : block === blockCount - 1;
+    b.disabled = disabled;
     b.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true"><path d="${path}"/></svg>`;
-    b.addEventListener("click", () => stepShootBlock(shoot.id, block, delta));
+    b.addEventListener("click", act);
     move.appendChild(b);
   });
-  row.append(grip, num, move);
-  // A set's pieces: this row's part of the [ joining their Style #s (crm.css).
-  if (inSet) row.appendChild(Object.assign(document.createElement("span"), { className: "shoot-set-bracket" }));
+  // Only the group's first row gets the grip and buttons; the rest keep the places empty.
+  if (lead) row.append(grip, move, num);
+  else row.append(document.createElement("span"), document.createElement("span"), num);
   const thumb = createStyleThumb(s.styleNo, s.color);
   thumb.addEventListener("click", () => openStyleGallery(s.styleNo, s.color));
   const cell = (className, text = "") => {
@@ -1129,28 +1258,42 @@ function createShootStyleRow(shoot, s, index, block, blockCount, inSet) {
   name.append(no, col);
   name.title = `${s.styleNo} · ${s.color}`;
   if (inSet) name.appendChild(createSetTag(s.styleNo, s.color));
-  row.append(thumb, name);
+  // A set's pieces: this row's part of the [ joining their Style #s, in the
+  // cell's indent — wherever the Style # column sits (crm.css).
+  if (inSet) name.prepend(Object.assign(document.createElement("span"), { className: "shoot-set-bracket" }));
+  row.appendChild(thumb);
 
-  // The type, from its PO — and the yellow TOP pill (js/styles.js).
-  const type = cell("shoot-style-type");
-  type.appendChild(createShootTypePill(s.styleNo, s.color));
-  addStyleTopPill(type, style ?? s);
-  row.append(type, cell("shoot-style-desc shoot-col-desc", style ? style.description : "Not in the Styles database"));
-
-  const avail = cell("shoot-style-avail shoot-col-avail");
-  const pill = style && createAvailablePill(style.availableDate, style);
-  if (pill) avail.appendChild(pill); else avail.textContent = EMPTY_DISPLAY;
-  row.appendChild(avail);
-
-  // IHD, editable here.
-  const ihd = cell("shoot-style-ihd shoot-col-ihd");
-  if (style) ihd.appendChild(createIhdInput(style, { onSaved: refreshPhotoshootViews }));
-  row.appendChild(ihd);
-
-  // The style's notes — the same ones as on POs, Need to Shoot and Styles.
-  const notes = cell("shoot-style-notes shoot-col-notes");
-  if (style) notes.appendChild(createStyleNotesInput(style, { onSaved: refreshStylePaneSummary }));
-  row.appendChild(notes);
+  // The rest in the Table view's order, hidden and squeezed-out ones left out.
+  const cells = {
+    style: () => name,
+    // The type, from its PO — and the sample status dropdown (js/styles.js).
+    type: () => {
+      const type = cell("shoot-style-type");
+      type.appendChild(createShootTypePill(s.styleNo, s.color));
+      addSampleStatusSelect(type, style ?? s);
+      return type;
+    },
+    desc: () => cell("shoot-style-desc", style ? style.description : "Not in the Styles database"),
+    avail: () => {
+      const avail = cell("shoot-style-avail");
+      const pill = style && createAvailablePill(style.availableDate, style);
+      if (pill) avail.appendChild(pill); else avail.textContent = EMPTY_DISPLAY;
+      return avail;
+    },
+    // IHD, editable here.
+    ihd: () => {
+      const ihd = cell("shoot-style-ihd");
+      if (style) ihd.appendChild(createIhdInput(style, { onSaved: refreshPhotoshootViews }));
+      return ihd;
+    },
+    // The style's notes — the same ones as on POs, Need to Shoot and Styles.
+    notes: () => {
+      const notes = cell("shoot-style-notes");
+      if (style) notes.appendChild(createStyleNotesInput(style, { onSaved: refreshStylePaneSummary }));
+      return notes;
+    },
+  };
+  shootPaneColumns.forEach(col => row.appendChild(cells[col]()));
 
   const end = cell("shoot-style-end");
   if (shoot.status === "planned") {
@@ -1230,9 +1373,51 @@ function moveShootBlock(shootId, from, to) {
   const [moved] = blocks.splice(from, 1);
   if (!moved) return;
   blocks.splice(to > from ? to - 1 : to, 0, moved);
-  const styles = blocks.flat();
+  const styles = blocks.flat(2);
   if (styles.every((s, i) => s === before[i])) return;
   setShootOrder(shoot, styles);
+}
+
+/**
+ * The shoot's styles sorted by Available, then IHD (`dir` 1 soonest first,
+ * -1 latest first), as Need to Shoot sorts by default. Groups stay whole:
+ * a group goes by its soonest Available and IHD, and inside it each colour's
+ * set (or style) is sorted the same way. No Available goes last, and in a
+ * month no IHD goes after the dated ones — either way round.
+ */
+function sortedShootStyles(shoot, dir = 1) {
+  const keyOf = list => {
+    const styles = list.map(s => findStyle(s.styleNo, s.color));
+    const soonest = values => values.filter(Boolean).sort()[0] ?? "";
+    return {
+      avail: soonest(styles.map(st => /^\d{4}-\d{2}/.exec(String(st?.availableDate ?? ""))?.[0] ?? "")),
+      ihd: soonest(styles.map(ihdSortValue)),
+    };
+  };
+  const compare = (a, b) => compareSortValues(a.key.avail, b.key.avail, dir) ||
+    compareSortValues(a.key.ihd, b.key.ihd, dir);
+  const sortList = (items, flatOf) => items
+    .map((item, i) => ({ item, i, key: keyOf(flatOf(item)) }))
+    .sort((a, b) => compare(a, b) || a.i - b.i)
+    .map(x => x.item);
+  return sortList(getShootBlocks(shoot).map(block => sortList(block, set => set)), block => block.flat()).flat(2);
+}
+
+/** Available heading: sort the shoot by Available, then IHD — soonest first, or latest first when it already is. */
+function sortShootByAvailable(shootId) {
+  const shoot = getPhotoshootById(shootId);
+  if (!shoot || shoot.styles.length < 2) return;
+  const same = list => list.every((s, i) => s === shoot.styles[i]);
+  const asc = sortedShootStyles(shoot, 1);
+  const styles = same(asc) ? sortedShootStyles(shoot, -1) : asc;
+  if (same(styles)) return;
+  setShootOrder(shoot, styles);
+}
+
+/** Whether the shoot is in Available order: 1 soonest first, -1 latest first, 0 neither. */
+function shootAvailableSortDir(shoot) {
+  const same = list => list.every((s, i) => s === shoot.styles[i]);
+  return shoot.styles.length < 2 ? 0 : same(sortedShootStyles(shoot, 1)) ? 1 : same(sortedShootStyles(shoot, -1)) ? -1 : 0;
 }
 
 /** A row's ↑ / ↓ buttons: swap its block with the one above / below. */
@@ -1243,7 +1428,7 @@ function stepShootBlock(shootId, index, delta) {
   const j = index + delta;
   if (j < 0 || j >= blocks.length) return;
   [blocks[index], blocks[j]] = [blocks[j], blocks[index]];
-  setShootOrder(shoot, blocks.flat(), 600);
+  setShootOrder(shoot, blocks.flat(2), 600);
 }
 
 function initShootStyleReorder() {
@@ -1518,4 +1703,5 @@ function initPhotoshoots() {
     if (!isShootPaneDocked()) closeShootPane();
   });
   initShootStyleReorder();
+  initShootColumnFit();
 }

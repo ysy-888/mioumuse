@@ -137,6 +137,15 @@ function getShootReasonLabel(key) {
 /** A PO line's kind (js/store.js computePoKinds) as a type. */
 const PO_KIND_SHOOT_TYPE = { new: "newStyle", newColor: "newColor", recut: "recut" };
 
+/** A colour's sample status (styles.sample_status), in the dropdown's order. */
+const SAMPLE_STATUSES = [
+  { key: "top", label: "TOP" },
+  { key: "show", label: "SHOW" },
+  { key: "pp", label: "PP" },
+  { key: "first", label: "FIRST" },
+];
+const SAMPLE_STATUS_KEYS = SAMPLE_STATUSES.map(s => s.key);
+
 /** How a style on Need to Shoot gets its pictures — the one choice made there. */
 const SHOOT_METHODS = [
   { key: "photoshoot", label: "Photoshoot" },

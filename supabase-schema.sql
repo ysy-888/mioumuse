@@ -284,6 +284,18 @@ alter table styles add column if not exists received_qty numeric;
 alter table styles add column if not exists top_date text not null default '';
 alter table styles add column if not exists top_po text not null default '';
 
+-- A colour's sample status: TOP, SHOW, PP or FIRST ('' = none), picked on
+-- Need to Shoot and in a photoshoot; the production sheet import sets TOP.
+alter table styles add column if not exists sample_status text not null default '';
+do $$
+begin
+  if not exists (select 1 from pg_constraint where conname = 'styles_sample_status_check') then
+    alter table styles add constraint styles_sample_status_check
+      check (sample_status in ('', 'top', 'show', 'pp', 'first'));
+  end if;
+end $$;
+update styles set sample_status = 'top' where top_date <> '' and sample_status = '';
+
 -- From N41's ATS report (Import ATS): on hand, WIP, on order and available to
 -- sell for each Style # + Color, and when that report was imported.
 alter table styles add column if not exists n41_oh numeric;
@@ -325,7 +337,8 @@ begin
       ihd = coalesce(n.ihd, o.ihd),
       notes = case when n.notes = '' then o.notes else n.notes end,
       top_date = case when n.top_date = '' then o.top_date else n.top_date end,
-      top_po = case when n.top_po = '' then o.top_po else n.top_po end
+      top_po = case when n.top_po = '' then o.top_po else n.top_po end,
+      sample_status = case when n.sample_status = '' then o.sample_status else n.sample_status end
     from styles o
     where n.user_id = uid and n.style_no = new_style and n.color = new_color
       and o.user_id = uid and o.style_no = old_style and o.color = old_color;
