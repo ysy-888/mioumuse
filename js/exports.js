@@ -70,6 +70,14 @@ const REPORT_CSS = `
   .meta div { display: flex; flex-direction: column; gap: 1px; }
   .meta b { font-size: 8.5px; letter-spacing: 0.06em; text-transform: uppercase; color: #8b929c; }
   .meta span { font-size: 11.5px; font-weight: 600; }
+  /* Quantities (a shoot's Styles, Outfits, sample statuses): one shaded box,
+     each label over its number; the totals larger, a line before the rest. */
+  .meta .meta-qty { flex-direction: row; align-items: flex-end; gap: 14px; padding: 4px 11px; border-radius: 6px; background: #eef0f3; }
+  .meta-qty .qty { align-items: center; text-align: center; }
+  .meta-qty .qty span { font-variant-numeric: tabular-nums; }
+  .meta-qty .qty.total span { font-weight: 700; }
+  .meta-qty .qty.total b { color: #4b5563; }
+  .meta-qty .qty.total + .qty:not(.total) { padding-left: 14px; border-left: 1px solid #c9ced4; }
   .notes { margin: -4px 0 12px; padding: 8px 10px; background: #f7f7f8; border-radius: 6px; white-space: pre-wrap; }
   /* Borders don't collapse: when printed, collapsed borders of different
      widths meet unevenly (steps, slivers, a group's edge left on the wrong page). */
@@ -97,6 +105,8 @@ const REPORT_CSS = `
   .po-line[data-kind="newColor"] { background: #d4edf2; color: #0e687a; }
   .po-line[data-kind="recut"] { background: #dce6f7; color: #2b559a; }
   .available-pill { display: inline-block; padding: 1px 6px; border-radius: 5px; background: #f1f3f5; box-shadow: inset 0 0 0 1px #e3e6ea; color: #4b5563; font-size: 9.5px; font-weight: 600; letter-spacing: 0.04em; white-space: nowrap; }
+  .avail-stack { display: inline-flex; flex-direction: column; align-items: center; }
+  .ihd-under { margin-top: 2px; color: #4b5563; font-size: 9px; font-variant-numeric: tabular-nums; }
   .available-pill.is-mismatch { background: #fef3c7; box-shadow: inset 0 0 0 1px #f5c56b; color: #92400e; }
   .pill { display: inline-block; padding: 1px 7px; border-radius: 9px; background: #eef0f3; font-size: 9.5px; font-weight: 600; white-space: nowrap; }
   .pill.needed { background: #fdf0d5; color: #8a5a00; }
@@ -238,7 +248,20 @@ async function printReport({ fileTitle, title, titleLabel = "", subtitle = "", m
     `<tbody${run.grouped ? ' class="group"' : ""}>${run.html.join("")}</tbody>`).join("");
 
   const generated = `${formatReportDate(todayYmd())} ${new Date().toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}`;
-  const metaHtml = meta.length ? `<div class="meta">${meta.map(([k, v]) => `<div><b>${escapeReportHtml(k)}</b><span>${escapeReportHtml(v)}</span></div>`).join("")}</div>` : "";
+  // [label, value, { qty, total }]: a run of qty items shares one shaded box,
+  // its totals (Styles, Outfits) larger and set off from the rest by a line.
+  const metaItem = ([k, v, { qty = false, total = false } = {}]) =>
+    `<div${qty ? ` class="qty${total ? " total" : ""}"` : ""}><b>${escapeReportHtml(k)}</b><span>${escapeReportHtml(v)}</span></div>`;
+  const metaParts = [];
+  meta.forEach(item => {
+    const qty = Boolean(item[2]?.qty);
+    const last = metaParts[metaParts.length - 1];
+    if (qty && last?.qty) last.items.push(item);
+    else metaParts.push({ qty, items: [item] });
+  });
+  const metaHtml = meta.length ? `<div class="meta">${metaParts.map(part => part.qty
+    ? `<div class="meta-qty">${part.items.map(metaItem).join("")}</div>`
+    : part.items.map(metaItem).join("")).join("")}</div>` : "";
   const html = `<!doctype html><html><head><meta charset="utf-8"><title>${escapeReportHtml(fileTitle)}</title><style>${REPORT_CSS}${landscape ? "@page { size: letter landscape; }" : ""}</style></head><body>
     <header>
       <div><div class="brand">${escapeReportHtml(APP_NAME)}</div><h1>${titleLabel ? `<span class="title-label">${escapeReportHtml(titleLabel)}</span><span class="title-name">${escapeReportHtml(title)}</span>` : escapeReportHtml(title)}</h1>${subtitle ? `<div class="sub">${escapeReportHtml(subtitle)}</div>` : ""}</div>
@@ -365,18 +388,26 @@ function reportStyleColumns(rows) {
     sample: { label: "Sample", cell: r => ({ text: getSampleStatusLabel(r.sampleStatus) || "–", className: "nowrap" }) },
     description: { label: "Description", cell: r => ({ text: r.description, className: "desc" }) },
     type: { label: "Type", cell: r => ({ html: shootTypePillHtml(r.type) || "–", className: "nowrap" }) },
-    available: {
+    available: { label: "Available", cell: r => ({ html: reportAvailableHtml(r), className: "nowrap" }) },
+    // The same, with the IHD (when there is one) under the pill.
+    availableIhd: {
       label: "Available",
-      cell: r => ({
-        html: r.availableDate
-          ? `<span class="available-pill${r.style?.availMismatch ? " is-mismatch" : ""}">${escapeReportHtml(formatMonYY(r.availableDate))}</span>`
-          : "–",
-        className: "nowrap",
-      }),
+      cell: r => {
+        const ihd = r.style ? ihdSortValue(r.style) : "";
+        // The pill and the date centred on each other.
+        return { html: `<span class="avail-stack">${reportAvailableHtml(r)}${ihd ? `<span class="ihd-under">${escapeReportHtml(formatReportDate(ihd))}</span>` : ""}</span>`, className: "nowrap" };
+      },
     },
     shoot: { label: "Shoot", cell: r => ({ html: reportMethodHtml(r) }) },
     notes: { label: "Notes", className: "note-col", cell: r => ({ text: r.notes, className: "note-col" }) },
   };
+}
+
+/** A row's Available month as the pill (amber when it disagrees with the PO), "–" without one. */
+function reportAvailableHtml(r) {
+  return r.availableDate
+    ? `<span class="available-pill${r.style?.availMismatch ? " is-mismatch" : ""}">${escapeReportHtml(formatMonYY(r.availableDate))}</span>`
+    : "–";
 }
 
 /**
@@ -498,7 +529,11 @@ function exportShootPdf(id) {
       ["Type", getPhotoshootTypeLabel(shoot.type)],
       ["Model", shoot.model || "—"],
       ["Status", shoot.status === "complete" ? "Complete" : "Planned"],
-      ["Styles", String(rows.length)],
+      // On one shaded box: Styles, Outfits (a set's pieces in one colour
+      // count as one), then how many are TOP / SHOW / PP / FIRST / None.
+      ["Styles", String(rows.length), { qty: true, total: true }],
+      ["Outfits", String(countShootOutfits(shoot.styles)), { qty: true, total: true }],
+      ...countSampleStatuses(rows).map(s => [s.label, String(s.count), { qty: true }]),
     ],
     metaInHeader: true,
     landscape: true,
@@ -510,7 +545,7 @@ function exportShootPdf(id) {
     columns: [
       { label: "Shot", cell: () => ({ text: "☐", className: "check" }) },
       { label: "#", cell: r => ({ text: String(rows.indexOf(r) + 1), className: "nowrap" }) },
-      cols.styleNo, cols.color, cols.sample, cols.description, cols.type, cols.available, cols.notes,
+      cols.styleNo, cols.color, cols.availableIhd, cols.sample, cols.description, cols.type, cols.notes,
     ],
   });
 }

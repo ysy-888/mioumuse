@@ -273,6 +273,19 @@ function sampleStatusTitle(saved) {
   return saved?.topDate ? `TOP comments in ${formatMdy(saved.topDate)}${saved.topPo ? ` · PO ${saved.topPo}` : ""}` : "";
 }
 
+/**
+ * How many of these styles ([{ styleNo, color }]) are at each sample status:
+ * [{ key, label, count }] for TOP / SHOW / PP / FIRST, then None ("").
+ */
+function countSampleStatuses(styles) {
+  const counts = new Map([...SAMPLE_STATUS_KEYS, ""].map(k => [k, 0]));
+  for (const s of styles) {
+    const key = findStyle(s.styleNo, s.color)?.sampleStatus ?? "";
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
+  return [...SAMPLE_STATUSES, { key: "", label: "None" }].map(s => ({ ...s, count: counts.get(s.key) }));
+}
+
 /** The colour's sample status (TOP / SHOW / PP / FIRST) as a read-only pill, nothing if none. */
 function addSampleStatusPill(wrap, style) {
   const saved = findStyle(style.styleNo, style.color) ?? style;
@@ -317,6 +330,8 @@ function createSampleStatusSelect(style) {
     select.disabled = true;
     try {
       await setStyleSampleStatus(saved.styleNo, saved.color, value);
+      // Lets a count of them (a shoot's) update.
+      select.dispatchEvent(new CustomEvent("samplestatuschange", { bubbles: true }));
     } catch (err) {
       show(before);
       showIndicator(err.message || "Couldn't save the sample status.", "error");

@@ -1005,11 +1005,13 @@ function renderShootsTable() {
  * least room they need before they're dropped (Description: enough to read).
  */
 const SHOOT_VIEW_COLUMNS = [
-  { col: "style", label: "Style", width: "minmax(240px, 330px)", min: 240 },
+  { col: "style", label: "Style", width: "minmax(170px, 260px)", min: 170 },
+  // Its IHD (when it has one) under the pill.
+  { col: "avail", label: "Available", width: "84px", min: 84 },
+  // The sample status dropdown (TOP / SHOW / PP / FIRST).
+  { col: "sample", label: "Sample", width: "64px", min: 64 },
   { col: "type", label: "Type", width: "108px", min: 108 },
   { col: "desc", label: "Description", width: "minmax(100px, 240px)", min: 100 },
-  { col: "avail", label: "Available", width: "62px", min: 62 },
-  { col: "ihd", label: "IHD", width: "112px", min: 112 },
   { col: "notes", label: "Notes", width: "minmax(140px, 1fr)", min: 140 },
 ];
 const SHOOT_LEAD_COLS = "12px 44px 24px 40px";
@@ -1022,15 +1024,15 @@ let shootPaneColumns = SHOOT_VIEW_COLUMNS.map(c => c.col);
 
 /**
  * The columns that fit: the Table view's, minus — as the docked pane narrows
- * (a style pane beside it, a small window) — Available and IHD first (the
- * style pane shows them), then Description, then Notes. Floating (Home):
- * just the style and its type.
+ * (a style pane beside it, a small window) — Available (and the IHD under
+ * it) first (the style pane shows them), then Description, then Notes.
+ * Floating (Home): just the style and its type.
  */
 function shootShownColumns() {
   const view = getTableView?.("shootStyles") ?? { order: SHOOT_VIEW_COLUMNS.map(c => c.col), hidden: [] };
   const drop = new Set(view.hidden);
   const section = document.querySelector("#shootPane .shoot-styles-section");
-  if (!isShootPaneDocked()) ["desc", "avail", "ihd", "notes"].forEach(c => drop.add(c));
+  if (!isShootPaneDocked()) ["desc", "avail", "notes"].forEach(c => drop.add(c));
   else if (section?.clientWidth) {
     const css = getComputedStyle(section);
     const width = section.clientWidth - parseFloat(css.paddingLeft) - parseFloat(css.paddingRight);
@@ -1038,7 +1040,7 @@ function shootShownColumns() {
     const minOf = new Map(SHOOT_VIEW_COLUMNS.map(c => [c.col, c.min]));
     const need = () => SHOOT_FIXED_WIDTH + view.order.filter(c => !drop.has(c))
       .reduce((sum, c) => sum + (minOf.get(c) ?? 0) + 12, 0);
-    for (const cols of [["avail", "ihd"], ["desc"], ["notes"]]) {
+    for (const cols of [["avail"], ["desc"], ["notes"]]) {
       if (need() <= width) break;
       cols.forEach(c => drop.add(c));
     }
@@ -1105,17 +1107,54 @@ function initShootColumnFit() {
 
 // ── Shoot pane ───────────────────────────────────────────────────────────────
 
+/** How many outfits a shoot's styles make: a set's pieces in one colour count once. */
+function countShootOutfits(styles) {
+  return groupBySet(styles).length;
+}
+
+/**
+ * In the header, on one shaded strip: Styles and Outfits, then how many of
+ * its styles are TOP / SHOW / PP / FIRST, and how many have none.
+ */
+function renderShootCounts(shoot) {
+  const box = document.getElementById("shootPaneCounts");
+  if (!box) return;
+  box.hidden = shoot.styles.length === 0;
+  const total = (count, label) => {
+    const item = document.createElement("span");
+    item.className = "shoot-count-total";
+    item.append(Object.assign(document.createElement("b"), { textContent: String(count) }),
+      Object.assign(document.createElement("span"), { textContent: label }));
+    return item;
+  };
+  const samples = document.createElement("span");
+  samples.className = "shoot-sample-counts";
+  samples.append(...countSampleStatuses(shoot.styles).map(({ key, label, count }) => {
+    const item = document.createElement("span");
+    item.className = "shoot-sample-count";
+    item.dataset.sample = key;
+    if (!count) item.classList.add("is-zero");
+    item.append(Object.assign(document.createElement("b"), { textContent: String(count) }), ` ${label}`);
+    return item;
+  }));
+  box.replaceChildren(
+    total(shoot.styles.length, "Styles"),
+    total(countShootOutfits(shoot.styles), "Outfits"),
+    Object.assign(document.createElement("span"), { className: "shoot-count-divider" }),
+    samples,
+  );
+}
+
 function renderShootPane(shoot) {
   document.getElementById("shootPaneTitle").textContent = getPhotoshootTitle(shoot);
-  // Everything about the shoot on the line under its name.
-  const count = shoot.styles.length === 1 ? "1 style" : `${shoot.styles.length} styles`;
+  // Everything about the shoot on the line under its name (the counts under that).
   document.getElementById("shootPaneSubtitle").textContent = [
     formatShootDateMd(shoot.date),
     getPhotoshootTypeLabel(shoot.type),
     shoot.model,
-    count,
     shoot.status === "complete" && shoot.completedAt ? `Completed ${formatShootDateMd(shoot.completedAt)}` : "",
   ].filter(Boolean).join(" · ");
+  renderShootCounts(shoot);
   const notes = document.getElementById("shootPaneNotes");
   if (notes) {
     notes.textContent = shoot.notes;
@@ -1271,13 +1310,17 @@ function createShootStyleRow(shoot, s, index, block, blockCount, { inSet = false
   // A set's pieces: this row's part of the [ joining their Style #s, in the
   // cell's indent — wherever the Style # column sits (crm.css).
   if (inSet) name.prepend(Object.assign(document.createElement("span"), { className: "shoot-set-bracket" }));
-  // The sample status dropdown at the end of the cell (js/styles.js).
-  name.appendChild(createSampleStatusSelect(style ?? s));
   row.appendChild(thumb);
 
   // The rest in the Table view's order, hidden and squeezed-out ones left out.
   const cells = {
     style: () => name,
+    // The sample status dropdown (js/styles.js).
+    sample: () => {
+      const sample = cell("shoot-style-sample");
+      sample.appendChild(createSampleStatusSelect(style ?? s));
+      return sample;
+    },
     // The type, from its PO.
     type: () => {
       const type = cell("shoot-style-type");
@@ -1285,17 +1328,18 @@ function createShootStyleRow(shoot, s, index, block, blockCount, { inSet = false
       return type;
     },
     desc: () => cell("shoot-style-desc", style ? style.description : "Not in the Styles database"),
+    // The Available pill, and under it the IHD when there is one (read-only).
     avail: () => {
       const avail = cell("shoot-style-avail");
       const pill = style && createAvailablePill(style.availableDate, style);
-      if (pill) avail.appendChild(pill); else avail.textContent = EMPTY_DISPLAY;
+      if (pill) avail.appendChild(pill); else avail.appendChild(document.createTextNode(EMPTY_DISPLAY));
+      const ihd = style ? ihdSortValue(style) : "";
+      if (ihd) {
+        const date = Object.assign(document.createElement("span"), { className: "shoot-style-ihd-date", textContent: formatMdy(ihd) });
+        date.title = "In-house date";
+        avail.appendChild(date);
+      }
       return avail;
-    },
-    // IHD, editable here.
-    ihd: () => {
-      const ihd = cell("shoot-style-ihd");
-      if (style) ihd.appendChild(createIhdInput(style, { onSaved: refreshPhotoshootViews }));
-      return ihd;
     },
     // The style's notes — the same ones as on POs, Need to Shoot and Styles.
     notes: () => {
@@ -1304,7 +1348,7 @@ function createShootStyleRow(shoot, s, index, block, blockCount, { inSet = false
       return notes;
     },
   };
-  shootPaneColumns.forEach(col => row.appendChild(cells[col]()));
+  shootPaneColumns.forEach(col => { if (cells[col]) row.appendChild(cells[col]()); });
 
   const end = cell("shoot-style-end");
   if (shoot.status === "planned") {
@@ -1706,6 +1750,11 @@ function initPhotoshoots() {
     }
   });
   document.getElementById("shootPaneClose")?.addEventListener("click", closeShootPane);
+  // A sample status picked in the list: its counts follow.
+  document.getElementById("shootPaneStyles")?.addEventListener("samplestatuschange", () => {
+    const shoot = paneShootId && getPhotoshootById(paneShootId);
+    if (shoot) renderShootCounts(shoot);
+  });
   document.addEventListener("keydown", e => {
     if (e.key !== "Escape" || !paneShootId) return;
     if (document.querySelector(".modal-backdrop.open")) return;

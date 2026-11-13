@@ -195,7 +195,8 @@ const NAV_COLLAPSED_KEY = "navCollapsed";
 const NAV_PEEK_DELAY_MS = 120; // passing over on the way somewhere doesn't open it
 
 let navPeekTimer = 0;
-let navPeekHeld = false; // just picked a page: stay shut until the pointer leaves
+let navPeekHeld = false; // just picked a page: stay shut while the pointer stays on it
+let navPeekHeldItem = null; // the item picked — moving onto another opens it again
 
 function isNavCollapsed() {
   return document.body.classList.contains("is-nav-collapsed")
@@ -230,13 +231,26 @@ function initNavCollapse() {
 
   document.getElementById("appSidebarCollapse")?.addEventListener("click", () => setNavCollapsed(!document.body.classList.contains("is-nav-collapsed")));
 
-  sidebar?.addEventListener("mouseenter", () => {
-    if (!isNavCollapsed() || navPeekHeld) return;
+  const peekSoon = () => {
     clearTimeout(navPeekTimer);
     navPeekTimer = setTimeout(() => setNavPeek(true), NAV_PEEK_DELAY_MS);
+  };
+  sidebar?.addEventListener("mouseenter", () => {
+    if (!isNavCollapsed() || navPeekHeld) return;
+    peekSoon();
+  });
+  // Shut after a pick: moving onto a different item opens it again.
+  sidebar?.addEventListener("mouseover", e => {
+    if (!navPeekHeld || !isNavCollapsed()) return;
+    const item = e.target.closest(".app-sidenav-item");
+    if (!item || item === navPeekHeldItem) return;
+    navPeekHeld = false;
+    navPeekHeldItem = null;
+    peekSoon();
   });
   sidebar?.addEventListener("mouseleave", () => {
     navPeekHeld = false;
+    navPeekHeldItem = null;
     setNavPeek(false);
   });
   // Tabbing into it opens it too; tabbing out shuts it.
@@ -244,10 +258,12 @@ function initNavCollapse() {
   sidebar?.addEventListener("focusout", e => { if (!sidebar.contains(e.relatedTarget)) setNavPeek(false); });
   // A page picked: shut at once, and stay shut while the pointer is still on it.
   sidebar?.addEventListener("click", e => {
-    if (!isNavCollapsed() || !e.target.closest(".app-sidenav-item")) return;
+    const item = e.target.closest(".app-sidenav-item");
+    if (!isNavCollapsed() || !item) return;
     navPeekHeld = true;
+    navPeekHeldItem = item;
     setNavPeek(false);
-    e.target.closest(".app-sidenav-item").blur();
+    item.blur();
   });
 }
 

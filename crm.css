@@ -8000,8 +8000,42 @@ body:has(#stylePane:not([hidden])) #posTableWrap > .table-scroll-y { margin-righ
   white-space: nowrap;
 }
 .shoot-style-name strong { flex: 0 0 auto; font-size: 15px; font-weight: 700; color: var(--text); }
-/* The sample status dropdown, pushed to the end of the Style cell. */
-.shoot-style-name > .sample-status-select { margin-left: auto; align-self: center; }
+/* A shoot's header, one row: its name and details, then its status and ⋮,
+   then the counts strip — wrapping onto more lines when the pane is narrow. */
+.shoot-pane-heading { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 18px; min-width: 0; }
+.shoot-pane-title-info { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.shoot-pane-title-actions { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+.shoot-pane-title-actions .header-menu-wrap { position: relative; }
+/* The ⋮ sits by the name now, so its menu opens to the right. */
+.shoot-pane-title-actions .item-pane-menu { left: 0; right: auto; }
+
+/* The counts strip: Styles and Outfits (big), a divider, then how many
+   styles are at each sample status. */
+.shoot-pane-counts {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 14px;
+  padding: 7px 12px;
+  border-radius: 8px;
+  background: #f1f3f5;
+  font-family: var(--font);
+  font-size: 12px;
+  color: #4b5563;
+}
+.shoot-pane-counts[hidden] { display: none; }
+.shoot-count-total { display: inline-flex; align-items: baseline; gap: 5px; white-space: nowrap; }
+.shoot-count-total b { font-size: 18px; font-weight: 700; color: #111; font-variant-numeric: tabular-nums; }
+.shoot-count-total span { font-size: 10.5px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: #4b5563; }
+.shoot-count-divider { align-self: stretch; width: 1px; background: #d4d8dd; }
+.shoot-sample-counts { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.shoot-sample-count { padding: 2px 9px; border: 1px solid #d4d8dd; border-radius: 999px; background: #fff; white-space: nowrap; font-weight: 600; letter-spacing: 0.02em; }
+.shoot-sample-count b { font-weight: 700; color: #111; font-variant-numeric: tabular-nums; }
+.shoot-sample-count.is-zero { color: #9aa0a8; border-style: dashed; }
+.shoot-sample-count.is-zero b { color: #9aa0a8; }
+
+/* The sample status dropdown's own column. */
+.shoot-style-sample { display: flex; align-items: center; }
 /* The Color — not the SET pill, which looks as it does on Need to Shoot. */
 .shoot-style-name > span:not(.set-tag, .shoot-set-bracket) { min-width: 0; overflow: hidden; text-overflow: ellipsis; font-size: 13px; font-weight: 400; color: #6b7280; }
 
@@ -8018,7 +8052,9 @@ body:has(#stylePane:not([hidden])) #posTableWrap > .table-scroll-y { margin-righ
 .shoot-style-cat { color: var(--text-muted); font-size: 12px; }
 /* The type pill, then the TOP pill when there is one. */
 .shoot-style-type { display: inline-flex; align-items: center; gap: 6px; min-width: 0; }
-.shoot-style-avail { font-size: 12px; color: var(--text-muted); }
+/* The Available pill, and the IHD under it when there is one. */
+.shoot-style-avail { display: flex; flex-direction: column; align-items: center; justify-self: start; width: max-content; gap: 3px; font-size: 12px; color: var(--text-muted); }
+.shoot-style-ihd-date { font-size: 11px; font-weight: 500; color: #4b5563; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .shoot-style-notes { min-width: 0; }
 .shoot-style-notes .cell-notes-input { width: 100%; }
 /* In a row there are no cell edges to show where to type: a faint box until it's hovered or in use. */
@@ -8232,15 +8268,6 @@ body:has(#stylePane:not([hidden])) #posTableWrap > .table-scroll-y { margin-righ
 .need-table td[data-col="ihd"] { padding: 2px 4px; cursor: default; }
 .need-table .col-shoot { width: 260px; }
 
-/* Shoot pane rows. */
-.shoot-style-ihd {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  flex: 0 0 auto;
-}
-
-.shoot-style-ihd .cell-date { width: 108px; }
 
 /* Shoot cell: the New Style / New Color / Reshoot buttons, and beside them a
    scheduled or shot date when there is one. In a table the cell splits in

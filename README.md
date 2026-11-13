@@ -137,7 +137,7 @@ Header menu (⋮) → **Table view** sets which columns a table shows and in
 what order. It opens on the table of the page you're on; the **Table** list
 switches to any other (Campaigns, Trade Shows, Banners, Styles, Need to
 Shoot, POs, Shoots, Magento Products, and a shoot's styles on the
-Photoshoots page — Style # · Color, Type, Description, Available, IHD, Notes;
+Photoshoots page — Style # · Color, Available, Sample, Type, Description, Notes;
 the grip, move buttons, number and photo always stay in front).
 
 - **Show columns**: tick or untick. The tick-box column (and on POs, the PO
@@ -607,7 +607,7 @@ latest date wins), and sets that colour's sample status to **TOP**.
 
 **Sample status** — TOP, SHOW, PP or FIRST (`sample_status`, blank for none)
 — is picked from a dropdown on Need to Shoot (after the shoot buttons) and in
-a shoot's style list (after the type); it saves as soon as it's picked. The
+a shoot's style list (its own Sample column); it saves as soon as it's picked. The
 import above only ever sets TOP, and only for a newer TOP date, so a status
 picked by hand stays through a re-import of the same sheet. Elsewhere (Styles,
 POs, the style pane) it shows as a plain, uncoloured read-only pill, with the
@@ -909,11 +909,15 @@ list** (which also takes them out of planned shoots).
 The **Photoshoots** page lists the shoots down the left (date as M/D, name,
 type and how many styles) under Planned / Complete / All and the search. The
 one picked fills the rest of the page; the first one listed is picked when
-you open the page. Its date, type, model, style count (and when it was
-completed) are on the line under its name, with its notes below. Its styles
-are numbered, in columns: photo, Style # (its Color beside it), Type,
-Description, Available, IHD and Notes — header menu → **Table view**
-reorders or hides those. To change the order, drag
+you open the page. Its date, type, model (and when it was completed) are on
+the line under its name. Beside them, on the same row: its Planned / Complete
+status and ⋮ menu, then one shaded strip with how many Styles and Outfits it
+has (a set's pieces in one colour are one outfit) and how many are TOP / SHOW
+/ PP / FIRST / None — wrapping under when the pane is narrow (Home). Its notes
+are below. Its styles
+are numbered, in columns: photo, Style # (its Color beside it), Available
+(its IHD under the pill when it has one, read-only), Sample (the sample
+status dropdown), Type, Description and Notes — the PDF's order — header menu → **Table view** reorders or hides those. To change the order, drag
 a style by its grip (⋮⋮), or use the small buttons in front of its number:
 ↑ / ↓ swap it with the one above or below, ⤒ / ⤓ send it to the top or the
 end of the list — a style group (a Style # in several colours, or a set in
@@ -926,7 +930,7 @@ month, no IHD goes below the dated ones. The sort is the shoot's new order (save
 followed by the CSV and PDF); a ▲ / ▼ by the heading shows while the shoot is
 in that order, and goes once you move something by hand. Clicking a style's row opens its
 style pane on the right (the shoot moves over to make room, dropping
-Available and IHD, then Description, then Notes, when it gets narrow). The new order is saved with the shoot (the CSV and
+Available, then Description, then Notes, when it gets narrow). The new order is saved with the shoot (the CSV and
 PDF follow it). The ✕ takes a style (or its set) out of the shoot: it stays on
 Need to Shoot, undecided again.
 Styles that weren't shot can be taken out before **Mark shoot complete** (in
@@ -936,7 +940,8 @@ puts them back on the list; deleting a completed shoot does the same. Adding
 a shot style to the list again flags it to be shot again. Opened from the
 Home calendar, a shoot still shows in a side pane.
 
-IHD shows (and can be edited) on Need to Shoot and in the shoot's style list.
+IHD shows (and can be edited) on Need to Shoot; in a shoot's style list and
+its PDF it shows under the Available pill, read-only.
 
 IHD also filters by month: click the funnel at
 the right of the header and tick the months to show. **No IHD** covers
@@ -962,8 +967,13 @@ A set's pieces are still pulled together after that.
 - **A shoot's ⋯ menu**: **Export CSV** (every style in the shoot) or **PDF
   report**. The report is headed "Photoshoot" and the shoot's name, has the
   shoot details and notes, plus a ☐ Shot column to tick on set, and lists the
-  styles in the shoot's order with each one's Sample status (TOP / SHOW / PP /
-  FIRST) after its Color.
+  styles in the shoot's order: Style #, Color, Available (the IHD under the
+  pill when there is one), Sample status (TOP / SHOW / PP / FIRST),
+  Description, Type and Notes. Its header ends with a shaded box of quantities,
+  each label over its number like the rest of the header: Styles and Outfits
+  (a set's pieces in one colour count as one outfit) larger, then TOP, SHOW,
+  PP, FIRST and None — the same counts as the shaded strip in the shoot's
+  header in the app (which updates as a status is picked).
 - **A shoot's ⋯ menu → Print photocards**: 3.5" × 5" cards for the shoot's
   sets, four to a portrait letter page, with crop marks to cut along. Each
   set piece gets two cards. The front is the piece's photo #4 (the file
