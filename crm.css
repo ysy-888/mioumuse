@@ -11111,6 +11111,9 @@ td > .style-shoot-cell {
 }
 /* Photoshoot and CG look alike — neutral slate, the picked one filled. */
 .shoot-pick-method { --c: #4b5563; --tint: #f1f3f5; color: #6b7280; }
+/* The picked one: a soft grey fill with dark text, not a solid dark button. */
+.shoot-pick-method[aria-pressed="true"],
+.shoot-pick-method[aria-pressed="true"]:hover:not(:disabled) { color: #1f2937; background: #e2e6eb; border-color: #b9c0c9; }
 /* Waiting for the choice: an amber edge until one is picked. */
 .shoot-picker.is-waiting { background: #fff8e6; box-shadow: inset 0 0 0 1px #f0c36a; }
 
@@ -11124,8 +11127,9 @@ td > .style-shoot-cell {
   margin-left: 6px;
   padding: 0 5px;
   border-radius: 4px;
-  background: #e1ebf8;
-  color: #2f5f9e;
+  /* Rose, like the set's bracket — apart from the style groups' blue. */
+  background: #fbe5ee;
+  color: #a3365f;
   font-family: var(--font);
   font-size: 9.5px;
   font-weight: 700;
@@ -11134,20 +11138,45 @@ td > .style-shoot-cell {
   vertical-align: middle;
   cursor: help;
 }
-.need-table tbody > tr.set-row > td { background: #f5f9fe; }
-.need-table tbody > tr.set-row:hover > td { background: #ebf2fc; }
-.need-table tbody > tr.set-row > td:first-child { box-shadow: inset 3px 0 0 #8fb0dc; }
-.need-table tbody > tr.set-row:not([data-set-place="last"]) > td { border-bottom-color: #e2eaf6; }
-/* The set's top and bottom edges: 2px each. The top is the row above's bottom
-   line (1px, turned blue) plus 1px on the first row — so it's 2px like the
-   bottom, and a set at the very top of the table still gets an edge. */
-.need-table tbody > tr:has(+ tr.set-row[data-set-place="first"]) > td { border-bottom-color: #b8cce9; }
-.need-table tbody > tr.set-row[data-set-place="first"] > td { border-top: 1px solid #b8cce9; }
-.need-table tbody > tr.set-row[data-set-place="last"] > td { border-bottom: 2px solid #b8cce9; }
+/* Style group: a Style # in several colours, or a set (any colours), in the
+   same Available month — its rows tinted blue and boxed: a bar down the left,
+   a 2px edge top and bottom. The table's borders don't collapse (they'd add
+   up), so the top edge is always the row above's bottom line, made 2px —
+   the same whether that row is plain or another group's last. Only a group
+   at the very top of the table draws its own. */
+.need-table tbody > tr.family-row > td { background: #f5f9fe; }
+.need-table tbody > tr.family-row:hover > td { background: #ebf2fc; }
+.need-table tbody > tr.family-row > td:first-child { box-shadow: inset 3px 0 0 #7fa3d6; }
+.need-table tbody > tr.family-row:not([data-family-place="last"], [data-family-place="only"]) > td { border-bottom-color: #e2eaf6; }
+.need-table tbody > tr:has(+ tr.family-row:is([data-family-place="first"], [data-family-place="only"])) > td { border-bottom: 2px solid #7fa3d6; }
+.need-table tbody > tr.family-row:first-child > td { border-top: 2px solid #7fa3d6; }
+.need-table tbody > tr.family-row:is([data-family-place="last"], [data-family-place="only"]) > td { border-bottom: 2px solid #7fa3d6; }
 
-/* In a shoot: the set's rows in one box, which is what drags and moves. */
-.shoot-set {
-  position: relative;
+/* A set's pieces (one colour): a thin, rounded [ in front of their Style #s,
+   from the first piece's middle to the last's, in the set's rose (the SET
+   pill's colour). Each row draws its part; the cell lets it reach over its
+   bottom line (overflow visible — a Style # never needs the ellipsis) so it
+   runs unbroken. Every Style # leaves room for it, so they all line up. */
+.need-table th[data-col="styleNo"],
+.need-table td[data-col="styleNo"] { padding-left: 20px; }
+.need-table tbody > tr.set-row > td[data-col="styleNo"] { position: relative; overflow: visible; }
+.need-table tbody > tr.set-row:is([data-set-place="first"], [data-set-place="mid"], [data-set-place="last"]) > td[data-col="styleNo"]::before {
+  content: "";
+  position: absolute;
+  left: 8px;
+  width: 6px;
+  border-left: 1.5px solid #b3b9c2;
+  z-index: 1;
+  pointer-events: none;
+}
+.need-table tbody > tr.set-row[data-set-place="first"] > td[data-col="styleNo"]::before { top: 50%; bottom: -1px; border-top: 1.5px solid #b3b9c2; border-top-left-radius: 6px; }
+.need-table tbody > tr.set-row[data-set-place="mid"] > td[data-col="styleNo"]::before { top: -1px; bottom: -1px; }
+.need-table tbody > tr.set-row[data-set-place="last"] > td[data-col="styleNo"]::before { top: -1px; bottom: 50%; border-bottom: 1.5px solid #b3b9c2; border-bottom-left-radius: 6px; }
+
+/* In a shoot: a style group (a Style # in several colours, or a set) in one
+   blue box, as on Need to Shoot. Only a frame — what drags and moves is the
+   style or set inside. */
+.shoot-family {
   display: flex;
   flex-direction: column;
   gap: 3px;
@@ -11158,6 +11187,26 @@ td > .style-shoot-cell {
   border-radius: 11px;
   background: #f2f7fd;
 }
+/* A set's pieces: one block (it drags and moves as one), joined by a [ in
+   front of their Style #s — in the gap between the photo and the Style #. */
+.shoot-set {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.shoot-set-bracket {
+  position: absolute;
+  left: 151px;
+  width: 5px;
+  border-left: 1.5px solid #b3b9c2;
+  pointer-events: none;
+}
+/* From the first piece's middle, across the 3px gaps (and the next row's
+   1px edge), to the last piece's middle — rounded at both ends. */
+.shoot-set > .shoot-style-row:first-child > .shoot-set-bracket { top: 50%; bottom: -4px; border-top: 1.5px solid #b3b9c2; border-top-left-radius: 6px; }
+.shoot-set > .shoot-style-row:not(:first-child, :last-child) > .shoot-set-bracket { top: -1px; bottom: -4px; }
+.shoot-set > .shoot-style-row:last-child > .shoot-set-bracket { top: -1px; bottom: calc(50% - 1.5px); border-bottom: 1.5px solid #b3b9c2; border-bottom-left-radius: 6px; }
 .shoot-style-name .set-tag { align-self: center; margin-left: 0; }
 .shoot-block.is-dragging { opacity: 0.4; }
 .shoot-set.is-drop-before::before,

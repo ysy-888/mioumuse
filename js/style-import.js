@@ -13,9 +13,18 @@
  *   availableDate  Available (date → "YYYY-MM", shown as JUL26)
  *   season  Season           descript  Description   category  Category
  *   memo  Memo ("updated by Mass Update" dropped)    receivedQty  Received qty
+ *   id  N41's record id — see below
  *
  *   A heading that isn't in the file leaves that field as the style has it
  *   (new ones get none) — an older export without category keeps categories.
+ *
+ * N41's record id stays the same when N41 changes a record's Style # or
+ * colour, so a style is matched on it first, then on Style # + Color. One
+ * whose id is in the database under another name was renamed in N41: it's
+ * listed under Update as "Renamed", and confirming moves it — with its IHD,
+ * notes, Need to Shoot entry, photoshoots, banners and Complete history — to
+ * the new name (renameStyleRecord). Styles that only gain their id are saved
+ * quietly; the first import with the id column links them all.
  *
  * A Style # + Color is one record. Before anything is saved, the dialog lists
  * every change under three tabs — Update, New Styles (a Style # seen for the
@@ -51,6 +60,12 @@ function cleanImportQty(value) {
   if (!text) return "";
   const n = Number(text);
   return Number.isFinite(n) ? String(n) : "";
+}
+
+/** N41's record id: digits, or "". */
+function cleanImportId(value) {
+  const text = cleanCell(value);
+  return /^\d+$/.test(text) ? text : "";
 }
 
 /** The Style Master: headings in row 1, "style" in A. */
@@ -107,6 +122,7 @@ const STYLE_MASTER_COLUMNS = [
   { field: "category", heading: "category", clean: cleanCell },
   { field: "memo", heading: "memo", clean: cleanImportMemo },
   { field: "receivedQty", heading: "receivedqty", clean: cleanImportQty },
+  { field: "n41Id", heading: "id", clean: cleanImportId },
 ];
 
 /**
@@ -147,6 +163,8 @@ const STYLE_FIELDS = [
   { key: "memo", label: "Memo" },
 ];
 const STYLE_FIELD_BY_KEY = new Map(STYLE_FIELDS.map(f => [f.key, f]));
+// A record N41 renamed (same id): "P8501 BEIGE/OLIVE" → "P8501ST BEIGE/OLIVE".
+STYLE_FIELD_BY_KEY.set("rename", { key: "rename", label: "Renamed" });
 // Imports made while Inv Qty came from the Style Master still list it in
 // Update history; it's the ATS report's now.
 STYLE_FIELD_BY_KEY.set("invQty", { key: "invQty", label: "Inv Qty", format: v => (v === "" || v == null ? "" : Number(v).toLocaleString()) });
@@ -167,29 +185,41 @@ function formatStyleField(key, value) {
  */
 function diffStyles(incoming) {
   const existing = new Map(getAllStyles().map(s => [styleKey(s.styleNo, s.color), s]));
+  const byId = new Map(getAllStyles().filter(s => s.n41Id).map(s => [s.n41Id, s]));
   const colorsByStyle = new Map();
   getAllStyles().forEach(s => {
     const key = s.styleNo;
     if (!colorsByStyle.has(key)) colorsByStyle.set(key, []);
     colorsByStyle.get(key).push(s.color);
   });
-  // Deleted in the app: skipped, so they don't come back.
+  // Deleted in the app: skipped, so they don't come back — by name or by N41 id.
   const deleted = new Set(getDeletedStyles().map(s => styleKey(s.styleNo, s.color)));
+  const deletedIds = new Set(getDeletedStyles().map(s => s.n41Id).filter(Boolean));
   const added = [];
   const changed = [];
+  /** [{ from: { styleNo, color }, to: { styleNo, color } }] — done before the save. */
+  const renames = [];
+  /** Records whose only change is gaining their N41 id: saved, not listed. */
+  const linked = [];
   let unchanged = 0;
   let deletedSkipped = 0;
   incoming.forEach(style => {
-    if (deleted.has(styleKey(style.styleNo, style.color))) {
+    const key = styleKey(style.styleNo, style.color);
+    if (deleted.has(key) || (style.n41Id && deletedIds.has(style.n41Id))) {
       deletedSkipped += 1;
       return;
     }
-    const current = existing.get(styleKey(style.styleNo, style.color));
+    // The same N41 record under another name: renamed in N41.
+    const sameId = style.n41Id ? byId.get(style.n41Id) : null;
+    const renamedFrom = sameId && styleKey(sameId.styleNo, sameId.color) !== key ? sameId : null;
+    const current = renamedFrom ?? existing.get(key);
     // A field the file doesn't carry (an older export without category) keeps
     // what the style has — "" if new.
     const inFile = STYLE_FIELDS.filter(f => f.key in style);
     const filled = { ...style };
     STYLE_FIELDS.forEach(f => { if (!(f.key in filled)) filled[f.key] = current?.[f.key] ?? ""; });
+    // Likewise the N41 id, for a file without the id column.
+    if (!filled.n41Id) filled.n41Id = current?.n41Id ?? "";
     if (!current) {
       const existingColors = colorsByStyle.get(style.styleNo);
       added.push(existingColors
@@ -200,10 +230,17 @@ function diffStyles(incoming) {
     const diffs = inFile
       .filter(f => (current[f.key] ?? "") !== style[f.key])
       .map(f => ({ key: f.key, label: f.label, from: current[f.key] ?? "", to: style[f.key] }));
+    if (renamedFrom) {
+      renames.push({ from: { styleNo: renamedFrom.styleNo, color: renamedFrom.color }, to: { styleNo: style.styleNo, color: style.color } });
+      diffs.unshift({ key: "rename", label: "Renamed", from: `${renamedFrom.styleNo} ${renamedFrom.color}`, to: `${style.styleNo} ${style.color}` });
+    }
     if (diffs.length) changed.push({ style: filled, diffs });
-    else unchanged += 1;
+    else {
+      unchanged += 1;
+      if ((current.n41Id ?? "") !== filled.n41Id) linked.push(filled);
+    }
   });
-  return { added, changed, unchanged, deletedSkipped };
+  return { added, changed, unchanged, deletedSkipped, renames, linked };
 }
 
 // ── Changes view ─────────────────────────────────────────────────────────────
@@ -557,11 +594,12 @@ async function readStyleFile(file) {
     const diff = diffStyles(styles);
     styleImportPlan = { fileName: file.name, total: styles.length, skipped, ...diff };
     renderStyleImportPreview();
-    const toSave = diff.added.length + diff.changed.length;
+    const toList = diff.added.length + diff.changed.length;
+    const toSave = toList + diff.linked.length;
     document.getElementById("styleImportConfirmBtn").disabled = toSave === 0;
-    document.getElementById("styleImportConfirmBtn").textContent = toSave
-      ? `Import ${toSave.toLocaleString()} ${toSave === 1 ? "style" : "styles"}`
-      : "Nothing to import";
+    document.getElementById("styleImportConfirmBtn").textContent = toList
+      ? `Import ${toList.toLocaleString()} ${toList === 1 ? "style" : "styles"}`
+      : toSave ? "Save N41 ids" : "Nothing to import";
     setStyleImportMessage(toSave ? "" : "Everything in this file is already up to date.");
   } catch (err) {
     styleImportPlan = null;
@@ -592,7 +630,9 @@ function renderStyleImportPreview() {
 
   const searchSlot = setStyleImportHead(
     `${plan.fileName} · ${plan.total.toLocaleString()} styles in the file · ${plan.skipped.toLocaleString()} blank / size rows skipped`
-      + (plan.deletedSkipped ? ` · ${plan.deletedSkipped.toLocaleString()} deleted ${plan.deletedSkipped === 1 ? "style" : "styles"} skipped` : ""),
+      + (plan.deletedSkipped ? ` · ${plan.deletedSkipped.toLocaleString()} deleted ${plan.deletedSkipped === 1 ? "style" : "styles"} skipped` : "")
+      + (plan.renames.length ? ` · ${plan.renames.length.toLocaleString()} renamed in N41` : "")
+      + (plan.linked.length ? ` · ${plan.linked.length.toLocaleString()} get their N41 id` : ""),
     plan,
   );
   preview.replaceChildren(createStyleChangesView(plan, { unchanged: plan.unchanged, searchSlot }));
@@ -602,10 +642,17 @@ async function confirmStyleImport() {
   const plan = styleImportPlan;
   if (!plan) return;
   // Just the record — kind / existingColors are for the preview and history.
-  const toSave = [...plan.changed.map(c => c.style), ...plan.added.map(({ kind, existingColors, ...style }) => style)];
+  const toSave = [...plan.changed.map(c => c.style), ...plan.added.map(({ kind, existingColors, ...style }) => style), ...plan.linked];
   const btn = document.getElementById("styleImportConfirmBtn");
   btn.disabled = true;
   try {
+    // Renames first, so the save below finds each record under its new name.
+    for (const [i, r] of plan.renames.entries()) {
+      setStyleImportMessage(`Renaming ${i + 1} of ${plan.renames.length}: ${r.from.styleNo} ${r.from.color} → ${r.to.styleNo} ${r.to.color}…`);
+      await renameStyleRecord(r.from, r.to);
+    }
+    // A rename moves Need to Shoot, shoots and more on the server: reload it all.
+    if (plan.renames.length) await loadAppData();
     await saveStyles(toSave, (saved, total) => {
       setStyleImportMessage(`Saving ${saved.toLocaleString()} of ${total.toLocaleString()}…`);
     });
@@ -628,9 +675,15 @@ async function confirmStyleImport() {
 
   closeStyleImport();
   if (typeof applyStyleFilters === "function") applyStyleFilters();
+  if (plan.renames.length) {
+    refreshPhotoshootViews();
+    if (typeof refreshBannerViews === "function") refreshBannerViews();
+  }
   const { styles: newStyles, colors: newColors } = splitAddedStyles(plan.added);
-  const summary = `Imported: ${plan.changed.length.toLocaleString()} updated, ` +
-    `${newStyles.length.toLocaleString()} new styles, ${newColors.length.toLocaleString()} new colors`;
+  const summary = `Imported: ${plan.changed.length.toLocaleString()} updated` +
+    (plan.renames.length ? ` (${plan.renames.length.toLocaleString()} renamed)` : "") +
+    `, ${newStyles.length.toLocaleString()} new styles, ${newColors.length.toLocaleString()} new colors` +
+    (plan.linked.length ? `, ${plan.linked.length.toLocaleString()} linked to their N41 id` : "");
   if (recorded) {
     showIndicator(summary, "success");
   } else {

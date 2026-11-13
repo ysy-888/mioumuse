@@ -650,6 +650,9 @@ function applyCalCellOverflow(cell) {
 
 function sizeCalRows() {
   if (!calScrollEl) return;
+  // Drawn while Home isn't showing (data loading in the background) there's
+  // nothing to measure; the size watcher (initCalendar) sizes it once it shows.
+  if (!calScrollEl.clientHeight) return;
   const headH = calScrollEl.querySelector(".dash-cal-head")?.offsetHeight ?? 0;
   const avail = calScrollEl.clientHeight - headH;
   calScrollEl.style.setProperty("--dash-cal-row-h", `${Math.max(84, Math.floor(avail / 5))}px`);
@@ -1186,12 +1189,29 @@ function initCalendar() {
     if (e.key === "Escape") closeFilterMenu();
   });
 
-  window.addEventListener("resize", () => {
-    if (getCurrentAppView() !== "home") return;
+  // The month rows fit five weeks to the height showing, so they're re-measured
+  // whenever that changes: the window resizing, the day pane opening, and Home
+  // coming into view after the calendar was drawn while hidden (which measured
+  // nothing and left the rows short, bars spilling into the next week).
+  const resize = () => {
+    if (!calScrollEl?.clientHeight) return;
     sizeCalRows();
     // Resizing the rows moves every week's position; without re-anchoring,
     // the scroll handler reads whatever week drifted into view and the
     // calendar jumps away from the one you were on.
     if (calViewMode === "month") scrollCalToDate(getCalTopYmd(), { instant: true });
+  };
+  const calBox = document.getElementById("calGrid");
+  if (calBox && "ResizeObserver" in window) {
+    let lastH = -1;
+    new ResizeObserver(() => {
+      const h = calBox.clientHeight;
+      if (h === lastH) return; // only the height sets the rows
+      lastH = h;
+      resize();
+    }).observe(calBox);
+  }
+  window.addEventListener("resize", () => {
+    if (getCurrentAppView() === "home") resize();
   });
 }

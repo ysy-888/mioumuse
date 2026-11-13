@@ -1164,6 +1164,9 @@ function styleRowToStyle(row) {
     oo: numOrNull(row.n41_oo),
     ats: numOrNull(row.n41_ats),
     atsAt: String(row.ats_at ?? ""),
+    // N41's record id (the Style Master's "id"): stays put when N41 renames
+    // the Style # or colour, so the import matches on it. "" until imported.
+    n41Id: row.n41_id == null ? "" : String(row.n41_id),
     updatedAt: String(row.updated_at ?? ""),
     deletedAt: String(row.deleted_at ?? ""),
   };
@@ -1186,6 +1189,7 @@ function styleToRow(style) {
     memo: style.memo ?? "",
     received_qty: style.receivedQty === "" || style.receivedQty == null ? null : Number(style.receivedQty),
     // inv_qty isn't sent: it's the ATS report's (saveStyleAts), like OH / WIP.
+    n41_id: /^\d+$/.test(String(style.n41Id ?? "")) ? Number(style.n41Id) : null,
     updated_at: new Date().toISOString(),
   };
 }
@@ -1351,6 +1355,38 @@ function groupBySet(items) {
   return blocks;
 }
 
+/**
+ * What a Style # + Color is grouped under one level up from its set: its Style
+ * # — or, in a set, all the set's pieces — whatever the colour. J2644 BLUE,
+ * GREEN and YELLOW share one; so do J4833ST and P4824ST in every colour.
+ */
+function styleFamilyKey(styleNo) {
+  const pieces = getStyleSetPieces(styleNo);
+  return pieces ? [...pieces].sort().join("+") : baseStyleNo(styleNo);
+}
+
+/**
+ * Runs of neighbouring blocks (groupBySet) that share a family key —
+ * `keyOf(item)` — and hold more than one style (several colours, or a set's
+ * pieces): Map of item → run number.
+ */
+function familyRuns(blocks, keyOf) {
+  const runs = new Map();
+  let run = 0;
+  for (let i = 0; i < blocks.length;) {
+    const key = keyOf(blocks[i][0]);
+    let j = i + 1;
+    while (j < blocks.length && keyOf(blocks[j][0]) === key) j += 1;
+    const items = blocks.slice(i, j).flat();
+    if (items.length > 1) {
+      run += 1;
+      items.forEach(item => runs.set(item, run));
+    }
+    i = j;
+  }
+  return runs;
+}
+
 /** The same list with each set's pieces next to each other. */
 function arrangeSets(items) {
   return groupBySet(items).flat();
@@ -1491,6 +1527,26 @@ async function saveStyles(styles, onProgress) {
   });
   allStyles = [...byKey.values()].sort((a, b) => a.styleNo.localeCompare(b.styleNo) || a.color.localeCompare(b.color));
   indexStyles();
+}
+
+/**
+ * N41 renamed a record (same id, new Style # or colour): move the style and
+ * everything that refers to it — Need to Shoot, photoshoots, banners, the
+ * Complete history, sample photo links — to the new name, in one go on the
+ * server (rename_style in supabase-schema.sql). If the new name already has
+ * a row, the old one is folded into it. Reload the app's data afterwards.
+ */
+async function renameStyleRecord(from, to) {
+  const res = await requireClient().rpc("rename_style", {
+    old_style: from.styleNo,
+    old_color: from.color,
+    new_style: to.styleNo,
+    new_color: to.color,
+  });
+  if (res.error && /rename_style/.test(res.error.message ?? "")) {
+    throw new Error("Renaming styles needs the rename_style function — run the styles SQL in supabase-schema.sql first.");
+  }
+  throwIfError(res);
 }
 
 // ── Style import history ─────────────────────────────────────────────────────

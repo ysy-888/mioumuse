@@ -511,6 +511,7 @@ move columns:
 | category | Category |
 | memo | Memo — the "updated by Mass Update" notes N41 adds are dropped |
 | receivedQty | Received qty |
+| id | N41's record id — matches a style even after N41 renames it (below) |
 
 A heading that isn't in the file leaves that field as each style has it (new
 ones get none) — an older export without `category` keeps the categories.
@@ -539,6 +540,20 @@ change is listed under three tabs — the count boxes across the top (the file a
   color; the row lists the colors it already has.
 
 Confirming saves only new and changed styles. Styles missing from a newer file are left as they are.
+
+**N41 id.** N41's `id` is fixed for a record, so an import matches on it
+first, then on Style # + Color. A style whose id is already in the database
+under another name was **renamed in N41**: it shows under **Update** as
+*Renamed P8501 BEIGE/OLIVE → P8501ST BEIGE/OLIVE*, and confirming moves it,
+with its IHD, notes, Need to Shoot entry, photoshoots, banners, Complete
+history and sample photo link, to the new name (the `rename_style` function
+in `supabase-schema.sql`). If the new name already has a row, the old one is
+folded into it. Styles that only gain their id are saved without being
+listed (the line under the title counts them; with nothing else to import
+the button reads **Save N41 ids**). The first import with the `id` column
+links every style; renames can only be caught after that. A colour N41
+replaced with a *new* record (a new id) still comes in as new, and the old
+one stays.
 Deleted styles in the file are skipped (the line under the title counts them).
 
 **Deleting styles:** tick them in the Styles table and click **Delete**. A
@@ -700,7 +715,19 @@ memo (`J4267ST, P4268ST - SET`; a piece is matched with or without the
 trailing ST). Pieces in the same colour sit next to each other on Need to
 Shoot with a **SET** tag, take Photoshoot / CG together, go into a shoot
 together, and in a shoot sit in one box that drags, moves with ↑ / ↓ and is
-removed as one. Reports box them and keep them on one page.
+removed as one.
+
+**Style groups are boxed in blue**: neighbouring rows of the same Style #
+(on Need to Shoot, in the same Available month) are tinted and boxed together
+— J2644 BLUE, GREEN and YELLOW. A set's pieces are one group across all their
+colours (J4833ST + P4824ST in BLUE and in GREEN), and **a thin rounded light
+grey [ bracket in front of the Style #s joins each colour's pieces** (with the
+rose SET pill). In a shoot the group is a blue box around its rows, with the
+same bracket; the box is only a frame — ↑ / ↓ and dragging move one style or
+set at a time. The Need to Shoot and shoot PDFs show both the same way and
+keep each group on one page. A single style in one colour gets no box. If a
+column sort splits a group up, only rows that are next to each other are
+boxed.
 
 **Notes** are the style's own (one per Style # + Color), so the same note
 shows and can be edited on POs, Need to Shoot, Styles, the style pane and in
@@ -914,6 +941,16 @@ A set's pieces are still pulled together after that.
 - **A shoot's ⋯ menu**: **Export CSV** (every style in the shoot) or **PDF
   report**. The report has the shoot details and notes, plus a ☐ Shot
   column to tick on set, the styles in the shoot's order.
+- **A shoot's ⋯ menu → Print photocards**: 3.5" × 5" cards for the shoot's
+  sets, four to a portrait letter page, with crop marks to cut along. Each
+  set piece gets two cards. The front is the piece's photo #4 (the file
+  numbered 4; with none, its fourth photo; with neither, a gray card saying
+  so). The back is the logo with the set's pieces in that colour under it
+  ("TOP: T6469ST", "BOTTOM: P6468ST", "SKIRT: …"), named from each piece's
+  category, and the colour. Pages go front, back, front, back: print
+  double-sided, **flip on long edge**, at **actual size** (no fit to page),
+  and each back lands behind its own front. Needs the model photo folder
+  linked.
 - PDF reports open the print window: choose **Save as PDF**. Style photos are
   included when the image folder is linked. The three style reports (Need to
   Shoot, a photoshoot, POs) are landscape and share their columns: photo,

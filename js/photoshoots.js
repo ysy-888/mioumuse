@@ -661,9 +661,12 @@ function renderNeedTable() {
   // A set's pieces sit together, where the first of them sorted to.
   const needBlocks = groupBySet(filteredNeedRows);
   filteredNeedRows = needBlocks.flat();
-  /** row → "first" | "mid" | "last", for the rows of a set showing more than one piece. */
-  const setPlace = new Map();
-  needBlocks.filter(b => b.length > 1).forEach(b => b.forEach((r, i) => setPlace.set(r, i === 0 ? "first" : i === b.length - 1 ? "last" : "mid")));
+  /** row → its set's block number, for the rows of a set showing more than one piece. */
+  const setOf = new Map();
+  needBlocks.forEach((b, i) => { if (b.length > 1) b.forEach(r => setOf.set(r, i)); });
+  // One level up: neighbouring blocks of the same Style # (or set) in the same
+  // Available month — J2644 BLUE, GREEN, YELLOW; a set in two colours.
+  const familyOf = familyRuns(needBlocks, r => `${/^\d{4}-\d{2}/.exec(r.availableDate ?? "")?.[0] ?? ""}\u0000${styleFamilyKey(r.styleNo)}`);
   const pagedFor = [needFilter, needReasonFilter, needIhdMonth, q].join("|");
   needPage = pagedFor === needPagedFor ? clampTablePage(needPage, filteredNeedRows.length, needPageSize) : 1;
   needPagedFor = pagedFor;
@@ -685,7 +688,11 @@ function renderNeedTable() {
     return;
   }
 
-  tbody.replaceChildren(...filteredNeedRows.slice((needPage - 1) * needPageSize, needPage * needPageSize).map(r => {
+  const pageRows = filteredNeedRows.slice((needPage - 1) * needPageSize, needPage * needPageSize);
+  // Places on this page, so a group cut by the page break still closes at the edge.
+  const setPlace = groupPlaces(pageRows, setOf);
+  const familyPlace = groupPlaces(pageRows, familyOf);
+  tbody.replaceChildren(...pageRows.map(r => {
     const key = styleKey(r.styleNo, r.color);
     const tr = document.createElement("tr");
     tr.className = "clickable-row";
@@ -694,6 +701,10 @@ function renderNeedTable() {
     if (setPlace.has(r)) {
       tr.classList.add("set-row");
       tr.dataset.setPlace = setPlace.get(r);
+    }
+    if (familyPlace.has(r)) {
+      tr.classList.add("family-row");
+      tr.dataset.familyPlace = familyPlace.get(r);
     }
     cols.forEach(col => {
       const td = document.createElement("td");
@@ -776,6 +787,23 @@ function needAvailableFilterOptions(rows) {
   return [...counts.keys()]
     .sort((a, b) => (a === BLANK_FILTER_LABEL) - (b === BLANK_FILTER_LABEL) || a.localeCompare(b))
     .map(key => ({ key, label: key === BLANK_FILTER_LABEL ? "No Available date" : formatMonYY(key), count: counts.get(key) }));
+}
+
+/**
+ * `groupOf`: row → group id (rows not in a group are left out). Returns row →
+ * "first" | "mid" | "last" | "only" for each grouped row, by where it sits
+ * among its neighbours in `rows`.
+ */
+function groupPlaces(rows, groupOf) {
+  const places = new Map();
+  rows.forEach((r, i) => {
+    if (!groupOf.has(r)) return;
+    const id = groupOf.get(r);
+    const first = i === 0 || groupOf.get(rows[i - 1]) !== id;
+    const last = i === rows.length - 1 || groupOf.get(rows[i + 1]) !== id;
+    places.set(r, first && last ? "only" : first ? "first" : last ? "last" : "mid");
+  });
+  return places;
 }
 
 /** The small SET tag beside a Style #; the tooltip names the other pieces. */
@@ -1000,15 +1028,32 @@ function renderShootPane(shoot) {
   }
   // One block per style — or per set, whose pieces sit in a box and move as one.
   const blocks = getShootBlocks(shoot);
+  // Neighbouring blocks of one Style # (or set), any colour, share an outer
+  // box. Only a frame: dragging and ↑ / ↓ still move single blocks.
+  const familyOf = familyRuns(blocks, s => styleFamilyKey(s.styleNo));
   let index = 0;
-  list.replaceChildren(...blocks.map((block, b) => {
+  const nodes = [];
+  let family = null;
+  blocks.forEach((block, b) => {
     const rows = block.map(s => createShootStyleRow(shoot, s, index++, b, blocks.length, block.length > 1));
     const el = rows.length === 1 ? rows[0] : Object.assign(document.createElement("div"), { className: "shoot-set" });
     if (rows.length > 1) el.append(...rows);
     el.classList.add("shoot-block");
     el.dataset.block = String(b);
-    return el;
-  }));
+    const run = familyOf.get(block[0]);
+    if (!run) {
+      family = null;
+      nodes.push(el);
+      return;
+    }
+    if (family?.dataset.run !== String(run)) {
+      family = Object.assign(document.createElement("div"), { className: "shoot-family" });
+      family.dataset.run = String(run);
+      nodes.push(family);
+    }
+    family.appendChild(el);
+  });
+  list.replaceChildren(...nodes);
 }
 
 /**
@@ -1064,6 +1109,8 @@ function createShootStyleRow(shoot, s, index, block, blockCount, inSet) {
     move.appendChild(b);
   });
   row.append(grip, num, move);
+  // A set's pieces: this row's part of the [ joining their Style #s (crm.css).
+  if (inSet) row.appendChild(Object.assign(document.createElement("span"), { className: "shoot-set-bracket" }));
   const thumb = createStyleThumb(s.styleNo, s.color);
   thumb.addEventListener("click", () => openStyleGallery(s.styleNo, s.color));
   const cell = (className, text = "") => {
