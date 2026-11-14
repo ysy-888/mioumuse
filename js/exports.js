@@ -116,6 +116,8 @@ const REPORT_CSS = `
   body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   .po-line[data-kind="other"] { background: #eef0f3; color: #4b5563; }
   td.desc { min-width: 150px; }
+  td.desc.muted { color: #9aa0a8; }
+  th.center, td.center { text-align: center; }
   td.note-col { width: 24%; min-width: 150px; white-space: pre-wrap; overflow-wrap: anywhere; }
   th.note-col { width: 24%; }
   /* Photoshoot / CG. A scheduled Photoshoot carries its date and shoot under it. */
@@ -385,7 +387,7 @@ function reportStyleColumns(rows) {
       cell: r => ({ html: escapeReportHtml(r.styleNo) + (inSet(r) ? '<span class="set-tag">SET</span>' : ""), className: "strong" }),
     },
     color: { label: "Color", cell: r => ({ text: r.color, className: "nowrap" }) },
-    sample: { label: "Sample", cell: r => ({ text: getSampleStatusLabel(r.sampleStatus) || "–", className: "nowrap" }) },
+    sample: { label: "Sample", className: "center", cell: r => ({ text: getSampleStatusLabel(r.sampleStatus) || "–", className: "nowrap center" }) },
     description: { label: "Description", cell: r => ({ text: r.description, className: "desc" }) },
     type: { label: "Type", cell: r => ({ html: shootTypePillHtml(r.type) || "–", className: "nowrap" }) },
     available: { label: "Available", cell: r => ({ html: reportAvailableHtml(r), className: "nowrap" }) },
@@ -545,7 +547,10 @@ function exportShootPdf(id) {
     columns: [
       { label: "Shot", cell: () => ({ text: "☐", className: "check" }) },
       { label: "#", cell: r => ({ text: String(rows.indexOf(r) + 1), className: "nowrap" }) },
-      cols.styleNo, cols.color, cols.availableIhd, cols.sample, cols.description, cols.type, cols.notes,
+      cols.styleNo, cols.color, cols.availableIhd, cols.sample,
+      // The description in light gray here.
+      { ...cols.description, cell: r => ({ ...cols.description.cell(r), className: "desc muted" }) },
+      cols.type, cols.notes,
     ],
   });
 }

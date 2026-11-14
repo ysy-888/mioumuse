@@ -8034,8 +8034,9 @@ body:has(#stylePane:not([hidden])) #posTableWrap > .table-scroll-y { margin-righ
 .shoot-sample-count.is-zero { color: #9aa0a8; border-style: dashed; }
 .shoot-sample-count.is-zero b { color: #9aa0a8; }
 
-/* The sample status dropdown's own column. */
-.shoot-style-sample { display: flex; align-items: center; }
+/* The sample status dropdown's own column, centred in it. */
+.shoot-style-sample { display: flex; align-items: center; justify-content: center; }
+.shoot-head-sample { text-align: center; }
 /* The Color — not the SET pill, which looks as it does on Need to Shoot. */
 .shoot-style-name > span:not(.set-tag, .shoot-set-bracket) { min-width: 0; overflow: hidden; text-overflow: ellipsis; font-size: 13px; font-weight: 400; color: #6b7280; }
 
@@ -9373,7 +9374,10 @@ td > .style-shoot-cell .style-top-pill { grid-column: 3; justify-self: start; }
   flex-shrink: 0;
   width: 64px;
   height: 20px;
-  padding: 0 17px 0 8px;
+  /* Even sides (room for the arrow on both), so the status sits in the middle. */
+  padding: 0 15px;
+  text-align: center;
+  text-align-last: center;
   border-radius: 999px;
   border: 1px dashed #c3c8cf;
   background: #fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='5'%3E%3Cpath d='M0 0l4 5 4-5z' fill='%23777'/%3E%3C/svg%3E") no-repeat right 6px center;
