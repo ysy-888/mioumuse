@@ -517,15 +517,57 @@ function exportShootCsv(id) {
   showIndicator(`Exported ${rows.length} ${rows.length === 1 ? "style" : "styles"}`, "success");
 }
 
-function exportShootPdf(id) {
+/** The orders a shoot's PDF can print in, besides the shoot's own (the ⋮ menu). */
+const SHOOT_PDF_ORDERS = {
+  available: "By Available",
+  sample: "By Sample",
+  style: "By Style",
+};
+
+/** The Style # for sorting by it: letters, then the number as a number (T999 before T1000). */
+function compareStyleNos(a, b) {
+  return String(a).localeCompare(String(b), undefined, { numeric: true, sensitivity: "base" });
+}
+
+/**
+ * A shoot's styles in a PDF order — whole outfits moved (a set's pieces in
+ * one colour stay together), ties kept in the shoot's order:
+ *   available — as the Available heading sorts: Available, then IHD
+ *   sample    — TOP, SHOW, PP, FIRST, then none (a set by its pieces' highest status)
+ *   style     — sets first, then the rest, each by Style # and colour
+ */
+function shootStylesInOrder(shoot, order) {
+  if (order === "available") return sortedShootStyles(shoot, 1);
+  const outfits = groupBySet(getShootBlocks(shoot).flat(2));
+  if (order !== "sample" && order !== "style") return outfits.flat();
+  const rank = [...SAMPLE_STATUS_KEYS, ""];
+  const sampleRank = outfit => Math.min(...outfit.map(s => rank.indexOf(findStyle(s.styleNo, s.color)?.sampleStatus ?? "")));
+  const lowestNo = outfit => outfit.map(s => s.styleNo).sort(compareStyleNos)[0];
+  const isSet = outfit => Boolean(styleSetKey(outfit[0].styleNo, outfit[0].color));
+  const compare = order === "sample"
+    ? (a, b) => sampleRank(a) - sampleRank(b)
+    : (a, b) => (isSet(b) - isSet(a)) || compareStyleNos(lowestNo(a), lowestNo(b)) ||
+      String(a[0].color).localeCompare(String(b[0].color));
+  return outfits
+    .map((outfit, i) => ({ outfit, i }))
+    .sort((a, b) => compare(a.outfit, b.outfit) || a.i - b.i)
+    .flatMap(x => x.outfit);
+}
+
+/** A shoot's PDF report — in its own order, or one of SHOOT_PDF_ORDERS. */
+function exportShootPdf(id, order = "") {
   const shoot = getPhotoshootById(id);
   if (!shoot) return;
-  const rows = getShootExportRows(shoot);
+  const orderLabel = SHOOT_PDF_ORDERS[order] ?? "";
+  const rows = orderLabel
+    ? shootStylesInOrder(shoot, order).map(s => styleExportFields(s.styleNo, s.color))
+    : getShootExportRows(shoot);
   const cols = reportStyleColumns(rows);
   printReport({
-    fileTitle: shootFileBase(shoot),
+    fileTitle: orderLabel ? `${shootFileBase(shoot)} ${orderLabel}` : shootFileBase(shoot),
     titleLabel: "Photoshoot",
     title: getPhotoshootTitle(shoot),
+    subtitle: orderLabel ? `Sorted ${orderLabel.replace(/^By /, "by ")}` : "",
     meta: [
       ["Date", shoot.date ? formatReportDate(shoot.date) : "No date"],
       ["Type", getPhotoshootTypeLabel(shoot.type)],
@@ -590,11 +632,14 @@ function photocardPhotoEntry(styleNo, color) {
   return entries.find(e => e.num === PHOTOCARD_PHOTO_NUM) ?? entries[PHOTOCARD_PHOTO_NUM - 1] ?? null;
 }
 
-/** A photo, sized for a card at 300 dpi, as a JPEG object URL ("" if it can't be read). */
-async function loadPhotocardImage(entry) {
+/**
+ * A photo, sized for a card at 300 dpi, as a JPEG object URL ("" if it can't
+ * be read). `readFile` is the folder it's in: model photos, or sample photos.
+ */
+async function loadPhotocardImage(entry, readFile = getStyleImageFile) {
   if (!entry) return "";
   try {
-    const file = await getStyleImageFile(entry);
+    const file = await readFile(entry);
     const bitmap = await createImageBitmap(file);
     // Just big enough to fit inside 1050 × 1500 px (3.5" × 5" at 300 dpi); never enlarged.
     const scale = Math.min(1, 1050 / bitmap.width, 1500 / bitmap.height);
@@ -611,10 +656,11 @@ async function loadPhotocardImage(entry) {
 }
 
 /**
- * The shoot's set pieces as cards: [{ styleNo, color, entry, back: [{ name, styleNo }] }],
- * set by set in shoot order, each piece twice.
+ * The shoot's set pieces as cards: [{ styleNo, color, name, entry, back: [{ name, styleNo }] }],
+ * set by set in shoot order, pieces in PHOTOCARD_PIECE_ORDER, each `copies`
+ * times. `entryOf(styleNo, color)` picks the photo (model photo #4, or the sample).
  */
-function buildPhotocards(shoot) {
+function buildPhotocards(shoot, { copies = PHOTOCARD_COPIES, entryOf = photocardPhotoEntry } = {}) {
   const cards = [];
   groupBySet(shoot.styles ?? []).forEach(block => {
     if (!styleSetKey(block[0].styleNo, block[0].color)) return; // not a set
@@ -628,11 +674,31 @@ function buildPhotocards(shoot) {
       .map(s => ({ ...s, name: photocardPieceName(s.styleNo, s.color) }))
       .sort(byOrder)
       .forEach(piece => {
-        const entry = photocardPhotoEntry(piece.styleNo, piece.color);
-        for (let c = 0; c < PHOTOCARD_COPIES; c++) cards.push({ styleNo: piece.styleNo, color, entry, back });
+        const entry = entryOf(piece.styleNo, piece.color);
+        for (let c = 0; c < copies; c++) cards.push({ styleNo: piece.styleNo, color, name: piece.name, entry, back });
       });
   });
   return cards;
+}
+
+/** Each card's photo, loaded once (4 at a time): styleImageKey → object URL ("" if unreadable). */
+async function loadPhotocardImages(cards, readFile, what) {
+  const urls = new Map();
+  const todo = [...new Set(cards.filter(c => c.entry).map(c => styleImageKey(c.styleNo, c.color)))];
+  const entryOf = new Map(cards.map(c => [styleImageKey(c.styleNo, c.color), c.entry]));
+  showIndicator(`Preparing the ${what} (loading photos)…`);
+  let next = 0;
+  let done = 0;
+  const worker = async () => {
+    while (next < todo.length) {
+      const key = todo[next++];
+      urls.set(key, await loadPhotocardImage(entryOf.get(key), readFile));
+      done++;
+      if (todo.length > 4) showIndicator(`Loading photos ${done} / ${todo.length}…`);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(4, todo.length) }, worker));
+  return urls;
 }
 
 const PHOTOCARD_CSS = `
@@ -686,21 +752,7 @@ async function exportShootPhotocards(id) {
   }
 
   // Each piece's photo once, though it's on two cards.
-  showIndicator("Preparing the photocards (loading photos)…");
-  const urls = new Map();
-  const todo = [...new Set(cards.filter(c => c.entry).map(c => styleImageKey(c.styleNo, c.color)))];
-  const entryOf = new Map(cards.map(c => [styleImageKey(c.styleNo, c.color), c.entry]));
-  let next = 0;
-  let done = 0;
-  const worker = async () => {
-    while (next < todo.length) {
-      const key = todo[next++];
-      urls.set(key, await loadPhotocardImage(entryOf.get(key)));
-      done++;
-      if (todo.length > 4) showIndicator(`Loading photos ${done} / ${todo.length}…`);
-    }
-  };
-  await Promise.all(Array.from({ length: Math.min(4, todo.length) }, worker));
+  const urls = await loadPhotocardImages(cards, getStyleImageFile, "photocards");
 
   const logo = new URL("logo.svg", location.href).href;
   const place = (i, mirrored) => `c${mirrored ? 1 - (i % 2) : i % 2} r${Math.floor(i / 2)}`;
@@ -730,6 +782,82 @@ async function exportShootPhotocards(id) {
   if (missing.size) showIndicator(`No photo #${PHOTOCARD_PHOTO_NUM} for ${[...missing].join(", ")}`, "error");
   setTimeout(() => urls.forEach(url => url && URL.revokeObjectURL(url)), 60 * 1000);
 }
+
+// ── Sample sets ──────────────────────────────────────────────────────────────
+//
+// Photocards' sibling: the same 3.5" × 5" cards, four to a page, with crop
+// marks — but each set piece once, its sample photo (js/sample-photos.js),
+// and no backs: the piece, Style # and colour are printed on the card,
+// under the photo.
+
+/** The sample photo cards print: the piece's sample, or null. */
+function sampleSetPhotoEntry(styleNo, color) {
+  return getSamplePhotoEntries(styleNo, color)[0] ?? null;
+}
+
+async function exportShootSampleSets(id) {
+  const shoot = getPhotoshootById(id);
+  if (!shoot) return;
+  if (!isSamplePhotoReadable()) {
+    showIndicator("Link the sample photo folder to print sample sets", "error");
+    return;
+  }
+  const cards = buildPhotocards(shoot, { copies: 1, entryOf: sampleSetPhotoEntry });
+  if (!cards.length) {
+    showIndicator("No sets in this shoot", "error");
+    return;
+  }
+  const urls = await loadPhotocardImages(cards, getSamplePhotoFile, "sample sets");
+
+  const card = c => {
+    const url = urls.get(styleImageKey(c.styleNo, c.color));
+    return `<div class="card sample">
+      <div class="sample-photo">${url
+        ? `<img class="photo" src="${url}" alt="">`
+        : `<div class="missing"><span>No sample photo</span></div>`}</div>
+      <div class="sample-label"><div class="sample-style"><span>${escapeReportHtml(c.name)}</span> ${escapeReportHtml(c.styleNo)}</div><div class="sample-color">${escapeReportHtml(c.color)}</div></div>
+    </div>`;
+  };
+  // Two sets per page, one in each half, its pieces side by side (a set's
+  // cards share its `back` list), with a line across the middle between them.
+  const sets = [];
+  cards.forEach(c => {
+    const last = sets[sets.length - 1];
+    if (last && last[0].back === c.back) last.push(c);
+    else sets.push([c]);
+  });
+  const half = set => `<div class="sample-set">${set.map(card).join("")}</div>`;
+  const sheets = [];
+  for (let p = 0; p < sets.length; p += 2) {
+    const pair = sets.slice(p, p + 2);
+    sheets.push(`<div class="sheet sample-sheet${pair.length > 1 ? " has-divider" : ""}">${pair.map(half).join("")}</div>`);
+  }
+  const fileTitle = `${shootFileBase(shoot)} Sample Sets`;
+  const html = `<!doctype html><html><head><meta charset="utf-8"><title>${escapeReportHtml(fileTitle)}</title><style>${PHOTOCARD_CSS}${SAMPLE_SET_CSS}</style></head><body>${sheets.join("")}</body></html>`;
+
+  const missing = new Set(cards.filter(c => !urls.get(styleImageKey(c.styleNo, c.color))).map(c => `${c.styleNo} ${c.color}`));
+  await printHtml(html, fileTitle);
+  if (missing.size) showIndicator(`No sample photo for ${[...missing].join(", ")}`, "error");
+  setTimeout(() => urls.forEach(url => url && URL.revokeObjectURL(url)), 60 * 1000);
+}
+
+/**
+ * A sample sets page: two halves, a set in each, split by a line across the
+ * middle. A card is the photo, uncropped, above a strip with the piece,
+ * Style # and colour; a set of more than two pieces shrinks its cards to fit.
+ */
+const SAMPLE_SET_CSS = `
+  .sample-sheet .sample-set { position: absolute; left: 0; right: 0; height: 5.5in; display: flex; align-items: center; justify-content: center; gap: 0.25in; padding: 0.35in 0.5in; }
+  .sample-sheet .sample-set:first-child { top: 0; }
+  .sample-sheet .sample-set:nth-child(2) { top: 5.5in; }
+  .sample-sheet.has-divider::after { content: ""; position: absolute; left: 0.5in; right: 0.5in; top: 5.5in; border-top: 1pt solid #9ca3af; }
+  .card.sample { position: relative; flex: 0 1 3.5in; min-width: 0; height: 4.8in; display: flex; flex-direction: column; }
+  .card.sample .sample-photo { flex: 1; min-height: 0; }
+  .card.sample .sample-label { flex: 0 0 auto; padding: 0.1in 0.15in 0.14in; text-align: center; border-top: 0.5pt solid #d1d5db; }
+  .card.sample .sample-style { font-size: 13pt; font-weight: 700; letter-spacing: 0.03em; }
+  .card.sample .sample-style span { margin-right: 4pt; font-size: 9pt; font-weight: 600; letter-spacing: 0.08em; color: #6b7280; }
+  .card.sample .sample-color { margin-top: 1pt; font-size: 9.5pt; letter-spacing: 0.08em; color: #6b7280; }
+`;
 
 // ── POs ──────────────────────────────────────────────────────────────────────
 
@@ -852,12 +980,17 @@ function initExports() {
     closeShootPaneMenu();
     if (paneShootId) exportShootCsv(paneShootId);
   });
-  document.getElementById("shootMenuExportPdf")?.addEventListener("click", () => {
+  // PDF report (the shoot's order), or By Available / By Sample / By Style.
+  document.querySelectorAll("[data-shoot-pdf-order]").forEach(btn => btn.addEventListener("click", () => {
     closeShootPaneMenu();
-    if (paneShootId) exportShootPdf(paneShootId);
-  });
+    if (paneShootId) exportShootPdf(paneShootId, btn.dataset.shootPdfOrder);
+  }));
   document.getElementById("shootMenuPhotocards")?.addEventListener("click", () => {
     closeShootPaneMenu();
     if (paneShootId) exportShootPhotocards(paneShootId);
+  });
+  document.getElementById("shootMenuSampleSets")?.addEventListener("click", () => {
+    closeShootPaneMenu();
+    if (paneShootId) exportShootSampleSets(paneShootId);
   });
 }

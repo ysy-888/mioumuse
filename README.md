@@ -974,6 +974,15 @@ A set's pieces are still pulled together after that.
   (a set's pieces in one colour count as one outfit) larger, then TOP, SHOW,
   PP, FIRST and None — the same counts as the shaded strip in the shoot's
   header in the app (which updates as a status is picked).
+  Under **PDF report**, the same report in another order (the shoot's own
+  order doesn't change; the header says "Sorted by …"). A set's pieces in one
+  colour always stay together:
+  - **By Available**: as the Available heading sorts — Available month, then
+    IHD, a style group kept whole.
+  - **By Sample**: TOP, SHOW, PP, FIRST, then none (a set goes by its pieces'
+    highest status).
+  - **By Style**: sets first, then everything else, each by Style # (D850
+    before D1200) and colour.
 - **A shoot's ⋯ menu → Print photocards**: 3.5" × 5" cards for the shoot's
   sets, four to a portrait letter page, with crop marks to cut along. Each
   set piece gets two cards. The front is the piece's photo #4 (the file
@@ -984,6 +993,12 @@ A set's pieces are still pulled together after that.
   double-sided, **flip on long edge**, at **actual size** (no fit to page),
   and each back lands behind its own front. Needs the model photo folder
   linked.
+- **A shoot's ⋯ menu → Print sample sets**: two sets to a portrait letter
+  page, one in each half with a line across the middle between them. Each
+  set piece gets one card showing its sample photo, side by side (a set of
+  more than two pieces shrinks its cards to fit). No backs or crop marks:
+  the piece, Style # and colour are printed under the photo. Prints
+  single-sided at actual size. Needs the sample photo folder linked.
 - PDF reports open the print window: choose **Save as PDF**. Style photos are
   included when the image folder is linked. The three style reports (Need to
   Shoot, a photoshoot, POs) are landscape and share their columns: photo,
