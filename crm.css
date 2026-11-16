@@ -10287,7 +10287,7 @@ body.is-dragging-file .style-pane-sample { border-color: #6f93c9; background-col
 
 /* Hover lights the whole bar, not just the day under the pointer. */
 button.dash-event[data-bar]:hover { filter: none; }
-.dash-event.is-bar-hover { filter: brightness(0.9); }
+button.dash-event[data-bar].is-bar-hover { filter: brightness(0.9); }
 .dash-cal-holiday[data-bar]:hover { background: #fde2e2; }
 .dash-cal-holiday.is-bar-hover { background: #fbcaca; }
 
@@ -11312,3 +11312,110 @@ td > .style-shoot-cell {
 .shoot-set.is-drop-after::after { bottom: -5px; }
 .shoot-family.is-drop-before::before { top: -6px; }
 .shoot-family.is-drop-after::after { bottom: -6px; }
+
+/* Home calendar: a quiet grid, filled events, and lightweight task rows.
+   Keep the existing cell padding and bar heights so connected lanes align. */
+#calGrid {
+  --cal-grid-line: #e5e7eb;
+  --cal-today-bg: #fff;
+  --cal-selected-bg: #f4f8f5;
+}
+
+#calGrid .dash-cal-head {
+  background: #fff;
+  border-bottom-color: var(--cal-grid-line);
+}
+
+#calGrid .dash-cal-head-cell {
+  color: #606773;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+}
+
+#calGrid .dash-cal-head-cell.is-weekend { color: #737985; }
+
+#calGrid .dash-cal-cell:is(.is-weekend, .is-holiday, .is-today) {
+  background: #fff;
+}
+
+#calGrid .dash-cal-cell.has-events:hover { background: #fafbfc; }
+
+/* Event buttons act on the event, so their day must not look hovered. */
+#calGrid .dash-cal-cell.has-events:has(.dash-event:hover) { background: #fff; }
+
+#calGrid .dash-cal-cell.is-selected,
+#calGrid .dash-cal-cell.is-selected.has-events:hover { background: var(--cal-selected-bg); }
+
+#calGrid .dash-cal-cell.is-selected::before {
+  border-color: #b5cbbc;
+  box-shadow: none;
+}
+
+#calGrid .dash-cal-date { font-weight: 500; }
+#calGrid .dash-cal-today-label { display: none; }
+
+/* Holidays remain continuous, but don't colour the whole day. */
+#calGrid .dash-cal-holiday {
+  background: #f4f5f6;
+  color: #616773;
+  font-weight: 500;
+}
+
+#calGrid .dash-cal-holiday::before { color: #858b94; }
+#calGrid .dash-cal-holiday.is-bar-hover,
+#calGrid .dash-cal-holiday:hover { background: #e8ebee; }
+
+/* Classic chips stays available as a viewing preference. */
+#calGrid:not(.is-classic-chips) .dash-event.cal-event--task {
+  background: transparent;
+  color: #303743;
+  box-shadow: none;
+  font-weight: 400;
+  gap: 6px;
+}
+
+#calGrid:not(.is-classic-chips) .dash-event.cal-event--task::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  flex: 0 0 6px;
+  border-radius: 50%;
+  background: var(--item-strong);
+}
+
+#calGrid:not(.is-classic-chips) .dash-event.cal-event--task .dash-event-icon { display: none; }
+
+#calGrid:not(.is-classic-chips) .dash-event.cal-event--task .dash-event-title {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Keep the task kind readable so Email and Social remain distinguishable. */
+#calGrid:not(.is-classic-chips) .dash-event.cal-event--task .dash-event-meta {
+  flex: 0 0 auto;
+  color: #707783;
+  font-size: 10px;
+  font-weight: 400;
+  opacity: 1;
+}
+
+#calGrid:not(.is-classic-chips) .dash-event.cal-event--day .dash-event-meta { display: none; }
+
+#calGrid:not(.is-classic-chips) .dash-event.cal-event--task:hover {
+  background: #eef1f4;
+  filter: none;
+}
+
+#calGrid:not(.is-classic-chips) .dash-event.cal-event--task.is-group-selected {
+  background: var(--item-bg);
+  color: #303743;
+  box-shadow: inset 0 0 0 1px var(--item-strong);
+}
+
+#calGrid .dash-event:focus-visible,
+#calGrid .dash-cal-holiday:focus-visible {
+  outline: 2px solid #334155;
+  outline-offset: 1px;
+}

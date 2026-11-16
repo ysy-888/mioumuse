@@ -240,6 +240,11 @@ function isDayEntry(entry) {
   return entry.kind === EVENT_KIND_SHOW || entry.kind === EVENT_KIND_CAMPAIGN || entry.kind === EVENT_KIND_SHOOT;
 }
 
+/** A spanning event opens itself; only date-specific work opens the day. */
+function isCalDaySelectable(entries) {
+  return entries.some(entry => !isDayEntry(entry) || entry.dayCount === 1);
+}
+
 /** ymd → entry[] for the visible range, after filters. */
 function buildCalEventsByDate() {
   const { start, end } = getCalRange();
@@ -567,7 +572,6 @@ function buildCalCell(date, byDate, today, week) {
   cell.dataset.ymd = cellYmd;
   if (isWeekend(date)) cell.classList.add("is-weekend");
   if (cellYmd === today) cell.classList.add("is-today");
-  if (cellYmd === calSelectedYmd) cell.classList.add("is-selected");
 
   if (cellYmd < today) cell.classList.add("is-past");
   cell.dataset.month = `${date.getFullYear()}-${date.getMonth()}`;
@@ -594,6 +598,8 @@ function buildCalCell(date, byDate, today, week) {
   if (getHolidaysOn(cellYmd).length) cell.classList.add("is-holiday");
 
   const entries = byDate.get(cellYmd) ?? [];
+  const selectable = isCalDaySelectable(entries);
+  if (selectable && cellYmd === calSelectedYmd) cell.classList.add("is-selected");
 
   // The bars first, each in its lane (an empty lane keeps its height, up to
   // the last bar on this day), then the day's tasks.
@@ -612,11 +618,14 @@ function buildCalCell(date, byDate, today, week) {
     more.hidden = true;
     cell.appendChild(more);
 
+    applyCalCellOverflow(cell);
+  }
+
+  if (selectable) {
     cell.classList.add("has-events");
     cell.addEventListener("click", () => selectCalDay(cellYmd));
-    applyCalCellOverflow(cell);
   } else {
-    // An empty day has nothing to open, so clicking it puts the open one away.
+    // Empty days and days with only spanning events don't open a day pane.
     cell.addEventListener("click", () => {
       if (calSelectedYmd) closeCalDayPane();
     });
@@ -747,6 +756,7 @@ function applyCalDaySelection() {
 }
 
 function selectCalDay(dayYmd) {
+  if (!isCalDaySelectable(buildCalEventsByDate().get(dayYmd) ?? [])) return;
   calSelectedYmd = dayYmd === calSelectedYmd ? "" : dayYmd;
   applyCalDaySelection();
   renderCalDayPane();
@@ -824,6 +834,12 @@ function renderDayPaneTabs(counts) {
 function renderCalDayPane() {
   const pane = document.getElementById("calDayPane");
   if (!pane) return;
+
+  // Filters or edits may remove the last task/single-day event on this date.
+  if (calSelectedYmd && !isCalDaySelectable(buildCalEventsByDate().get(calSelectedYmd) ?? [])) {
+    calSelectedYmd = "";
+    applyCalDaySelection();
+  }
 
   if (!calSelectedYmd) {
     pane.hidden = true;
