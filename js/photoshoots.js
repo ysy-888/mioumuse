@@ -62,7 +62,7 @@ function describeShootStatus(styleNo, color) {
     const shoot = getPhotoshootById(entry.shotShootId);
     const date = shoot ? formatShootDate(shoot.date) : formatLongDate(entry.shotAt.slice(0, 10));
     const shortDate = formatShootDateShort(shoot ? shoot.date : entry.shotAt);
-    return { tone: "shot", label: `Shot · ${date}`, short: `Shot ${shortDate}`, shoots: shoot ? [shoot] : [] };
+    return { tone: "shot", label: date, short: shortDate, shoots: shoot ? [shoot] : [] };
   }
   const planned = getPlannedShootsFor(styleNo, color);
   if (planned.length) {
@@ -171,7 +171,7 @@ function createShootPicker(styleNo, color, onDone, { suggested = false, menu = t
     const btn = document.createElement("button");
     btn.type = "button";
     btn.className = "shoot-pick shoot-pick-add" + (suggested ? " is-suggested" : "");
-    btn.innerHTML = `${SHOOT_ADD_ICON}<span>Need to Shoot</span>`;
+    btn.innerHTML = `${SHOOT_ADD_ICON}<span>Shoot</span>`;
     btn.title = `${entry ? "Done before — put it back on Need to Shoot" : "Add to Need to Shoot"}${type ? ` (${type})` : ""}${suggested ? " — suggested: no model photos" : ""}`;
     btn.setAttribute("aria-label", `${btn.title}: ${styleNo} ${color}`);
     btn.addEventListener("click", () => run(async () => {
@@ -1008,7 +1008,7 @@ const SHOOT_VIEW_COLUMNS = [
   { col: "style", label: "Style", width: "minmax(170px, 260px)", min: 170 },
   // Its IHD (when it has one) under the pill.
   { col: "avail", label: "Available", width: "84px", min: 84 },
-  // The sample status dropdown (TOP / SHOW / PP / FIRST).
+  // The sample status dropdown (TOP / SHOW / PP).
   { col: "sample", label: "Sample", width: "64px", min: 64 },
   { col: "type", label: "Type", width: "108px", min: 108 },
   { col: "desc", label: "Description", width: "minmax(100px, 240px)", min: 100 },
@@ -1114,7 +1114,7 @@ function countShootOutfits(styles) {
 
 /**
  * In the header, on one shaded strip: Styles and Outfits, then how many of
- * its styles are TOP / SHOW / PP / FIRST, and how many have none.
+ * its styles are TOP / SHOW / PP, and how many have none.
  */
 function renderShootCounts(shoot) {
   const box = document.getElementById("shootPaneCounts");

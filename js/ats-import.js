@@ -1,5 +1,5 @@
 /**
- * Import ATS: N41's ATS report (.xls / .xlsx) → each style's stock figures.
+ * The ATS report (Import N41 Data): N41's ATS report (.xls / .xlsx) → each style's stock figures.
  *
  * Row 1 holds the headings. F (style) and G (color) find the Style # + Color
  * in the Styles database; K onhand, L wip, M onorder and N ats are saved as
@@ -11,7 +11,8 @@
  * and digits only (DK.OLIVE = DK OLIVE). Rows for styles that aren't in the
  * database are skipped; styles not in the report keep what they had.
  *
- * Shown on Magento → Products beside each item (js/magento.js).
+ * Shown on Magento → Products beside each item (js/magento.js). Picked in
+ * menu ⋮ → Import N41 Data (js/n41-import.js).
  */
 
 const ATS_HEADINGS = { style: ["style"], color: ["color"], oh: ["onhand", "oh"], wip: ["wip"], oo: ["onorder", "oo"], ats: ["ats"] };
@@ -59,35 +60,25 @@ function planAtsImport(rows) {
   return { rows: rows.length, list, changed, unmatched };
 }
 
-async function importAtsFile(file) {
-  if (!file) return;
-  try {
-    showIndicator(`Reading ${file.name}…`);
-    await loadSheetJs(); // js/style-import.js
-    const workbook = XLSX.read(await file.arrayBuffer(), { type: "array" });
-    const plan = planAtsImport(parseAtsReport(workbook));
-    clearIndicator();
-    if (!plan.list.length) throw new Error("None of the report's Style # + Colors are in the Styles database.");
-    const missing = plan.unmatched.length
-      ? `\n${plan.unmatched.length.toLocaleString()} rows aren't in the Styles database and are skipped (e.g. ${plan.unmatched.slice(0, 3).map(r => `${r.styleNo} ${r.color}`).join(", ")}).`
-      : "";
-    const fields = plan.list.length && "invQty" in plan.list[0] ? "OH / WIP / OO / ATS / Inv Qty" : "OH / WIP / OO / ATS";
-    if (!confirm(`${plan.rows.toLocaleString()} rows read. ${plan.list.length.toLocaleString()} colours match, ${plan.changed.length.toLocaleString()} with new figures.${missing}\n\nSave ${fields} for the ${plan.list.length.toLocaleString()} matched colours?`)) return;
-    await saveStyleAts(plan.list, (n, total) => showIndicator(`Saving ATS… ${n.toLocaleString()} of ${total.toLocaleString()}`));
-    showIndicator(`ATS saved for ${plan.list.length.toLocaleString()} colours`, "success");
-    if (getCurrentAppView() === "magento" && typeof renderMgProducts === "function") renderMgProducts();
-  } catch (err) {
-    showIndicator(err.message || "Couldn't import the ATS report.", "error");
-  }
+/** Read and check the ATS report: rows only, matched against the styles when saved. */
+async function readAtsFile(file) {
+  await loadSheetJs(); // js/style-import.js
+  const workbook = XLSX.read(await file.arrayBuffer(), { type: "array" });
+  const rows = parseAtsReport(workbook);
+  if (!rows.length) throw new Error("No style rows found in the ATS report.");
+  return rows;
 }
 
-function initAtsImport() {
-  document.getElementById("headerMenuImportAts")?.addEventListener("click", () => {
-    closeHeaderMenu();
-    const input = document.getElementById("atsImportFile");
-    if (!input) return;
-    input.value = "";
-    input.click();
-  });
-  document.getElementById("atsImportFile")?.addEventListener("change", e => importAtsFile(e.target.files?.[0]));
+/**
+ * Save the report's figures for the colours that are in the Styles database
+ * (planned now, so styles the Style Master just added match). A summary back.
+ */
+async function saveAtsRows(rows, onProgress) {
+  const plan = planAtsImport(rows);
+  if (!plan.list.length) throw new Error("None of the ATS report's Style # + Colors are in the Styles database.");
+  await saveStyleAts(plan.list, onProgress);
+  if (getCurrentAppView() === "magento" && typeof renderMgProducts === "function") renderMgProducts();
+  if (getCurrentAppView() === "styles" && typeof applyStyleFilters === "function") applyStyleFilters({ keepShown: true });
+  const skipped = plan.unmatched.length ? `, ${plan.unmatched.length.toLocaleString()} not in Styles skipped` : "";
+  return `ATS: ${plan.list.length.toLocaleString()} colours (${plan.changed.length.toLocaleString()} changed${skipped})`;
 }

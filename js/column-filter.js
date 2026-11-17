@@ -71,8 +71,9 @@ function clearColumnFilter(tableId, col) {
  * SORT ↓ ↑ at its top. (`sortable` is still accepted — the header's
  * th-no-sort class is what decides.)
  */
-function initColumnFilter(tableId, col, { options, onChange, width = null, hideByDefault = null }) {
-  const th = document.querySelector(`#${tableId} thead th[data-col="${col}"]`);
+function initColumnFilter(tableId, col, { options, onChange, width = null, hideByDefault = null, el = null }) {
+  // `el`: a header of its own inside a th (the Styles table's Qty sub-headers).
+  const th = el ?? document.querySelector(`#${tableId} thead th[data-col="${col}"]`);
   if (!th) return;
   const entry = { selected: null, options, onChange, th, width, hideByDefault, useDefault: Boolean(hideByDefault) };
   if (entry.useDefault) th.classList.add("filter-active");

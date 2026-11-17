@@ -6975,17 +6975,46 @@ span.dash-event { cursor: pointer; /* clicking selects the day */ }
 .styles-table .col-description { width: auto;  min-width: 240px; }
 .styles-table .col-category    { width: 180px; min-width: 140px; }
 .styles-table .col-season      { width: 90px;  min-width: 80px; }
+.styles-table .col-show        { width: 80px;  min-width: 76px; }
+.styles-table td[data-col="show"] { text-align: center; }
 .styles-table .col-status      { width: 110px; min-width: 100px; }
 .styles-table .col-available   { width: 84px;  min-width: 76px; }
-.styles-table .col-qty         { width: 72px;  min-width: 64px; }
-.styles-table .col-invqty      { width: 92px;  min-width: 88px; }
-.styles-table td.cell-num { font-variant-numeric: tabular-nums; white-space: nowrap; }
-.styles-table th[data-col="invQty"],
-.styles-table th[data-col="oh"],
-.styles-table th[data-col="wip"],
-.styles-table th[data-col="oo"],
-.styles-table th[data-col="ats"],
-.styles-table td.cell-num { padding-left: 6px; padding-right: 6px; }
+.styles-table td.cell-num { font-variant-numeric: tabular-nums; white-space: nowrap; padding-left: 6px; padding-right: 6px; }
+/* Qty: OH / WIP / OO / ATS / Received / Invoiced in one column, as in the
+   style pane — a sub-header per figure (each sorts and filters), the row's
+   figures lined up under them. */
+.styles-table .col-qtys { width: 396px; min-width: 396px; }
+.styles-table th.th-qtys,
+.styles-table td[data-col="qtys"] { padding-left: 4px; padding-right: 4px; }
+.style-qtys { display: grid; grid-template-columns: repeat(6, 64px); column-gap: 2px; justify-content: start; }
+.style-qty { text-align: center; font-variant-numeric: tabular-nums; white-space: nowrap; font-weight: 500; }
+.style-qty.is-empty { color: #c4c8ce; font-weight: 400; }
+.style-qty.is-pos { color: #1e8a4c; font-weight: 600; }
+.style-qty.is-neg { color: #c0392b; font-weight: 600; }
+.style-qty-head {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  padding: 3px 2px;
+  border-radius: 5px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.style-qty-head:hover { background: rgba(0, 0, 0, 0.05); }
+.style-qty-head .th-label { cursor: pointer; }
+/* The funnel only where it says something: hovered, open, filtered or sorted. */
+.style-qty-head .th-filter-hit { width: 12px; margin: 0; mask-size: 11px; -webkit-mask-size: 11px; opacity: 0; }
+.style-qty-head:hover .th-filter-hit,
+.style-qty-head .th-filter-hit.is-open { opacity: 0.6; }
+.style-qty-head.filter-active { background: var(--accent); color: #fff; }
+.style-qty-head.filter-active .th-filter-hit { opacity: 1; color: #fff; }
+.style-qty-head.sorted-asc .th-filter-hit,
+.style-qty-head.sorted-desc .th-filter-hit { opacity: 1; color: var(--text); }
+.style-qty-head.filter-active.sorted-asc .th-filter-hit,
+.style-qty-head.filter-active.sorted-desc .th-filter-hit { color: #fff; }
+.style-qty-head.sorted-asc .th-filter-hit { mask-image: var(--icon-arrow-up); -webkit-mask-image: var(--icon-arrow-up); }
+.style-qty-head.sorted-desc .th-filter-hit { mask-image: var(--icon-arrow-down); -webkit-mask-image: var(--icon-arrow-down); }
 .styles-table .col-magento     { width: 130px; min-width: 120px; }
 /* Styles and Need to Shoot: only as wide as their columns. Styles sits on
    the left, leaving room for the style pane on the right; Need is centered. */
@@ -7627,6 +7656,8 @@ th.th-select { text-align: center; cursor: default; padding-left: 4px; padding-r
 #poTable { width: max-content; margin: 0; }
 body:has(#stylePane:not([hidden])) #posTableWrap > .table-scroll-y { margin-right: 540px; }
 .po-table .col-color  { width: 200px; }
+.po-color-dates { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.po-color-ihd { font-size: 11px; color: var(--text-muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
 .po-table .col-po     { width: 394px; }
 .po-group-row td {
   padding-top: 10px;
@@ -7664,7 +7695,8 @@ body:has(#stylePane:not([hidden])) #posTableWrap > .table-scroll-y { margin-righ
   background: #f6f7f9;
 }
 /* One PO in the PO cell: number, IHD (its ETA), kind pill — in columns. */
-.po-entry { display: grid; grid-template-columns: 86px 62px 64px 102px 22px; align-items: center; gap: 6px; font-size: 12px; }
+.po-entry { display: grid; grid-template-columns: 86px 102px 22px; align-items: center; gap: 6px; font-size: 12px; }
+.po-entry-no > .is-closed { text-decoration: line-through; }
 /* Delete (a flagged PO) / restore (when showing deleted): quiet until hovered. */
 .po-entry-action {
   display: inline-flex; align-items: center; justify-content: center;
@@ -8495,7 +8527,9 @@ tr:hover .shoot-picker.is-unpicked,
   font-size: 11px;
   font-weight: 600;
   white-space: nowrap;
-  cursor: help;
+  cursor: pointer;
+  border: 0;
+  font-family: inherit;
 }
 
 /* Where the groups come from (toolbar). */
@@ -9353,7 +9387,7 @@ tr:hover .shoot-picker.is-unpicked,
   .mg-pane .company-form-body { grid-template-columns: 1fr; }
 }
 
-/* Sample status (TOP / SHOW / PP / FIRST): a plain, uncoloured pill at the
+/* Sample status (TOP / SHOW / PP): a plain, uncoloured pill at the
    end of the Shoot cell. In a table it takes a third, narrow column so the
    buttons stay lined up. */
 .style-top-pill {
@@ -9395,6 +9429,19 @@ td > .style-shoot-cell .style-top-pill { grid-column: 3; justify-self: start; }
 }
 .sample-status-select:not([data-sample=""]) { border-style: solid; border-color: #c3c8cf; color: #333; }
 .sample-status-select:disabled { cursor: default; opacity: 0.6; }
+/* Flagged: Show 1 or 2, but the sample is only PP — filled red, a flag in
+   place of the left padding, the arrow kept on the right. */
+.sample-status-select.is-show-pp,
+.sample-status-select.is-show-pp:not([data-sample=""]) {
+  border: 1px solid #c0392b;
+  background:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='9' height='10' viewBox='0 0 9 10'%3E%3Cpath d='M1 0v10' stroke='%23fff' stroke-width='1.4'/%3E%3Cpath d='M1.7 .6h6.6L6.6 3l1.7 2.4H1.7z' fill='%23fff'/%3E%3C/svg%3E") no-repeat left 6px center,
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='5'%3E%3Cpath d='M0 0l4 5 4-5z' fill='%23fff'/%3E%3C/svg%3E") no-repeat right 6px center,
+    #d64535;
+  color: #fff;
+}
+.style-top-pill.is-show-pp { background: #d64535; border-color: #c0392b; color: #fff; }
+.style-top-pill.is-show-pp::before { content: "⚑ "; }
 .sample-status-select option { background: #fff; color: #222; }
 td > .style-shoot-cell .sample-status-select { grid-column: 3; justify-self: start; }
 td > .style-shoot-cell:has(.sample-status-select) { grid-template-columns: 1fr 1fr 64px; }
@@ -9402,6 +9449,64 @@ td > .style-shoot-cell:has(.sample-status-select) { grid-template-columns: 1fr 1
 td > .style-shoot-cell > .shoot-status { grid-column: 2; justify-self: start; }
 
 /* Import Production Sheet dialog. */
+/* ── Import N41 Data: three drop boxes (js/n41-import.js) ── */
+.n41-import-card { width: min(820px, calc(100vw - 32px)); max-height: calc(100vh - 32px); }
+.n41-import-boxes { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+@media (max-width: 640px) { .n41-import-boxes { grid-template-columns: 1fr; } }
+.n41-import-box {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  min-height: 170px;
+  padding: 20px 12px 16px;
+  border: 1.5px dashed var(--border-strong);
+  border-radius: 10px;
+  background: var(--bg);
+  font-family: var(--font);
+  text-align: center;
+  cursor: pointer;
+  transition: border-color .12s, background .12s;
+}
+.n41-import-box:hover, .n41-import-box:focus-visible { border-color: var(--accent); outline: none; }
+.n41-import-box.is-dragover { border-color: var(--accent); background: var(--accent-light); }
+.n41-import-box.has-file { border-style: solid; border-color: var(--accent); background: var(--accent-light); }
+.n41-import-box.has-error { border-style: solid; border-color: #c0392b; background: #fbeeee; }
+.n41-import-box-icon { color: var(--text-muted); margin-bottom: 4px; }
+.n41-import-box.has-file .n41-import-box-icon { color: var(--accent); }
+.n41-import-box-title { font-size: 14px; font-weight: 600; }
+.n41-import-box-hint { font-size: 11.5px; color: var(--text-muted); }
+.n41-import-box-file {
+  margin-top: auto;
+  max-width: 100%;
+  font-size: 12px;
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.n41-import-box.has-file .n41-import-box-file { color: var(--text); font-weight: 500; }
+.n41-import-box.has-error .n41-import-box-file { color: #a52a2a; }
+.n41-import-box-clear {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 22px;
+  height: 22px;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 12px;
+  cursor: pointer;
+}
+.n41-import-box-clear:hover { background: var(--border); color: var(--text); }
+.n41-import-box-clear[hidden] { display: none; }
+.n41-import-note { margin: 12px 0 0; }
+
 .production-import-card { width: min(980px, calc(100vw - 32px)); max-height: calc(100vh - 32px); }
 .production-import-card .modal-body { flex: 1 1 auto; }
 .production-import-summary { font-size: 13px; margin: 0 0 12px; }
@@ -9487,6 +9592,31 @@ td > .style-shoot-cell > .shoot-status { grid-column: 2; justify-self: start; }
 .style-pane .item-pane-value { min-height: 26px; display: flex; align-items: center; }
 .style-pane .item-pane-value > .style-pane-pos-box { align-self: flex-start; padding-top: 3px; }
 .style-pane .item-pane-value.is-wide { grid-column: span 3; }
+/* Available: the month pill, then the IHD once it's confirmed. */
+.style-pane-available { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.style-pane-ihd.cell-date-po { font-size: 12.5px; font-weight: 500; white-space: nowrap; }
+/* Memo and the figures: across the pane, each key over its value. */
+.style-pane-block { grid-column: 1 / -1; display: flex; flex-direction: column; gap: 2px; padding: 6px 0 4px; }
+.style-pane-block .item-pane-label { min-height: 0; }
+.style-pane-block .style-pane-memo { font-size: 13px; }
+.style-pane-memo.is-empty { color: #c4c8ce; }
+.style-pane-qtys {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  margin: 6px 0 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface, #fff);
+  overflow: hidden;
+}
+.style-pane-qty { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 7px 2px 8px; min-width: 0; }
+.style-pane-qty + .style-pane-qty { border-left: 1px solid var(--border); }
+.style-pane-qty-label { max-width: 100%; overflow: hidden; text-overflow: ellipsis; font-size: 9.5px; font-weight: 700; letter-spacing: 0.02em; text-transform: uppercase; color: var(--text-muted); white-space: nowrap; }
+.style-pane-qty-value { font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--text); }
+.style-pane-qty-value.is-empty { color: #c4c8ce; font-weight: 400; }
+.style-pane-qty-value.is-pos { color: #1e8a4c; }
+.style-pane-qty-value.is-neg { color: #c0392b; }
 /* Header: Style # · Color and its season, the description, then N41 and Magento status. */
 /* Nothing in the header is cut off: long names and descriptions wrap. */
 .style-pane .item-pane-title { font-size: 17px; gap: 4px 6px; flex-wrap: wrap; }
@@ -10448,12 +10578,154 @@ button.dash-event[data-bar].is-bar-hover { filter: brightness(0.9); }
 }
 
 .email-edit {
+  position: relative;
   flex: 0 0 360px;
   min-width: 0;
   display: flex;
   flex-direction: column;
   border-left: 1px solid var(--border);
   background: var(--surface);
+}
+
+/* The left border: drag to resize the panel (js/email.js), double-click to reset. */
+.email-edit-resizer {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -4px;
+  width: 8px;
+  z-index: 5;
+  cursor: col-resize;
+  touch-action: none;
+}
+.email-edit-resizer::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 3px;
+  width: 2px;
+  background: transparent;
+  transition: background 0.15s;
+}
+.email-edit-resizer:hover::after,
+.is-resizing-email .email-edit-resizer::after { background: var(--accent); }
+/* While dragging: no text selection, and the preview frames don't swallow the pointer. */
+.is-resizing-email { cursor: col-resize; user-select: none; }
+.is-resizing-email .email-preview-frame { pointer-events: none; }
+
+/* Edit HTML: fills the panel in place of the links; Save stays at the bottom. */
+.email-edit.is-html > .email-edit-head,
+.email-edit.is-html > .email-edit-hint,
+.email-edit.is-html > .email-edit-body { display: none; }
+.email-html-pane { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.email-html-pane[hidden] { display: none; }
+.email-html-bar { display: flex; align-items: center; gap: 10px; padding: 12px 16px 0; }
+.email-html-bar h2 { flex: 1; min-width: 0; margin: 0; font-size: 15px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.email-html-find {
+  width: 200px;
+  max-width: 45%;
+  padding: 5px 8px;
+  font-size: 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text);
+}
+.email-html-hint { margin: 4px 16px 8px; font-size: 12px; color: var(--text-muted); }
+.email-html-editor { flex: 1; min-height: 0; margin: 0 16px 12px; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+
+/* The template list: rename (and delete, for a copy) on hover; the name box. */
+.email-list-item { position: relative; }
+/* Whole names, wrapped — copies often differ only at the end ("Week 2" / "Week 3"). */
+.email-list-item .po-month-pick { padding-right: 32px; text-align: left; }
+.email-list-item .po-month-name { white-space: normal; overflow-wrap: anywhere; line-height: 1.3; }
+.email-list-tools {
+  position: absolute;
+  top: 50%;
+  right: 6px;
+  transform: translateY(-50%);
+  display: flex;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity 0.12s;
+}
+.email-list-item:hover .email-list-tools,
+.email-list-item:focus-within .email-list-tools { opacity: 1; }
+/* A touch screen has no hover: always shown. */
+@media (hover: none) { .email-list-tools { opacity: 1; } }
+.email-list-item:hover .po-month-count,
+.email-list-item:focus-within .po-month-count { visibility: hidden; }
+.email-list-icon {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 5px;
+  background: var(--surface);
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.email-list-icon:hover { background: var(--accent-light); color: var(--text); }
+.email-list-item.is-active .email-list-icon { background: rgba(255, 255, 255, 0.14); color: #fff; }
+.email-list-item.is-active .email-list-icon:hover { background: rgba(255, 255, 255, 0.28); }
+.email-list-item.is-naming { display: flex; flex-direction: column; gap: 4px; padding: 6px; }
+.email-list-item.is-new { border: 1px dashed var(--border-strong); border-radius: 8px; margin-top: 6px; }
+.email-list-new-note { font-size: 11px; color: var(--text-muted); padding: 0 2px; }
+.email-list-name-input {
+  width: 100%;
+  min-width: 0;
+  padding: 6px 8px;
+  font: inherit;
+  font-size: 13px;
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text);
+}
+#emailHtmlBtn.active { background: var(--text); color: #fff; border-color: var(--text); }
+
+/* The editor (CodeMirror 5), colour-coded HTML. */
+.email-html-editor .CodeMirror {
+  height: 100%;
+  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  font-size: 12.5px;
+  line-height: 1.55;
+  background: #fbfbfa;
+  color: #24292f;
+}
+.email-html-editor .CodeMirror-gutters { background: #f3f3f1; border-right: 1px solid var(--border); }
+.email-html-editor .CodeMirror-linenumber { color: #a3a39b; }
+.email-html-editor .CodeMirror-selected { background: #f6e7a6; }
+.email-html-editor .CodeMirror-focused .CodeMirror-selected,
+.email-html-editor .CodeMirror-line::selection,
+.email-html-editor .CodeMirror-line > span::selection,
+.email-html-editor .CodeMirror-line > span > span::selection { background: #ffdf6b; }
+.email-html-editor .cm-tag { color: #116329; font-weight: 600; }        /* <td>, <p> */
+.email-html-editor .cm-bracket { color: #8a8a82; }                      /* < > */
+.email-html-editor .cm-attribute { color: #8250df; }                    /* style=, href= */
+.email-html-editor .cm-string { color: #0969da; }                       /* "values" */
+.email-html-editor .cm-comment { color: #8c8c84; font-style: italic; }  /* <!-- … --> */
+.email-html-editor .cm-meta { color: #8c8c84; }                         /* <!DOCTYPE> */
+.email-html-editor .cm-error { color: #cf222e; background: none; }
+/* In <style>: selectors, properties, values. */
+.email-html-editor .cm-qualifier,
+.email-html-editor .cm-builtin { color: #953800; }
+.email-html-editor .cm-property { color: #0550ae; }
+.email-html-editor .cm-number,
+.email-html-editor .cm-atom,
+.email-html-editor .cm-keyword { color: #cf222e; }
+.email-html-editor .cm-def { color: #6639ba; }
+.email-html-editor .cm-variable-2,
+.email-html-editor .cm-variable-3 { color: #0550ae; }
+
+/* A phone: panel below the preview, full width, no dragging. */
+@media (max-width: 760px) {
+  .email-edit { flex: 0 0 auto !important; }
+  .email-edit-resizer { display: none; }
+  .email-html-pane { height: 70vh; flex: 0 0 auto; }
 }
 .email-edit-head {
   display: flex;
@@ -10489,6 +10761,21 @@ button.dash-event[data-bar].is-bar-hover { filter: brightness(0.9); }
 .email-link .form-input { font-size: 12.5px; }
 .email-link-field { display: flex; align-items: center; gap: 6px; }
 .email-link-field .form-input { flex: 1; min-width: 0; }
+
+/* A swappable picture (the hero): thumbnail, URL, Upload. */
+.email-image { display: flex; gap: 10px; align-items: flex-start; }
+.email-image-thumb {
+  flex: 0 0 auto;
+  width: 64px;
+  height: 80px;
+  object-fit: cover;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+}
+.email-image-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 5px; }
+.email-image-main .form-input { font-size: 12.5px; }
+.email-image-tools { display: flex; align-items: center; gap: 10px; }
 
 /* Clicked in the preview: a moment of highlight. */
 @keyframes email-flash { from { background: #fff3c4; box-shadow: 0 0 0 6px #fff3c4; } to { background: transparent; box-shadow: 0 0 0 6px transparent; } }
@@ -10623,6 +10910,59 @@ a.email-product-url:hover { color: var(--text); text-decoration: underline; }
 .email-mc-warning { padding: 8px 10px; border-radius: 6px; background: #fdf6e7; border: 1px solid #e8c27a; font-size: 12.5px; }
 .email-mc-warning[hidden] { display: none; }
 .email-mc-action { align-self: flex-end; margin-top: 2px; font-size: 12px; font-weight: 600; color: var(--text); }
+
+/* Send to Mailchimp: All / Campaign / Trade show pills, then a group per
+   campaign or show in its colour (data-show / data-campaign-type), its
+   emails under it, each with its own button. */
+.email-mc-card { width: 640px; }
+.email-mc-filters { display: flex; gap: 6px; }
+.email-mc-filters[hidden] { display: none; }
+.email-mc-list { gap: 12px; max-height: 60vh; }
+.email-mc-group {
+  flex: 0 0 auto;
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--item-strong);
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--surface);
+}
+.email-mc-group-head {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  padding: 9px 12px;
+  background: var(--item-bg);
+  color: var(--item-fg);
+}
+.email-mc-group-kind {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.email-mc-group-title { flex: 1; min-width: 0; font-size: 13.5px; font-weight: 600; color: var(--text); }
+.email-mc-group-dates { font-size: 12px; }
+.email-mc-group-emails { display: flex; flex-direction: column; }
+.email-mc-email {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 9px 12px;
+  border-top: 1px solid var(--border);
+}
+.email-mc-email-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.email-mc-email-top { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 8px; }
+.email-mc-email-icon { width: 14px; height: 14px; flex: 0 0 auto; color: var(--text-muted); }
+.email-mc-email-label { font-size: 13px; font-weight: 600; }
+.email-mc-email-due { font-size: 12px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.email-mc-email-due.is-overdue { color: var(--danger); font-weight: 600; }
+.email-mc-email-sub { font-size: 12px; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.email-mc-send { flex: 0 0 auto; padding: 6px 12px; font-size: 12px; white-space: nowrap; }
+@media (max-width: 560px) {
+  .email-mc-email { flex-wrap: wrap; }
+  .email-mc-send { width: 100%; }
+}
 .email-mc-more { align-self: flex-start; font-size: 12.5px; font-weight: 500; }
 .email-mc-more[hidden] { display: none; }
 
@@ -11192,6 +11532,8 @@ td > .style-shoot-cell {
    Square buttons (a camera, the letters CG), the name in the tooltip. */
 .shoot-pick-method { --c: #4b5563; --tint: #f1f3f5; color: #6b7280; width: 30px; padding: 0; justify-content: center; }
 .shoot-pick-method svg { display: block; flex: 0 0 auto; }
+.shoot-picker { box-sizing: border-box; width: 108px; flex-shrink: 0; }
+.shoot-picker .shoot-pick-add { width: 64px; padding: 0; flex-shrink: 0; }
 .shoot-pick-method .shoot-pick-text { font-size: 10.5px; font-weight: 700; letter-spacing: 0.02em; line-height: 1; }
 /* The picked one: a soft grey fill with dark text, not a solid dark button. */
 .shoot-pick-method[aria-pressed="true"],

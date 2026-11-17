@@ -16,15 +16,50 @@
  *                           url (href), image (src + alt), style, color,
  *                           label ("STYLE · COLOUR"), name (text). A
  *                           colour links to its style's page.
+ *   data-mm-image="key"     on an <img>: a picture you can swap (upload or
+ *                           URL); data-mm-label="…" names it. Its Outlook
+ *                           copy in an <!--[if mso]> comment, with the same
+ *                           src, is swapped along with it.
  * Mailchimp merge-tag links (*|UNSUB|* …) are left alone.
  *
- * What you set (links, products) is saved per template in Supabase
- * (email_settings, js/store.js); the template file itself never changes.
+ * This is the template editor: Save updates the template. What you change
+ * (text/HTML, links, images, products, its name) is saved per template in
+ * Supabase (email_settings, js/store.js) and from then on is the template —
+ * the file in the repo is only where it started. Save copy makes a new
+ * template (a row of its own, "copy-…") from what's on screen; its relative
+ * images still come from the folder of the file it was copied from.
  */
 
+/** The templates that start from a file in the repo. */
 const EMAIL_TEMPLATES = [
   { id: "end-of-year-sale", name: "End of Year Sale", file: "email-templates/end-of-year-sale/template.html" },
+  { id: "sample-sale-week-2", name: "Sample Sale · Week 2", file: "email-templates/sample-sale-week-2/template.html" },
 ];
+
+/** A file template's folder ("email-templates/x/"), where its relative images are. */
+function emailFileFolder(file) {
+  return String(file ?? "").replace(/[^/]+$/, "");
+}
+
+/**
+ * Every template in the list: the file ones (under the name you gave them,
+ * if any), then your copies, oldest first.
+ * Each: { id, name, file?, folder, isCopy }.
+ */
+function getEmailTemplates() {
+  const files = EMAIL_TEMPLATES.map(t => ({
+    ...t,
+    name: emailSaved.get(t.id)?.name || t.name,
+    folder: emailFileFolder(t.file),
+    isCopy: false,
+  }));
+  const fileIds = new Set(EMAIL_TEMPLATES.map(t => t.id));
+  const copies = [...emailSaved.entries()]
+    .filter(([id, s]) => !fileIds.has(id) && s.html)
+    .sort((a, b) => String(a[1].createdAt).localeCompare(String(b[1].createdAt)))
+    .map(([id, s]) => ({ id, name: s.name || "Untitled", folder: s.folder || "", isCopy: true }));
+  return [...files, ...copies];
+}
 
 /**
  * Where the template folders are online, for the exported HTML's own images
@@ -108,7 +143,18 @@ function readEmailInfo(html) {
       products: cards.map(readEmailCard),
     };
   });
-  return { links: [...links.values()], grids };
+  const images = new Map();
+  doc.querySelectorAll("img[data-mm-image]").forEach(img => {
+    const key = img.dataset.mmImage;
+    if (!key || images.has(key)) return;
+    images.set(key, {
+      key,
+      label: img.dataset.mmLabel || img.getAttribute("alt") || "Image",
+      group: img.closest("[data-mm-group]")?.dataset.mmGroup || "Images",
+      src: img.getAttribute("src") ?? "",
+    });
+  });
+  return { links: [...links.values()], images: [...images.values()], grids };
 }
 
 // ── Building the email ───────────────────────────────────────────────────────
@@ -117,9 +163,11 @@ function readEmailInfo(html) {
 function emailValues(info, settings) {
   const links = {};
   info.links.forEach(l => { links[l.key] = settings?.links?.[l.key] ?? l.href; });
+  const images = {};
+  info.images.forEach(i => { images[i.key] = settings?.images?.[i.key] || i.src; });
   const products = {};
   info.grids.forEach(g => { products[g.key] = settings?.products?.[g.key] ?? g.products; });
-  return { links, products };
+  return { links, images, products };
 }
 
 function fillEmailCard(card, product, width) {
@@ -190,8 +238,8 @@ function serializeEmailDoc(doc) {
 
 /** The template with these values put in. `forExport` strips the CRM's tags. */
 function buildEmailHtml(template, settings, { forExport = false } = {}) {
-  const html = emailSources.get(template.id) ?? "";
-  const info = emailInfo.get(template.id);
+  const html = emailSourceFor(template.id, settings);
+  const info = emailInfoFor(template.id, settings);
   const doc = parseEmailDoc(html);
   const values = emailValues(info, settings);
 
@@ -203,12 +251,35 @@ function buildEmailHtml(template, settings, { forExport = false } = {}) {
     if (g) fillEmailGrid(grid, values.products[g.key] ?? [], g.columns);
   });
 
+  // Swapped images, and the same picture in Outlook's copy (inside comments).
+  const folder = new URL(template.folder, EMAIL_PUBLIC_BASE);
+  const isRelative = src => src && !/^[a-z]+:|^\/\/|^\*\|/i.test(src);
+  const absolute = src => (isRelative(src) ? new URL(src, folder).href : src);
+  const swaps = new Map();
+  info.images.forEach(i => {
+    const v = values.images[i.key];
+    if (v && v !== i.src) swaps.set(absolute(i.src), v);
+  });
+  doc.querySelectorAll("img[data-mm-image]").forEach(img => {
+    const v = values.images[img.dataset.mmImage];
+    if (v) img.setAttribute("src", v);
+  });
+  const commentWalker = doc.createTreeWalker(doc, NodeFilter.SHOW_COMMENT);
+  while (commentWalker.nextNode()) {
+    const c = commentWalker.currentNode;
+    if (!c.data.includes("src=")) continue;
+    c.data = c.data.replace(/(<img\b[^>]*?\bsrc=")([^"]*)"/gi, (m, pre, src) => {
+      const swapped = swaps.get(absolute(src));
+      if (swapped) return `${pre}${swapped}"`;
+      return forExport && isRelative(src) ? `${pre}${absolute(src)}"` : m;
+    });
+  }
+
   if (forExport) {
     // Its own images (a logo bar, a hero) from where the repo is online.
-    const folder = new URL(template.file.replace(/[^/]+$/, ""), EMAIL_PUBLIC_BASE);
     doc.querySelectorAll("img[src]").forEach(img => {
       const src = img.getAttribute("src");
-      if (src && !/^[a-z]+:|^\/\/|^\*\|/i.test(src)) img.setAttribute("src", new URL(src, folder).href);
+      if (isRelative(src)) img.setAttribute("src", absolute(src));
     });
     doc.querySelectorAll("*").forEach(el => {
       [...el.attributes].forEach(attr => { if (attr.name.startsWith("data-mm-")) el.removeAttribute(attr.name); });
@@ -225,33 +296,70 @@ function buildEmailHtml(template, settings, { forExport = false } = {}) {
 // ── State ────────────────────────────────────────────────────────────────────
 
 function getEmailTemplate(id = emailTemplateId) {
-  return EMAIL_TEMPLATES.find(t => t.id === id) ?? null;
+  return getEmailTemplates().find(t => t.id === id) ?? null;
 }
 
 function cloneEmailSettings(s) {
-  return { links: { ...(s?.links ?? {}) }, products: JSON.parse(JSON.stringify(s?.products ?? {})) };
+  return {
+    html: s?.html ?? "",
+    links: { ...(s?.links ?? {}) },
+    images: { ...(s?.images ?? {}) },
+    products: JSON.parse(JSON.stringify(s?.products ?? {})),
+  };
+}
+
+/** The HTML in use: edited in the HTML window, else the template file's. */
+function emailSourceFor(id, settings) {
+  return settings?.html || emailSources.get(id) || "";
+}
+
+/** Links, images and grids of edited HTML, by the HTML itself (a few kept). */
+const emailEditedInfo = new Map();
+
+function emailInfoFor(id, settings) {
+  if (!settings?.html) return emailInfo.get(id);
+  let info = emailEditedInfo.get(settings.html);
+  if (!info) {
+    if (emailEditedInfo.size > 6) emailEditedInfo.clear();
+    info = readEmailInfo(settings.html);
+    emailEditedInfo.set(settings.html, info);
+  }
+  return info;
 }
 
 /** Values that match the template's own aren't kept — the file may change. */
-function compactEmailSettings(info, draft) {
+function compactEmailSettings(info, draft, fileHtml) {
+  const html = draft.html && draft.html !== fileHtml ? draft.html : "";
   const links = {};
   info.links.forEach(l => {
     const v = draft.links[l.key];
     if (v !== undefined && v !== l.href) links[l.key] = v;
+  });
+  const images = {};
+  info.images.forEach(i => {
+    const v = draft.images?.[i.key];
+    if (v && v !== i.src) images[i.key] = v;
   });
   const products = {};
   info.grids.forEach(g => {
     const v = draft.products[g.key];
     if (v && JSON.stringify(v) !== JSON.stringify(g.products)) products[g.key] = v;
   });
-  return { links, products };
+  return { html, links, images, products };
+}
+
+function compactEmailSettingsFor(id, settings) {
+  const s = cloneEmailSettings(settings);
+  const out = compactEmailSettings(emailInfoFor(id, s), s, emailSources.get(id));
+  // A copy has no file: its HTML is always kept.
+  if (getEmailTemplate(id)?.isCopy) out.html = s.html || emailSources.get(id) || "";
+  return out;
 }
 
 function isEmailDirty() {
-  const info = emailInfo.get(emailTemplateId);
-  if (!info || !emailDraft) return false;
-  const a = compactEmailSettings(info, emailDraft);
-  const b = compactEmailSettings(info, cloneEmailSettings(emailSaved.get(emailTemplateId)));
+  if (!emailInfo.get(emailTemplateId) || !emailDraft) return false;
+  const a = compactEmailSettingsFor(emailTemplateId, emailDraft);
+  const b = compactEmailSettingsFor(emailTemplateId, emailSaved.get(emailTemplateId));
   return JSON.stringify(a) !== JSON.stringify(b);
 }
 
@@ -265,34 +373,44 @@ function emailLinkProblem(href) {
 }
 
 function emailProblemCount(template) {
-  const info = emailInfo.get(template.id);
-  if (!info) return 0;
+  if (!emailInfo.get(template.id)) return 0;
   const settings = template.id === emailTemplateId && emailDraft ? emailDraft : emailSaved.get(template.id);
+  const info = emailInfoFor(template.id, settings);
   const values = emailValues(info, settings);
   return info.links.filter(l => emailLinkProblem(values.links[l.key])).length;
 }
 
 async function loadEmailTemplateSource(template) {
   if (emailSources.has(template.id)) return;
-  const res = await fetch(`${template.file}?t=${Date.now()}`, { cache: "no-store" });
-  if (!res.ok) throw new Error(`Couldn't load ${template.name} (${res.status}).`);
-  const html = await res.text();
+  let html;
+  if (template.isCopy) {
+    html = emailSaved.get(template.id)?.html ?? "";
+  } else {
+    const res = await fetch(`${template.file}?t=${Date.now()}`, { cache: "no-store" });
+    if (!res.ok) throw new Error(`Couldn't load ${template.name} (${res.status}).`);
+    html = await res.text();
+  }
   emailSources.set(template.id, html);
   emailInfo.set(template.id, readEmailInfo(html));
+}
+
+/** Saved templates (and copies), loaded once. */
+async function ensureEmailSettings() {
+  if (emailSettingsLoaded) return;
+  emailSettingsLoaded = true;
+  try {
+    emailSaved = await loadEmailSettings();
+  } catch (err) {
+    showEmailNotice(err.message, err.sql);
+  }
 }
 
 // ── The page ─────────────────────────────────────────────────────────────────
 
 async function renderEmailView() {
   renderEmailList();
-  if (!emailSettingsLoaded) {
-    emailSettingsLoaded = true;
-    try {
-      emailSaved = await loadEmailSettings();
-    } catch (err) {
-      showEmailNotice(err.message, err.sql);
-    }
-  }
+  await ensureEmailSettings();
+  if (!getEmailTemplate(emailTemplateId)) emailTemplateId = getEmailTemplates()[0]?.id ?? "";
   await openEmailTemplate(emailTemplateId);
 }
 
@@ -343,6 +461,7 @@ async function openEmailTemplate(id, { askFirst = false } = {}) {
   renderEmailList();
   renderEmailPanel();
   renderEmailPreview();
+  syncEmailHtmlWindow();
 }
 
 function renderEmailEmpty() {
@@ -350,12 +469,189 @@ function renderEmailEmpty() {
   emailPreviewFrames().forEach(frame => { frame.srcdoc = ""; });
 }
 
+/** The template being renamed in the list, and a copy waiting for its name. */
+let emailRenamingId = "";
+let emailCopyPending = null;
+
+const EMAIL_ICON_PENCIL = '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>';
+const EMAIL_ICON_TRASH = '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/></svg>';
+
+/** Another template already has this name (any case)? */
+function isEmailNameTaken(name, exceptId = "") {
+  const n = name.trim().toLowerCase();
+  return getEmailTemplates().some(t => t.id !== exceptId && t.name.trim().toLowerCase() === n);
+}
+
+/** The name box: in place of a template's name (rename), or a new copy's. */
+function createEmailNameInput(value, { onCommit, onCancel, label }) {
+  const input = document.createElement("input");
+  input.type = "text";
+  input.className = "email-list-name-input";
+  input.value = value;
+  input.setAttribute("aria-label", label);
+  let done = false;
+  const commit = async () => {
+    if (done) return;
+    done = true;
+    const ok = await onCommit(input.value.trim());
+    if (ok === false) {
+      done = false;
+      input.focus();
+      input.select();
+    }
+  };
+  input.addEventListener("keydown", e => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      commit();
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      done = true;
+      onCancel();
+    }
+  });
+  input.addEventListener("blur", () => {
+    // Clicking away: keep a changed name, drop an unchanged one.
+    if (done) return;
+    if (input.value.trim() === value.trim()) {
+      done = true;
+      onCancel();
+    } else {
+      commit();
+    }
+  });
+  return input;
+}
+
+function focusEmailNameInput() {
+  const input = document.querySelector("#emailTemplateList .email-list-name-input");
+  input?.focus();
+  input?.select();
+}
+
+function startEmailRename(id) {
+  emailCopyPending = null;
+  emailRenamingId = id;
+  renderEmailList();
+  focusEmailNameInput();
+}
+
+async function commitEmailRename(id, name) {
+  const template = getEmailTemplate(id);
+  if (!template) return true;
+  if (!name || name === template.name) {
+    emailRenamingId = "";
+    renderEmailList();
+    return true;
+  }
+  if (isEmailNameTaken(name, id)) {
+    showIndicator("Another template already has that name", "error");
+    return false;
+  }
+  try {
+    await renameEmailTemplate(id, name);
+  } catch (err) {
+    showIndicator(err.message || "Couldn't rename the template.", "error");
+    return false;
+  }
+  emailSaved.set(id, { ...cloneEmailSettings(emailSaved.get(id)), ...emailSaved.get(id), name });
+  emailRenamingId = "";
+  renderEmailList();
+  syncEmailHtmlWindow();
+  showIndicator("Template renamed", "success");
+  return true;
+}
+
+/** Save copy: a new entry at the end of the list, its name to change first. */
+function startEmailCopy() {
+  const template = getEmailTemplate();
+  if (!template || !emailDraft) return;
+  emailRenamingId = "";
+  emailCopyPending = { fromId: template.id, name: template.name };
+  renderEmailList();
+  focusEmailNameInput();
+  showIndicator("Give the copy its own name, then press Enter", "success");
+}
+
+async function commitEmailCopy(name) {
+  const pending = emailCopyPending;
+  const from = getEmailTemplate(pending?.fromId);
+  if (!pending || !from || !emailDraft) return true;
+  if (!name || isEmailNameTaken(name)) {
+    showIndicator(name ? "Change the name — another template already has it" : "Give the copy a name", "error");
+    return false;
+  }
+  // What's on screen, unsaved changes too, as a template of its own.
+  const settings = compactEmailSettingsFor(from.id, emailDraft);
+  settings.html = emailSourceFor(from.id, emailDraft);
+  const id = `copy-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+  const extra = { name, folder: from.folder };
+  setAppLoading(true, "Saving copy…");
+  try {
+    await saveEmailSettings(id, settings, extra);
+  } catch (err) {
+    showIndicator(err.message || "Couldn't save the copy.", "error");
+    return false;
+  } finally {
+    setAppLoading(false);
+  }
+  emailSaved.set(id, { ...settings, ...extra, createdAt: new Date().toISOString() });
+  emailCopyPending = null;
+  showIndicator(`Saved as “${name}”`, "success");
+  await openEmailTemplate(id);
+  return true;
+}
+
+async function deleteEmailCopy(id) {
+  const template = getEmailTemplate(id);
+  if (!template?.isCopy) return;
+  if (!confirm(`Delete the template “${template.name}”? This can't be undone.`)) return;
+  try {
+    await deleteEmailTemplate(id);
+  } catch (err) {
+    showIndicator(err.message || "Couldn't delete the template.", "error");
+    return;
+  }
+  emailSaved.delete(id);
+  emailSources.delete(id);
+  emailInfo.delete(id);
+  showIndicator("Template deleted", "success");
+  if (id === emailTemplateId) await openEmailTemplate(getEmailTemplates()[0]?.id ?? "");
+  else renderEmailList();
+}
+
+function createEmailListIcon(svg, label, onClick) {
+  const b = document.createElement("button");
+  b.type = "button";
+  b.className = "email-list-icon";
+  b.innerHTML = svg;
+  b.title = label;
+  b.setAttribute("aria-label", label);
+  b.addEventListener("click", e => {
+    e.stopPropagation();
+    onClick();
+  });
+  return b;
+}
+
 function renderEmailList() {
   const list = document.getElementById("emailTemplateList");
   if (!list) return;
-  list.replaceChildren(...EMAIL_TEMPLATES.map(t => {
+  const items = getEmailTemplates().map(t => {
     const item = document.createElement("div");
-    item.className = "po-month po-month--top" + (t.id === emailTemplateId ? " is-active" : "");
+    item.className = "po-month po-month--top email-list-item" + (t.id === emailTemplateId ? " is-active" : "");
+    if (t.id === emailRenamingId) {
+      item.classList.add("is-naming");
+      item.append(createEmailNameInput(t.name, {
+        label: `Rename ${t.name}`,
+        onCommit: name => commitEmailRename(t.id, name),
+        onCancel: () => {
+          emailRenamingId = "";
+          renderEmailList();
+        },
+      }));
+      return item;
+    }
     const pick = document.createElement("button");
     pick.type = "button";
     pick.className = "po-month-pick";
@@ -373,9 +669,31 @@ function renderEmailList() {
     }
     pick.append(name, count);
     pick.addEventListener("click", () => openEmailTemplate(t.id, { askFirst: true }));
-    item.append(pick);
+    // Shown on hover: rename, and delete for a copy.
+    const tools = document.createElement("span");
+    tools.className = "email-list-tools";
+    tools.append(createEmailListIcon(EMAIL_ICON_PENCIL, `Rename ${t.name}`, () => startEmailRename(t.id)));
+    if (t.isCopy) tools.append(createEmailListIcon(EMAIL_ICON_TRASH, `Delete ${t.name}`, () => deleteEmailCopy(t.id)));
+    item.append(pick, tools);
     return item;
-  }));
+  });
+  if (emailCopyPending) {
+    const item = document.createElement("div");
+    item.className = "po-month po-month--top email-list-item is-naming is-new";
+    const note = document.createElement("span");
+    note.className = "email-list-new-note";
+    note.textContent = "New copy — change the name";
+    item.append(note, createEmailNameInput(emailCopyPending.name, {
+      label: "Name of the copy",
+      onCommit: name => commitEmailCopy(name),
+      onCancel: () => {
+        emailCopyPending = null;
+        renderEmailList();
+      },
+    }));
+    items.push(item);
+  }
+  list.replaceChildren(...items);
 }
 
 /** Redraw the preview, a moment after typing stops. */
@@ -395,22 +713,36 @@ function renderEmailPreview() {
   if (!template || !frames.length || !emailSources.has(template.id)) return;
   let html = buildEmailHtml(template, emailDraft);
   // Its own images load from its folder.
-  const base = new URL(template.file.replace(/[^/]+$/, ""), location.href).href;
+  const base = new URL(template.folder, location.href).href;
   html = html.replace(/<head([^>]*)>/i, `<head$1><base href="${base}" target="_blank">`);
   html = forceEmailColorScheme(html, emailScheme);
+  // The surrounding preview panel owns scrolling; frames expand to their content.
+  html = html.replace(/<\/head>/i, '<style>html,body{overflow:hidden!important;}</style></head>');
   frames.forEach(frame => {
     frame.onload = () => {
       const doc = frame.contentDocument;
       if (!doc) return;
       sizeEmailFrame(frame);
-      // Click a link in either preview to edit it.
+      // Click a link in either preview to edit it — or, with the HTML
+      // window open, any text to find it in the HTML.
       doc.addEventListener("click", e => {
+        if (isEmailHtmlWindowOpen()) {
+          e.preventDefault();
+          findEmailHtmlFor(e.target);
+          return;
+        }
         const a = e.target.closest?.("a[href]");
         if (!a) return;
         e.preventDefault();
         focusEmailLinkFor(a);
       });
-      doc.querySelectorAll("img").forEach(img => img.addEventListener("load", () => sizeEmailFrame(frame), { once: true }));
+      doc.querySelectorAll("img").forEach(img => {
+        img.addEventListener("load", () => sizeEmailFrame(frame), { once: true });
+        img.addEventListener("error", () => sizeEmailFrame(frame), { once: true });
+      });
+      doc.fonts?.ready.then(() => {
+        if (frame.contentDocument === doc) sizeEmailFrame(frame);
+      });
     };
     frame.srcdoc = html;
   });
@@ -444,7 +776,8 @@ function sizeEmailFrame(frame) {
   const doc = frame.contentDocument;
   if (!doc?.documentElement) return;
   frame.style.height = "100px"; // let it shrink: scrollHeight is never less than the frame
-  frame.style.height = `${Math.max(400, doc.documentElement.scrollHeight)}px`;
+  const height = Math.max(400, doc.documentElement.scrollHeight, doc.body?.scrollHeight || 0);
+  frame.style.height = `${Math.ceil(height) + 2}px`;
   fitEmailPreview();
 }
 
@@ -501,20 +834,28 @@ function flashEmailRow(row, input) {
 
 function renderEmailPanel() {
   const body = document.getElementById("emailEditBody");
-  const info = emailInfo.get(emailTemplateId);
+  const info = emailInfoFor(emailTemplateId, emailDraft);
   if (!body || !info) return;
   const values = emailValues(info, emailDraft);
   const sections = [];
 
   info.grids.forEach(g => sections.push(createEmailGridSection(g, values.products[g.key] ?? [])));
 
+  // Images and links together, by section, in template order (images first in a section).
   const groups = new Map();
-  info.links.forEach(l => {
-    if (!groups.has(l.group)) groups.set(l.group, []);
-    groups.get(l.group).push(l);
-  });
-  groups.forEach((links, group) => {
+  const groupOf = name => {
+    if (!groups.has(name)) groups.set(name, { images: [], links: [] });
+    return groups.get(name);
+  };
+  const order = [...parseEmailDoc(emailSourceFor(emailTemplateId, emailDraft)).querySelectorAll("[data-mm-group]")]
+    .map(el => el.dataset.mmGroup);
+  order.forEach(name => groupOf(name));
+  info.images.forEach(i => groupOf(i.group).images.push(i));
+  info.links.forEach(l => groupOf(l.group).links.push(l));
+  groups.forEach(({ images, links }, group) => {
+    if (!images.length && !links.length) return;
     const section = createEmailSection(group);
+    images.forEach(i => section.body.appendChild(createEmailImageRow(i, values.images[i.key])));
     links.forEach(l => section.body.appendChild(createEmailLinkRow(l, values.links[l.key])));
     sections.push(section.el);
   });
@@ -575,6 +916,95 @@ function createEmailLinkRow(link, href) {
   });
   row.append(label, field, problem);
   return row;
+}
+
+/** A swappable picture: its thumbnail, its URL, and Upload / back to the template's. */
+function createEmailImageRow(image, src) {
+  const template = getEmailTemplate();
+  const folder = new URL(template.folder, location.href);
+  const row = document.createElement("div");
+  row.className = "email-image";
+  row.dataset.key = image.key;
+
+  const thumb = document.createElement("img");
+  thumb.className = "email-image-thumb";
+  thumb.alt = "";
+  thumb.src = new URL(src, folder).href;
+
+  const main = document.createElement("div");
+  main.className = "email-image-main";
+  const label = document.createElement("span");
+  label.className = "form-label";
+  label.textContent = image.label;
+  const input = document.createElement("input");
+  input.type = "url";
+  input.className = "form-input";
+  input.spellcheck = false;
+  input.placeholder = "Image URL — or Upload";
+  input.value = src;
+  input.addEventListener("input", () => {
+    const v = input.value.trim();
+    emailDraft.images[image.key] = v;
+    thumb.src = v ? new URL(v, folder).href : new URL(image.src, folder).href;
+    syncEmailFooter();
+    scheduleEmailPreview();
+  });
+
+  const tools = document.createElement("div");
+  tools.className = "email-image-tools";
+  const file = document.createElement("input");
+  file.type = "file";
+  file.accept = "image/jpeg,image/png,image/gif,image/webp";
+  file.hidden = true;
+  const upload = document.createElement("button");
+  upload.type = "button";
+  upload.className = "btn";
+  upload.textContent = "Upload…";
+  upload.addEventListener("click", () => file.click());
+  file.addEventListener("change", async () => {
+    const picked = file.files?.[0];
+    file.value = "";
+    if (!picked) return;
+    upload.disabled = true;
+    upload.textContent = "Uploading…";
+    try {
+      const url = await uploadEmailImage(emailTemplateId, image.key, await shrinkEmailImage(picked));
+      emailDraft.images[image.key] = url;
+      renderEmailPanel();
+      renderEmailPreview();
+      showIndicator(`${image.label} uploaded — Save to keep`, "success");
+    } catch (err) {
+      showIndicator(err.message || "Couldn't upload the image.", "error");
+      upload.disabled = false;
+      upload.textContent = "Upload…";
+    }
+  });
+  tools.append(upload, file);
+
+  main.append(label, input, tools);
+  row.append(thumb, main);
+  return row;
+}
+
+/** Emails show images 660px wide: anything bigger is scaled to 1320px (sharp on retina) and re-saved. */
+const EMAIL_IMAGE_MAX_WIDTH = 1320;
+
+async function shrinkEmailImage(file) {
+  if (!String(file.type).startsWith("image/")) throw new Error("That isn't an image file.");
+  if (file.type === "image/gif") return file; // keep animation
+  const bitmap = await createImageBitmap(file).catch(() => null);
+  if (!bitmap) return file;
+  if (bitmap.width <= EMAIL_IMAGE_MAX_WIDTH && file.size <= 600 * 1024) return file;
+  const scale = Math.min(1, EMAIL_IMAGE_MAX_WIDTH / bitmap.width);
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.round(bitmap.width * scale);
+  canvas.height = Math.round(bitmap.height * scale);
+  canvas.getContext("2d").drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+  const type = file.type === "image/png" ? "image/png" : "image/jpeg";
+  const blob = await new Promise(res => canvas.toBlob(res, type, 0.85));
+  if (!blob) return file;
+  const name = file.name.replace(/\.[^.]+$/, "") + (type === "image/png" ? ".png" : ".jpg");
+  return new File([blob], name, { type });
 }
 
 function setEmailProducts(gridKey, products) {
@@ -962,13 +1392,14 @@ let emailPendingAdd = null;
 /** Every template's product grids, for "Add to email": [{ templateId, gridKey, label }]. */
 async function emailGridChoices() {
   const out = [];
-  for (const t of EMAIL_TEMPLATES) {
+  await ensureEmailSettings();
+  for (const t of getEmailTemplates()) {
     try {
       await loadEmailTemplateSource(t);
     } catch {
       continue;
     }
-    const grids = emailInfo.get(t.id)?.grids ?? [];
+    const grids = emailInfoFor(t.id, emailSaved.get(t.id))?.grids ?? [];
     grids.forEach(g => out.push({ templateId: t.id, gridKey: g.key, label: grids.length > 1 ? `${t.name} · ${g.label}` : t.name }));
   }
   return out;
@@ -987,7 +1418,7 @@ function applyEmailPendingAdd(id) {
   if (emailPendingAdd?.templateId !== id) return;
   const { gridKey, products } = emailPendingAdd;
   emailPendingAdd = null;
-  const info = emailInfo.get(id);
+  const info = emailInfoFor(id, emailDraft);
   const grid = info?.grids.find(g => g.key === gridKey) ?? info?.grids[0];
   if (!grid) return;
   const current = emailDraft.products[grid.key] ?? grid.products;
@@ -1010,18 +1441,19 @@ function syncEmailFooter() {
   if (save) save.disabled = !dirty;
   if (revert) revert.disabled = !dirty;
   const state = document.getElementById("emailSaveState");
-  if (state) state.textContent = dirty ? "Unsaved changes" : (emailSaved.has(emailTemplateId) ? "Saved" : "Template defaults");
+  if (state) state.textContent = dirty ? "Unsaved changes" : "Saved";
 }
 
+/** Save updates the template itself. */
 async function saveEmailDraft() {
-  const info = emailInfo.get(emailTemplateId);
-  if (!info || !emailDraft) return;
-  const settings = compactEmailSettings(info, emailDraft);
+  if (!emailInfo.get(emailTemplateId) || !emailDraft) return;
+  const settings = compactEmailSettingsFor(emailTemplateId, emailDraft);
   setAppLoading(true, "Saving…");
   try {
     await saveEmailSettings(emailTemplateId, settings);
-    emailSaved.set(emailTemplateId, settings);
-    showIndicator("Email saved", "success");
+    // Its name, folder and date stay as they were.
+    emailSaved.set(emailTemplateId, { ...emailSaved.get(emailTemplateId), ...settings });
+    showIndicator("Template saved", "success");
   } catch (err) {
     showIndicator(err.message || "Couldn't save.", "error");
   } finally {
@@ -1036,15 +1468,294 @@ function revertEmailDraft() {
   renderEmailList();
   renderEmailPanel();
   renderEmailPreview();
+  syncEmailHtmlWindow();
 }
 
-/** Back to the template file's own links and products (not saved yet). */
-function resetEmailDraft() {
-  if (!confirm("Reset every link and product to the template's own? You can still Revert before saving.")) return;
-  emailDraft = { links: {}, products: {} };
-  renderEmailList();
-  renderEmailPanel();
-  renderEmailPreview();
+// ── Edit HTML ────────────────────────────────────────────────────────────────
+//
+// The template's HTML to edit by hand — its text, mostly — filling the right
+// panel in place of the links. Kept in the draft (settings.html) and saved
+// with the rest; the links, images and products set in the panel still go on
+// top of it. Click text in the preview while it's open to find it here.
+// The editor is CodeMirror 5 (colour-coded HTML), loaded on first open.
+
+const EMAIL_CM_BASE = "https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/";
+const EMAIL_CM_SCRIPTS = [
+  "codemirror.min.js",
+  "mode/xml/xml.min.js",
+  "mode/javascript/javascript.min.js",
+  "mode/css/css.min.js",
+  "mode/htmlmixed/htmlmixed.min.js",
+  "addon/search/searchcursor.min.js",
+];
+
+let emailHtmlTimer = 0;
+let emailCm = null;
+let emailCmLoading = null;
+/** The editor's text is being set from the draft, not typed. */
+let emailCmSetting = false;
+
+function loadEmailCodeMirror() {
+  emailCmLoading ??= (async () => {
+    for (const file of EMAIL_CM_SCRIPTS) {
+      await new Promise((resolve, reject) => {
+        const s = document.createElement("script");
+        s.src = EMAIL_CM_BASE + file;
+        s.onload = resolve;
+        s.onerror = () => reject(new Error("Couldn't load the HTML editor — check the connection and try again."));
+        document.head.appendChild(s);
+      });
+    }
+  })().catch(err => {
+    emailCmLoading = null;
+    throw err;
+  });
+  return emailCmLoading;
+}
+
+async function ensureEmailCm() {
+  if (emailCm) return emailCm;
+  await loadEmailCodeMirror();
+  const host = document.getElementById("emailHtmlEditor");
+  const focusFind = () => {
+    const find = document.getElementById("emailHtmlFind");
+    const sel = emailCm.getSelection();
+    if (sel && !sel.includes("\n") && sel.length < 80) find.value = sel;
+    find.focus();
+    find.select();
+  };
+  emailCm = window.CodeMirror(host, {
+    mode: "htmlmixed",
+    lineNumbers: true,
+    lineWrapping: true,
+    indentUnit: 2,
+    tabSize: 2,
+    extraKeys: { "Ctrl-F": focusFind, "Cmd-F": focusFind },
+  });
+  emailCm.on("change", () => {
+    if (!emailCmSetting) onEmailHtmlInput();
+  });
+  return emailCm;
+}
+
+function isEmailHtmlWindowOpen() {
+  return !document.getElementById("emailHtmlPane")?.hidden;
+}
+
+async function openEmailHtmlWindow() {
+  const pane = document.getElementById("emailHtmlPane");
+  if (!pane || !emailDraft) return;
+  pane.hidden = false;
+  document.getElementById("emailEditPanel")?.classList.add("is-html");
+  document.getElementById("emailHtmlBtn")?.classList.add("active");
+  applyEmailPanelWidth();
+  try {
+    await ensureEmailCm();
+  } catch (err) {
+    showIndicator(err.message, "error");
+    closeEmailHtmlWindow();
+    return;
+  }
+  syncEmailHtmlWindow();
+  emailCm.refresh();
+  emailCm.focus();
+}
+
+function closeEmailHtmlWindow() {
+  const pane = document.getElementById("emailHtmlPane");
+  if (pane) pane.hidden = true;
+  document.getElementById("emailEditPanel")?.classList.remove("is-html");
+  document.getElementById("emailHtmlBtn")?.classList.remove("active");
+  applyEmailPanelWidth();
+}
+
+/** The editor's text and note, from the draft (after a template switch, Revert …). */
+function syncEmailHtmlWindow() {
+  if (!isEmailHtmlWindowOpen() || !emailCm) return;
+  const html = emailSourceFor(emailTemplateId, emailDraft);
+  if (emailCm.getValue() !== html) {
+    emailCmSetting = true;
+    emailCm.setValue(html);
+    emailCmSetting = false;
+    emailCm.clearHistory();
+    emailCm.scrollTo(0, 0);
+  }
+  const title = document.getElementById("emailHtmlTitle");
+  if (title) title.textContent = `Edit HTML · ${getEmailTemplate()?.name ?? ""}`;
+}
+
+function onEmailHtmlInput() {
+  if (!emailCm || !emailDraft) return;
+  const value = emailCm.getValue();
+  emailDraft.html = value === emailSources.get(emailTemplateId) ? "" : value;
+  syncEmailFooter();
+  clearTimeout(emailHtmlTimer);
+  emailHtmlTimer = setTimeout(() => {
+    renderEmailPanel();
+    renderEmailList();
+    renderEmailPreview();
+  }, 400);
+}
+
+/** HTML-escaped as it might be written in the file. */
+function emailHtmlVariants(s) {
+  const amp = s.replace(/&/g, "&amp;");
+  const esc = amp.replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const nbsp = esc.replace(/ /g, "&nbsp;");
+  const quotes = nbsp.replace(/’/g, "&rsquo;").replace(/‘/g, "&lsquo;").replace(/“/g, "&ldquo;").replace(/”/g, "&rdquo;");
+  return [...new Set([s, amp, esc, nbsp, quotes])];
+}
+
+/** Find the clicked text in the HTML, select it and scroll to it. */
+function findEmailHtmlFor(target) {
+  if (!emailCm || !target) return;
+  // The longest piece of text under what was clicked (text split by <br> is several).
+  const walker = target.ownerDocument.createTreeWalker(target, NodeFilter.SHOW_TEXT);
+  let best = "";
+  while (walker.nextNode()) {
+    const t = walker.currentNode.data.replace(/\s+/g, " ").trim();
+    if (t.length > best.length) best = t;
+  }
+  if (!best) best = target.closest?.("img")?.getAttribute("alt") ?? "";
+  if (!best) return;
+  const value = emailCm.getValue();
+  for (const needle of emailHtmlVariants(best)) {
+    const at = value.indexOf(needle);
+    if (at >= 0) {
+      selectEmailHtmlRange(at, at + needle.length);
+      return;
+    }
+  }
+  // Whitespace in the file may differ: try just the start.
+  const start = best.slice(0, 24);
+  const at = start.length >= 6 ? value.indexOf(start) : -1;
+  if (at >= 0) selectEmailHtmlRange(at, at + start.length);
+  else showIndicator("Couldn't find that text in the HTML — try the Find box", "error");
+}
+
+function selectEmailHtmlRange(from, to) {
+  if (!emailCm) return;
+  const a = emailCm.posFromIndex(from);
+  const b = emailCm.posFromIndex(to);
+  emailCm.focus();
+  emailCm.setSelection(a, b);
+  emailCm.scrollIntoView({ from: a, to: b }, Math.round(emailCm.getScrollInfo().clientHeight / 3));
+}
+
+function findEmailHtmlNext(term, backwards = false) {
+  if (!emailCm || !term) return;
+  const start = backwards ? emailCm.getCursor("from") : emailCm.getCursor("to");
+  let cur = emailCm.getSearchCursor(term, start, { caseFold: true });
+  let found = backwards ? cur.findPrevious() : cur.findNext();
+  if (!found) {
+    // Wrap around.
+    const edge = backwards ? emailCm.posFromIndex(emailCm.getValue().length) : { line: 0, ch: 0 };
+    cur = emailCm.getSearchCursor(term, edge, { caseFold: true });
+    found = backwards ? cur.findPrevious() : cur.findNext();
+  }
+  if (!found) {
+    showIndicator("Not found", "error");
+    return;
+  }
+  emailCm.setSelection(cur.from(), cur.to());
+  emailCm.scrollIntoView({ from: cur.from(), to: cur.to() }, Math.round(emailCm.getScrollInfo().clientHeight / 3));
+}
+
+// ── Panel width ──────────────────────────────────────────────────────────────
+//
+// Drag the panel's left border to resize it. The links and Edit HTML each
+// keep their own width (Edit HTML starts at half the page).
+
+const EMAIL_PANEL_MIN = 280;
+const EMAIL_PREVIEW_MIN = 240;
+
+function emailPanelWidthKey() {
+  return isEmailHtmlWindowOpen() ? "email.panelWidth.html" : "email.panelWidth.links";
+}
+
+function readEmailPanelWidth() {
+  try {
+    return Number(localStorage.getItem(emailPanelWidthKey())) || 0;
+  } catch {
+    return 0;
+  }
+}
+
+function clampEmailPanelWidth(width) {
+  const layout = document.getElementById("emailWrap");
+  const list = document.getElementById("emailTemplateList");
+  const room = (layout?.clientWidth ?? 0) - (list?.offsetWidth ?? 0) - EMAIL_PREVIEW_MIN;
+  return Math.round(Math.max(EMAIL_PANEL_MIN, Math.min(width, Math.max(EMAIL_PANEL_MIN, room))));
+}
+
+function applyEmailPanelWidth() {
+  const panel = document.getElementById("emailEditPanel");
+  if (!panel) return;
+  let width = readEmailPanelWidth();
+  if (!width && isEmailHtmlWindowOpen()) width = (document.getElementById("emailWrap")?.clientWidth ?? 1200) * 0.5;
+  panel.style.flexBasis = width ? `${clampEmailPanelWidth(width)}px` : "";
+  emailCm?.refresh();
+}
+
+function setupEmailPanelResizer() {
+  const panel = document.getElementById("emailEditPanel");
+  const handle = document.getElementById("emailEditResizer");
+  if (!panel || !handle) return;
+  handle.addEventListener("pointerdown", e => {
+    e.preventDefault();
+    const startX = e.clientX;
+    const startWidth = panel.offsetWidth;
+    let frame = 0;
+    handle.setPointerCapture(e.pointerId);
+    document.body.classList.add("is-resizing-email");
+    const move = ev => {
+      panel.style.flexBasis = `${clampEmailPanelWidth(startWidth + (startX - ev.clientX))}px`;
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => emailCm?.refresh());
+    };
+    const up = () => {
+      handle.removeEventListener("pointermove", move);
+      handle.removeEventListener("pointerup", up);
+      handle.removeEventListener("pointercancel", up);
+      document.body.classList.remove("is-resizing-email");
+      try {
+        localStorage.setItem(emailPanelWidthKey(), String(panel.offsetWidth));
+      } catch { /* a remembered width is a nicety */ }
+      emailCm?.refresh();
+    };
+    handle.addEventListener("pointermove", move);
+    handle.addEventListener("pointerup", up);
+    handle.addEventListener("pointercancel", up);
+  });
+  // Double-click the border: back to the usual width.
+  handle.addEventListener("dblclick", () => {
+    try {
+      localStorage.removeItem(emailPanelWidthKey());
+    } catch { /* ignored */ }
+    applyEmailPanelWidth();
+  });
+  window.addEventListener("resize", () => {
+    if (panel.style.flexBasis) applyEmailPanelWidth();
+  });
+}
+
+function setupEmailHtmlWindow() {
+  document.getElementById("emailHtmlBtn")?.addEventListener("click", () => (isEmailHtmlWindowOpen() ? closeEmailHtmlWindow() : openEmailHtmlWindow()));
+  document.getElementById("emailHtmlCloseBtn")?.addEventListener("click", closeEmailHtmlWindow);
+  const find = document.getElementById("emailHtmlFind");
+  find?.addEventListener("keydown", e => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      findEmailHtmlNext(find.value.trim(), e.shiftKey);
+      find.focus();
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      find.value = "";
+      emailCm?.focus();
+    }
+  });
+  setupEmailPanelResizer();
+  applyEmailPanelWidth();
 }
 
 function exportEmailHtml() {
@@ -1094,11 +1805,15 @@ function downloadEmailHtml() {
 
 const EMAIL_MC_OPEN = new Set(["save", "paused", "schedule"]);
 
+/** Which groups the dialog shows: "all", "campaign" or "show". */
+let emailMcFilter = "all";
+
 /** Email tasks worth offering: linked to an unsent campaign, or still to do. */
 function emailMcTaskChoices() {
   const since = ymd(addDays(parseYmd(todayYmd()), -14));
   const out = [];
   getAllScheduleItems().forEach(item => {
+    if (item.type !== ITEM_TYPE_CAMPAIGN && item.type !== ITEM_TYPE_TRADE_SHOW) return;
     item.tasks.filter(t => t.kind === TASK_KIND_EMAIL).forEach(task => {
       const link = getTaskLink(task.id);
       const campaign = link ? getMcCampaign(link.campaignId) : null;
@@ -1149,7 +1864,7 @@ async function openEmailMcDialog() {
     showIndicator(mcError || "Mailchimp isn't connected.", "error");
     return;
   }
-  document.getElementById("emailMcLabel").textContent = `${template.name} → which campaign?`;
+  document.getElementById("emailMcTitle").textContent = template.name;
   const problems = emailProblemCount(template);
   const warning = document.getElementById("emailMcWarning");
   warning.hidden = !problems;
@@ -1165,9 +1880,95 @@ function closeEmailMcDialog() {
   document.getElementById("emailMcOverlay")?.classList.remove("open");
 }
 
+const EMAIL_MC_KIND = {
+  [ITEM_TYPE_CAMPAIGN]: { filter: "campaign", label: "Campaign" },
+  [ITEM_TYPE_TRADE_SHOW]: { filter: "show", label: "Trade show" },
+};
+
+/** The pills: which is on, and how many emails each would show. */
+function syncEmailMcFilters(choices) {
+  const bar = document.getElementById("emailMcFilters");
+  if (!bar) return;
+  bar.hidden = !choices.length;
+  const counts = { all: choices.length, campaign: 0, show: 0 };
+  choices.forEach(c => { counts[EMAIL_MC_KIND[c.item.type].filter] += 1; });
+  bar.querySelectorAll(".cal-filter-btn").forEach(btn => {
+    const key = btn.dataset.filter;
+    const on = key === emailMcFilter;
+    btn.classList.toggle("is-active", on);
+    btn.setAttribute("aria-pressed", String(on));
+    const label = key === "all" ? "All" : key === "campaign" ? "Campaign" : "Trade show";
+    btn.textContent = `${label} ${counts[key]}`;
+  });
+}
+
+/** Send to a linked campaign, or make one for the task first. */
+function sendEmailForTask({ task, item, linked }) {
+  if (linked) {
+    sendEmailToMailchimp(getTaskLink(task.id).campaignId);
+    return;
+  }
+  closeEmailMcDialog();
+  openMcForm({ mode: "create", task, item, onCreated: created => sendEmailToMailchimp(created.id) });
+}
+
+/** One email under its campaign / show: what, when, its Mailchimp state, and its button. */
+function createEmailMcTaskRow(choice) {
+  const { task, campaign, linked } = choice;
+  const row = document.createElement("div");
+  row.className = "email-mc-email";
+
+  const main = document.createElement("div");
+  main.className = "email-mc-email-main";
+  const top = document.createElement("div");
+  top.className = "email-mc-email-top";
+  const icon = createCalEventIcon(task.kind);
+  icon.classList.add("email-mc-email-icon");
+  const label = document.createElement("span");
+  label.className = "email-mc-email-label";
+  label.textContent = task.label;
+  const due = document.createElement("span");
+  due.className = "email-mc-email-due";
+  due.textContent = formatTaskDateShort(task.dueDate);
+  if (isTaskOverdue(task)) {
+    due.classList.add("is-overdue");
+    due.title = "Overdue";
+  }
+  top.append(icon, label, due);
+  if (linked) {
+    const { label: statusLabel, tone } = describeMcStatus(campaign);
+    const pill = document.createElement("span");
+    pill.className = "mc-status";
+    pill.dataset.tone = tone;
+    pill.textContent = statusLabel;
+    top.append(pill);
+  }
+  const sub = document.createElement("div");
+  sub.className = "email-mc-email-sub";
+  sub.textContent = linked
+    ? (campaign?.subject ? `“${campaign.subject}”` : "No subject yet")
+    : "Not in Mailchimp yet";
+  main.append(top, sub);
+
+  const send = document.createElement("button");
+  send.type = "button";
+  send.className = "btn email-mc-send" + (linked ? " btn-primary" : "");
+  send.textContent = linked ? "Send HTML" : "Create & send";
+  send.title = linked ? "Put this template into the email's Mailchimp campaign" : "Make the email's Mailchimp campaign, then put this template in it";
+  send.addEventListener("click", () => sendEmailForTask(choice));
+
+  row.append(main, send);
+  return row;
+}
+
+/**
+ * The Email tasks, grouped under their campaign or trade show like its
+ * detail pane, in its colour — groups in order of their first email.
+ */
 function renderEmailMcTasks() {
   const list = document.getElementById("emailMcList");
   const choices = emailMcTaskChoices();
+  syncEmailMcFilters(choices);
   if (!choices.length) {
     list.replaceChildren(Object.assign(document.createElement("div"), {
       className: "mc-link-empty",
@@ -1175,28 +1976,54 @@ function renderEmailMcTasks() {
     }));
     return;
   }
-  list.replaceChildren(...choices.map(({ task, item, campaign, linked }) => createEmailMcRow({
-    title: `${item.title} · ${task.label}`,
-    sub: [`Due ${formatTaskDate(task.dueDate)}`, linked
-      ? (campaign?.subject ? `“${campaign.subject}”` : "No subject yet")
-      : "Not in Mailchimp yet"].join(" · "),
-    status: linked ? describeMcStatus(campaign) : null,
-    action: linked ? "Send HTML" : "Create & send",
-    onClick: () => {
-      if (linked) {
-        sendEmailToMailchimp(getTaskLink(task.id).campaignId);
-        return;
-      }
-      closeEmailMcDialog();
-      openMcForm({ mode: "create", task, item, onCreated: created => sendEmailToMailchimp(created.id) });
-    },
-  })));
+  const shown = choices.filter(c => emailMcFilter === "all" || EMAIL_MC_KIND[c.item.type].filter === emailMcFilter);
+  if (!shown.length) {
+    list.replaceChildren(Object.assign(document.createElement("div"), {
+      className: "mc-link-empty",
+      textContent: emailMcFilter === "campaign" ? "No campaign emails to send." : "No trade show emails to send.",
+    }));
+    return;
+  }
+  // Choices come sorted by due date, so groups land in order of their first email.
+  const groups = new Map();
+  shown.forEach(c => {
+    const key = `${c.item.type}|${c.item.id}`;
+    if (!groups.has(key)) groups.set(key, { item: c.item, emails: [] });
+    groups.get(key).emails.push(c);
+  });
+  list.replaceChildren(...[...groups.values()].map(({ item, emails }) => {
+    const group = document.createElement("section");
+    group.className = "email-mc-group";
+    applyItemColor(group, item);
+    const head = document.createElement("div");
+    head.className = "email-mc-group-head";
+    const kind = document.createElement("span");
+    kind.className = "email-mc-group-kind";
+    kind.textContent = EMAIL_MC_KIND[item.type].label;
+    const title = document.createElement("span");
+    title.className = "email-mc-group-title";
+    title.textContent = item.title;
+    const dates = document.createElement("span");
+    dates.className = "email-mc-group-dates";
+    dates.textContent = formatDateRange(item.startDate, item.endDate);
+    head.append(kind, title, dates);
+    const body = document.createElement("div");
+    body.className = "email-mc-group-emails";
+    emails.forEach(c => body.appendChild(createEmailMcTaskRow(c)));
+    group.append(head, body);
+    return group;
+  }));
 }
 
 /** Unsent Mailchimp campaigns not linked to a task. */
 async function showEmailMcOtherDrafts() {
   const list = document.getElementById("emailMcList");
   document.getElementById("emailMcMoreBtn").hidden = true;
+  // The pills sort tasks; here they take you back to them.
+  document.querySelectorAll("#emailMcFilters .cal-filter-btn").forEach(btn => {
+    btn.classList.remove("is-active");
+    btn.setAttribute("aria-pressed", "false");
+  });
   list.replaceChildren(Object.assign(document.createElement("div"), { className: "mc-link-empty", textContent: "Loading campaigns from Mailchimp…" }));
   try {
     const all = await callMailchimp("campaigns");
@@ -1280,6 +2107,13 @@ function initEmailView() {
   document.getElementById("emailCopyBtn")?.addEventListener("click", copyEmailHtml);
   document.getElementById("emailMcBtn")?.addEventListener("click", openEmailMcDialog);
   document.getElementById("emailMcCloseBtn")?.addEventListener("click", closeEmailMcDialog);
+  document.querySelectorAll("#emailMcFilters .cal-filter-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      emailMcFilter = btn.dataset.filter;
+      document.getElementById("emailMcMoreBtn").hidden = false;
+      renderEmailMcTasks();
+    });
+  });
   document.getElementById("emailMcMoreBtn")?.addEventListener("click", showEmailMcOtherDrafts);
   document.getElementById("emailMcOverlay")?.addEventListener("click", e => {
     if (e.target.id === "emailMcOverlay") closeEmailMcDialog();
@@ -1290,7 +2124,8 @@ function initEmailView() {
   document.getElementById("emailDownloadBtn")?.addEventListener("click", downloadEmailHtml);
   document.getElementById("emailSaveBtn")?.addEventListener("click", saveEmailDraft);
   document.getElementById("emailRevertBtn")?.addEventListener("click", revertEmailDraft);
-  document.getElementById("emailResetBtn")?.addEventListener("click", resetEmailDraft);
+  document.getElementById("emailCopySaveBtn")?.addEventListener("click", startEmailCopy);
+  setupEmailHtmlWindow();
   window.addEventListener("beforeunload", e => {
     if (getCurrentAppView() === "email" && isEmailDirty()) e.preventDefault();
   });

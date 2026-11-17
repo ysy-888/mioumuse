@@ -13,6 +13,7 @@
  *   availableDate  Available (date → "YYYY-MM", shown as JUL26)
  *   season  Season           descript  Description   category  Category
  *   memo  Memo ("updated by Mass Update" dropped)    receivedQty  Received qty
+ *   user2  Show — 1, 2 or blank
  *   id  N41's record id — see below
  *
  *   A heading that isn't in the file leaves that field as the style has it
@@ -60,6 +61,12 @@ function cleanImportQty(value) {
   if (!text) return "";
   const n = Number(text);
   return Number.isFinite(n) ? String(n) : "";
+}
+
+/** user2 → Show: "1" or "2" ("1.00" too); anything else is "". */
+function cleanImportShow(value) {
+  const n = Number(cleanCell(value));
+  return n === 1 || n === 2 ? String(n) : "";
 }
 
 /** N41's record id: digits, or "". */
@@ -122,6 +129,7 @@ const STYLE_MASTER_COLUMNS = [
   { field: "category", heading: "category", clean: cleanCell },
   { field: "memo", heading: "memo", clean: cleanImportMemo },
   { field: "receivedQty", heading: "receivedqty", clean: cleanImportQty },
+  { field: "show", heading: "user2", clean: cleanImportShow },
   { field: "n41Id", heading: "id", clean: cleanImportId },
 ];
 
@@ -161,6 +169,7 @@ const STYLE_FIELDS = [
   { key: "availableDate", label: "Available", format: v => formatMonYY(v) },
   { key: "receivedQty", label: "Rcvd Qty", format: v => (v === "" || v == null ? "" : Number(v).toLocaleString()) },
   { key: "memo", label: "Memo" },
+  { key: "show", label: "Show" },
 ];
 const STYLE_FIELD_BY_KEY = new Map(STYLE_FIELDS.map(f => [f.key, f]));
 // A record N41 renamed (same id): "P8501 BEIGE/OLIVE" → "P8501ST BEIGE/OLIVE".
@@ -560,7 +569,15 @@ function setStyleImportMessage(text, type = "") {
   el.className = "modal-footer-message" + (type ? ` ${type}` : "");
 }
 
-function openStyleImport() {
+/**
+ * Set by Import N41 Data (js/n41-import.js) when it opens this review:
+ * called once as the window closes — ({ saved, summary, type }).
+ */
+let styleImportAfter = null;
+
+/** The review window, empty or with `file` read into it; `after` as above. */
+function openStyleImport(file = null, after = null) {
+  styleImportAfter = after;
   styleImportPlan = null;
   const input = document.getElementById("styleImportFile");
   if (input) input.value = "";
@@ -571,11 +588,17 @@ function openStyleImport() {
   document.getElementById("styleImportConfirmBtn").textContent = "Import";
   setStyleImportMessage("");
   document.getElementById("styleImportOverlay")?.classList.add("open");
+  if (file) readStyleFile(file);
 }
 
-function closeStyleImport() {
+/** `result`: { saved, summary, type } when confirmed; nothing when cancelled. */
+function closeStyleImport(result = null) {
   document.getElementById("styleImportOverlay")?.classList.remove("open");
   styleImportPlan = null;
+  const after = styleImportAfter;
+  styleImportAfter = null;
+  if (after) after(result ?? { saved: false });
+  else if (result?.summary) showIndicator(result.summary, result.type);
 }
 
 async function readStyleFile(file) {
@@ -673,7 +696,6 @@ async function confirmStyleImport() {
     console.warn("Style import history not saved:", err);
   }
 
-  closeStyleImport();
   if (typeof applyStyleFilters === "function") applyStyleFilters();
   if (plan.renames.length) {
     refreshPhotoshootViews();
@@ -684,11 +706,9 @@ async function confirmStyleImport() {
     (plan.renames.length ? ` (${plan.renames.length.toLocaleString()} renamed)` : "") +
     `, ${newStyles.length.toLocaleString()} new styles, ${newColors.length.toLocaleString()} new colors` +
     (plan.linked.length ? `, ${plan.linked.length.toLocaleString()} linked to their N41 id` : "");
-  if (recorded) {
-    showIndicator(summary, "success");
-  } else {
-    showIndicator(`${summary} — but it couldn't be added to Update history. Add the style_imports table in Supabase (it's in supabase-schema.sql).`, "error");
-  }
+  closeStyleImport(recorded
+    ? { saved: true, summary, type: "success" }
+    : { saved: true, summary: `${summary} — but it couldn't be added to Update history. Add the style_imports table in Supabase (it's in supabase-schema.sql).`, type: "error" });
 }
 
 // ── Update history ───────────────────────────────────────────────────────────
@@ -840,12 +860,9 @@ function isStyleGalleryOpen() {
 }
 
 function initStyleImport() {
-  document.getElementById("headerMenuImportStyles")?.addEventListener("click", () => {
-    closeHeaderMenu();
-    openStyleImport();
-  });
-  document.getElementById("styleImportCloseBtn")?.addEventListener("click", closeStyleImport);
-  document.getElementById("styleImportCancelBtn")?.addEventListener("click", closeStyleImport);
+  // Opened from Import N41 Data (js/n41-import.js) with the Style Master.
+  document.getElementById("styleImportCloseBtn")?.addEventListener("click", () => closeStyleImport());
+  document.getElementById("styleImportCancelBtn")?.addEventListener("click", () => closeStyleImport());
   document.getElementById("styleImportConfirmBtn")?.addEventListener("click", confirmStyleImport);
   const input = document.getElementById("styleImportFile");
   input?.addEventListener("change", () => readStyleFile(input.files?.[0]));

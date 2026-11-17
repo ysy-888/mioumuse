@@ -1159,6 +1159,8 @@ function styleRowToStyle(row) {
     availableDate: String(row.available_date ?? ""),
     memo: String(row.memo ?? ""),
     receivedQty: row.received_qty == null || row.received_qty === "" ? "" : String(Number(row.received_qty)),
+    // The Style Master's user2, shown as "Show": "1", "2" or "".
+    show: String(row.show ?? ""),
     // The ATS report's total_inv_qty (Import ATS), the same way.
     invQty: row.inv_qty == null || row.inv_qty === "" ? "" : String(Number(row.inv_qty)),
     // In-house date — entered in the app, not part of the Style Master.
@@ -1169,7 +1171,7 @@ function styleRowToStyle(row) {
     // ("YYYY-MM-DD", "" = no TOP yet) and on which PO.
     topDate: normalizeYmd(row.top_date),
     topPo: String(row.top_po ?? ""),
-    // Its sample status — "top" | "show" | "pp" | "first", "" for none
+    // Its sample status — "top" | "show" | "pp", "" for none (FIRST is no longer used)
     // (SAMPLE_STATUSES): picked on Need to Shoot / in a shoot, TOP also set
     // by the production sheet import.
     sampleStatus: SAMPLE_STATUS_KEYS.includes(row.sample_status) ? row.sample_status : "",
@@ -1203,6 +1205,7 @@ function styleToRow(style) {
     available_date: style.availableDate ?? "",
     memo: style.memo ?? "",
     received_qty: style.receivedQty === "" || style.receivedQty == null ? null : Number(style.receivedQty),
+    show: style.show ?? "",
     // inv_qty isn't sent: it's the ATS report's (saveStyleAts), like OH / WIP.
     n41_id: /^\d+$/.test(String(style.n41Id ?? "")) ? Number(style.n41Id) : null,
     updated_at: new Date().toISOString(),
@@ -1455,7 +1458,7 @@ async function setStyleNotes(styleNo, color, notes) {
   return style;
 }
 
-/** Set (or clear, with "") one style's sample status: "top" | "show" | "pp" | "first". */
+/** Set (or clear, with "") one style's sample status: "top" | "show" | "pp". */
 async function setStyleSampleStatus(styleNo, color, status) {
   const style = findStyle(styleNo, color);
   if (!style) throw new Error(`${styleNo} ${color} isn't in the Styles database.`);
@@ -2462,18 +2465,27 @@ async function setTaskComplete(taskId, complete) {
 
 // ── E-Mail settings (Marketing → E-Mail, js/email.js) ───────────────────────
 //
-// What you set on an email template: its links and products. One row per
-// template; the template file itself lives in the repo (email-templates/).
-//   { links: { key: url }, products: { gridKey: [{ sku, style, name, url, image }] } }
+// The saved email templates: one row per template. A file template's row holds
+// what you changed on it (its HTML when edited, "" = the file's; links,
+// images, products; a new name). A copy ("copy-…", Save copy) is a row only:
+// its full HTML, its name, and the folder its relative images come from.
+//   { html, name, folder, createdAt, links: { key: url }, images: { key: url },
+//     products: { gridKey: [{ sku, style, name, url, image }] } }
 
 const EMAIL_SETTINGS_SQL = `create table if not exists email_settings (
   user_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
   template_id text not null,
   links jsonb not null default '{}'::jsonb,
+  images jsonb not null default '{}'::jsonb,
   products jsonb not null default '{}'::jsonb,
   updated_at timestamptz not null default now(),
   primary key (user_id, template_id)
 );
+alter table email_settings add column if not exists images jsonb not null default '{}'::jsonb;
+alter table email_settings add column if not exists html text not null default '';
+alter table email_settings add column if not exists name text not null default '';
+alter table email_settings add column if not exists folder text not null default '';
+alter table email_settings add column if not exists created_at timestamptz not null default now();
 alter table email_settings enable row level security;
 drop policy if exists "email_settings: own rows only" on email_settings;
 create policy "email_settings: own rows only" on email_settings
@@ -2483,24 +2495,80 @@ let emailSettingsTableReady = true;
 
 /** Saved settings by template id. A missing table says how to make it. */
 async function loadEmailSettings() {
-  const res = await requireClient().from("email_settings").select("template_id, links, products");
+  const res = await requireClient().from("email_settings")
+    .select("template_id, html, name, folder, created_at, links, images, products");
   emailSettingsTableReady = !res.error;
   if (res.error) {
     throw Object.assign(new Error("Saving needs the email_settings table — copy the SQL and run it in Supabase (SQL Editor), then reload."), { sql: EMAIL_SETTINGS_SQL });
   }
-  return new Map(res.data.map(row => [row.template_id, { links: row.links ?? {}, products: row.products ?? {} }]));
+  return new Map(res.data.map(row => [row.template_id, {
+    html: row.html ?? "",
+    name: row.name ?? "",
+    folder: row.folder ?? "",
+    createdAt: row.created_at ?? "",
+    links: row.links ?? {},
+    images: row.images ?? {},
+    products: row.products ?? {},
+  }]));
 }
 
-async function saveEmailSettings(templateId, settings) {
+function requireEmailSettingsTable() {
   if (!emailSettingsTableReady) {
     throw new Error(`Create the email_settings table in Supabase first (SQL Editor):\n\n${EMAIL_SETTINGS_SQL}`);
   }
+}
+
+/**
+ * Save a template's content. `extra` ({ name, folder }) is for a new copy;
+ * left out, the row keeps the name and folder it has (an upsert only writes
+ * the columns it's given).
+ */
+async function saveEmailSettings(templateId, settings, extra = {}) {
+  requireEmailSettingsTable();
   const { data: { user } } = await requireClient().auth.getUser();
   throwIfError(await requireClient().from("email_settings").upsert({
     user_id: user?.id,
     template_id: templateId,
+    html: settings.html ?? "",
     links: settings.links,
+    images: settings.images ?? {},
     products: settings.products,
+    ...extra,
     updated_at: new Date().toISOString(),
   }, { onConflict: "user_id,template_id" }));
+}
+
+/** A template's name in the list — only the name changes. */
+async function renameEmailTemplate(templateId, name) {
+  requireEmailSettingsTable();
+  const { data: { user } } = await requireClient().auth.getUser();
+  throwIfError(await requireClient().from("email_settings").upsert({
+    user_id: user?.id,
+    template_id: templateId,
+    name,
+    updated_at: new Date().toISOString(),
+  }, { onConflict: "user_id,template_id" }));
+}
+
+/** Delete a copy (its row is all there is of it). */
+async function deleteEmailTemplate(templateId) {
+  requireEmailSettingsTable();
+  throwIfError(await requireClient().from("email_settings").delete().eq("template_id", templateId));
+}
+
+/**
+ * An email image (a new hero …) into the public banners bucket, under the
+ * user's own folder like banner images. Returns its public URL — what the
+ * email links to, so it has to stay up after the email is sent.
+ */
+async function uploadEmailImage(templateId, imageKey, file) {
+  checkBannerFile(file);
+  const client = requireClient();
+  const { data } = await client.auth.getSession();
+  const userId = data?.session?.user?.id;
+  if (!userId) throw new Error("Sign in again to upload images.");
+  const ext = (String(file.name).match(/\.([a-z0-9]+)$/i)?.[1] ?? "jpg").toLowerCase();
+  const path = `${userId}/email/${templateId}/${imageKey}-${Date.now().toString(36)}.${ext}`;
+  throwIfError(await client.storage.from(BANNER_BUCKET).upload(path, file, { contentType: file.type, upsert: false }));
+  return client.storage.from(BANNER_BUCKET).getPublicUrl(path).data?.publicUrl ?? "";
 }

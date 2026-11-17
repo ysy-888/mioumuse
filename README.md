@@ -60,14 +60,15 @@ reference in index.html so the URLs change on every deploy.
 | `js/mailchimp.js` | Mailchimp links on Email tasks — create / edit / schedule / delete, link picker, sync and auto-complete |
 | `supabase/functions/mailchimp/` | Edge Function the app calls for Mailchimp; holds the API key (secret `MAILCHIMP_API_KEY`) |
 | `js/styles.js` | Styles tab — the style database table, Category / Season / N41 Status / IHD header filters, No photos button, search |
-| `js/style-import.js` | Import CSV — reads the N41 style export in the browser, lists every change under Update / New Styles / New Colors tabs, saves, and records it for Update history |
+| `js/n41-import.js` | Import N41 Data — one window with drop boxes for the Style Master, PO detail and ATS report; saves them in that order |
+| `js/style-import.js` | The Style Master (from Import N41 Data) — reads the N41 style export in the browser, lists every change under Update / New Styles / New Colors tabs, saves, and records it for Update history |
 | `js/style-images.js` | Style photos from a linked network folder — matched by file name, thumbnails, gallery |
 | `js/sample-photos.js` | Sample photos: a second linked folder, written to when an image file is dropped on a style with no model photos |
 | `js/style-pane.js` | The style pane — a style's details, POs and photos, opened from Styles, Need to Shoot and POs |
 | `js/photoshoots.js` | The Photoshoots and Need to Shoot pages — the shoots list, the Need to Shoot list, the shoot side pane, shoot status badges |
 | `js/complete.js` | The Complete page — the history of styles shot (photoshoot) or made in CG, filtered by how |
 | `js/production-import.js` | Import Production Sheet — reads the production .xlsx and sets the sample status of each Style # + Color with a TOP date to TOP |
-| `js/ats-import.js` | Import ATS — N41's ATS report → each Style # + Color's OH / WIP / OO / ATS / Inv Qty |
+| `js/ats-import.js` | The ATS report (from Import N41 Data) — N41's ATS report → each Style # + Color's OH / WIP / OO / ATS / Inv Qty |
 | `js/purchase-orders.js` | The POs page — importing N41's PO export, New / Recut / New Color, the month list (counts of styles without photos, auto-archiving), POs by ETA month with each colour and its shoot buttons |
 | `js/photoshoot-form.js` | Create / edit photoshoot modal |
 | `js/magento-sales.js` | Magento → Orders and Customers (read-only): lists with Status / Group filters, date quick filters, search, sort, paging; the order / customer pane |
@@ -494,12 +495,18 @@ Links live in the `task_links` table (see `supabase-schema.sql`).
 ## Styles database
 
 The **Styles** tab holds every Style # + Color from N41's Style Master.
-**Import CSV** (header menu ⋮) reads it in the browser (SheetJS, loaded
-only when importing) — the file itself is never uploaded. The Style Master
+**Import N41 Data** (header menu ⋮ on Styles, POs and Magento → Products)
+is one window with three boxes — Style Master, PO Detail, ATS Report — each
+taking a .csv or Excel file by drop or click to browse. Any of them can be
+given; Import saves them in that order (the Style Master after its changes
+are reviewed, below; cancelling that review goes back to the window with the
+files kept), so styles it adds get their POs and stock. The PO detail and
+ATS report are read as soon as they're picked, so a wrong file shows in its
+box. Files are read in the browser (SheetJS, loaded only when importing) —
+never uploaded. The Style Master
 (.csv or .xlsx, headings in row 1: style, color, status, availableDate…).
 It's the source of **style information** only — the stock figures come from
-the ATS report (**Import ATS**, below) and the POs from the PO detail
-(**Import N41 POs**). Columns are found by their headings, so N41 can add or
+the ATS report and the POs from the PO detail. Columns are found by their headings, so N41 can add or
 move columns:
 
 | Heading | Field |
@@ -513,14 +520,20 @@ move columns:
 | category | Category |
 | memo | Memo — the "updated by Mass Update" notes N41 adds are dropped |
 | receivedQty | Received qty |
+| user2 | Show — 1, 2 or blank; its own column (with a filter) in the Styles table |
 | id | N41's record id — matches a style even after N41 renames it (below) |
 
 A heading that isn't in the file leaves that field as each style has it (new
 ones get none) — an older export without `category` keeps the categories.
-Available and Inv Qty show as columns in the Styles table (with the ATS
-report's OH, WIP, OO and ATS beside them — each sorts and filters by above 0
-/ 0 or blank / below 0); Available, Rcvd Qty, Inv Qty and Memo show in the
-style pane. They need columns on the styles table — run the
+Available shows as a column in the Styles table, and the figures share one
+**Qty** column in the style pane's order — OH / WIP / OO / ATS / Received /
+Invoiced (Inv Qty), formatted the same way; each figure's sub-header sorts
+and filters it (above 0 / 0 or blank / below 0). The style pane reads, top to bottom: Available (the
+month pill, with the IHD beside it once its ETA is confirmed — typed in here
+for a colour on no PO) and Category; Memo on its own row; a box of OH / WIP /
+OO / ATS / Received / Invoiced (Inv Qty), each key over its figure — 0 or
+blank is a light dash, except ATS, which reads 0 and is green above 0, red at
+or below; then Notes; then the POs. They need columns on the styles table — run the
 `available_date` / `memo` / `received_qty` / `inv_qty` lines in
 `supabase-schema.sql` first.
 
@@ -531,7 +544,7 @@ rules as the Magento tab's Available column — *Available*, *Not available*
 (why not in the tooltip) or *Not on Magento*. Last time's Magento catalog
 shows at once; a fresh check runs once per visit.
 
-Import CSV reads only the Style Master (the ATS report goes in through Import ATS).
+The Style Master box reads only the Style Master (the ATS report has its own box).
 Any row without a Style # is skipped. Before anything is saved, every
 change is listed under three tabs — the count boxes across the top (the file and a search box sit in the window's header):
 
@@ -605,12 +618,14 @@ no style, and TOP cells that aren't dates, and saves only on confirm
 (`top_date` / `top_po` — run the styles SQL in `supabase-schema.sql`; the
 latest date wins), and sets that colour's sample status to **TOP**.
 
-**Sample status** — TOP, SHOW, PP or FIRST (`sample_status`, blank for none)
-— is picked from a dropdown on Need to Shoot (after the shoot buttons) and in
+**Sample status** — TOP, SHOW or PP (`sample_status`, blank for none; FIRST
+was dropped, and an old FIRST reads as none) — is picked from a dropdown on Need to Shoot (after the shoot buttons) and in
 a shoot's style list (its own Sample column); it saves as soon as it's picked. The
 import above only ever sets TOP, and only for a newer TOP date, so a status
 picked by hand stays through a re-import of the same sheet. Elsewhere (Styles,
-POs, the style pane) it shows as a plain, uncoloured read-only pill, with the
+POs, the style pane) it shows as a plain, uncoloured read-only pill. One
+exception: a colour whose **Show** is 1 or 2 but whose sample is only **PP**
+is flagged — the dropdown or pill turns red with a ⚑. A TOP pill shows the
 TOP date and PO on hover.
 
 Banner Style # fields look styles up as you type: suggestions, the style's
@@ -753,7 +768,7 @@ carry an old one: an Available month before the PO's own date doesn't
 count, and the ETA's month is used.
 
 After the buttons, a scheduled or shot date shows with a camera — click it to open that photoshoot on
-the Photoshoots page. The sample status (TOP / SHOW / PP / FIRST) has its
+the Photoshoots page. The sample status (TOP / SHOW / PP) has its
 own narrow space after that — a dropdown on Need to Shoot and in a shoot's
 style list, a pill elsewhere — so the buttons and dates line up whether a
 style has one or not.
@@ -828,7 +843,7 @@ hidden unless **Show Company POs** is ticked.
 description, status), each style with all of its POs; the menu beside the
 search box switches to **This month** to search just the month picked.
 
-**Importing:** menu ⋮ → **Import N41 POs** and pick N41's PO export
+**Importing:** menu ⋮ → **Import N41 Data**, PO Detail box: N41's PO export
 (`po.xls`, headings in row 1). It's the only layout read; these columns are
 used, found by their headings (the letters if a heading moves):
 
@@ -913,7 +928,7 @@ you open the page. Its date, type, model (and when it was completed) are on
 the line under its name. Beside them, on the same row: its Planned / Complete
 status and ⋮ menu, then one shaded strip with how many Styles and Outfits it
 has (a set's pieces in one colour are one outfit) and how many are TOP / SHOW
-/ PP / FIRST / None — wrapping under when the pane is narrow (Home). Its notes
+/ PP / None — wrapping under when the pane is narrow (Home). Its notes
 are below. Its styles
 are numbered, in columns: photo, Style # (its Color beside it), Available
 (its IHD under the pill when it has one, read-only), Sample (the sample
@@ -968,18 +983,18 @@ A set's pieces are still pulled together after that.
   report**. The report is headed "Photoshoot" and the shoot's name, has the
   shoot details and notes, plus a ☐ Shot column to tick on set, and lists the
   styles in the shoot's order: Style #, Color, Available (the IHD under the
-  pill when there is one), Sample status (TOP / SHOW / PP / FIRST),
+  pill when there is one), Sample status (TOP / SHOW / PP),
   Description, Type and Notes. Its header ends with a shaded box of quantities,
   each label over its number like the rest of the header: Styles and Outfits
   (a set's pieces in one colour count as one outfit) larger, then TOP, SHOW,
-  PP, FIRST and None — the same counts as the shaded strip in the shoot's
+  PP and None — the same counts as the shaded strip in the shoot's
   header in the app (which updates as a status is picked).
   Under **PDF report**, the same report in another order (the shoot's own
   order doesn't change; the header says "Sorted by …"). A set's pieces in one
   colour always stay together:
   - **By Available**: as the Available heading sorts — Available month, then
     IHD, a style group kept whole.
-  - **By Sample**: TOP, SHOW, PP, FIRST, then none (a set goes by its pieces'
+  - **By Sample**: TOP, SHOW, PP, then none (a set goes by its pieces'
     highest status).
   - **By Style**: sets first, then everything else, each by Style # (D850
     before D1200) and colour.
@@ -1011,8 +1026,9 @@ A set's pieces are still pulled together after that.
   - Campaigns, Trade Shows: **Export CSV**, that page's records and tasks.
   - Platforms: **Export PDF**.
   - Need to Shoot: **Export CSV** and **Export PDF**, the list.
-  - POs: **Import N41 POs**, **Import Production Sheet** and **Export PDF**.
-  - Styles and Magento → Products: **Import ATS** — N41's ATS report (.xls):
+  - POs: **Import N41 Data**, **Import Production Sheet** and **Export PDF**.
+  - Styles, POs and Magento → Products: **Import N41 Data** (Style Master,
+    PO detail, ATS report). The ATS report (.xls):
     F style + G color find the Style # + Color; K onhand, L wip, M onorder,
     N ats and total_inv_qty are saved as OH / WIP / OO / ATS / Inv Qty
     (styles not in the report keep theirs). Products shows them as **OH**, **WIP**, **OO** and **N41 ATS**
@@ -1022,7 +1038,7 @@ A set's pieces are still pulled together after that.
     and Pre-Order Date sort and filter in the app, from the catalog index
     (Pre-Order Date needs the magento function redeployed); sorted by one of
     them, items aren't pulled under their groups, and blanks go last.
-  - Styles: **Import CSV**, **Import Production Sheet**, **Export CSV** (the filtered styles), **Update
+  - Styles: **Import N41 Data**, **Import Production Sheet**, **Export CSV** (the filtered styles), **Update
     History**, and the image folder's Link / Reconnect / Rescan and Unlink.
   - Magento → Products, Orders, Customers: **Export CSV**. Products: every
     product matching the filters, search and sort (all pages, fetched from

@@ -30,6 +30,8 @@
 
 /** sku → { type, status, visibility, qty, inStock } — null until loaded. */
 let mgIndex = null;
+/** Group conditions and children per Magento record, before SKU aggregation. */
+let mgGroupCatalogRecords = new Map();
 let mgIndexLoading = null;
 let mgIndexError = "";
 /** Grouped SKU → its items as Magento's API lists them (enabled only) — used before groups are imported. */
@@ -53,6 +55,24 @@ let mgCatalogSalableRun = 0;
  * and categories — then the app can filter and sort by itself (mgLocalSkus).
  */
 function mgIndexFromRows(rows) {
+  mgGroupCatalogRecords = new Map();
+  for (const row of rows ?? []) {
+    if (row[1] !== "grouped" || typeof row[11] !== "string") continue;
+    const sku = String(row[0]);
+    if (!mgGroupCatalogRecords.has(sku)) mgGroupCatalogRecords.set(sku, []);
+    mgGroupCatalogRecords.get(sku).push({ status: Number(row[2]), visibility: Number(row[3]), inStock: row[5], children: row[11] ? row[11].split(",") : [] });
+  }
+  const seenSkus = new Set();
+  for (const row of rows ?? []) {
+    if (seenSkus.has(String(row[0]))) mgDuplicateSkus.add(String(row[0]));
+    seenSkus.add(String(row[0]));
+  }
+  // A newer helper adds each Grouped product's live items — so an item put in
+  // a group since the imported export counts as in it (js/magento-groups.js).
+  const live = (rows ?? [])
+    .filter(row => row[1] === "grouped" && typeof row[11] === "string")
+    .map(row => [String(row[0]), row[11] ? row[11].split(",") : [], row[12]]);
+  if (live.length) setMgLiveGroups(live, new Set((rows ?? []).filter(row => Number(row[2]) === 1).map(row => String(row[0]))));
   return new Map((rows ?? []).map(([sku, type, status, visibility, qty, inStock, name, price, updatedAt, categoryIds, preOrderDate]) =>
     [sku, {
       type, status, visibility, qty, inStock,
@@ -106,7 +126,13 @@ async function loadMgIndex({ force = false } = {}) {
       saveMgIndexCache(res?.products ?? []);
       mgIndexError = "";
       // The page on screen may have been filled from last time's catalog.
-      mgPage.items.forEach(fillMgStockFromIndex);
+      forgetMgSkuList();
+      mgPage.items.forEach(p => applyMgGroups(fillMgStockFromIndex(p)));
+      if (mgPane) {
+        applyMgGroups(mgPane.saved);
+        applyMgGroups(mgPane.draft);
+      }
+      if (mgFlaggedOnly) await loadMagentoProducts();
       loadMgCatalogSalable();
     } catch (err) {
       mgIndexError = err.message || "Couldn't check availability.";
@@ -199,6 +225,11 @@ function mgStockParams() {
 }
 
 function fillMgStockFromIndex(p) {
+  if (mgDuplicateSkus.has(p.sku)) {
+    p.qty = null;
+    p.inStock = null;
+    return p;
+  }
   const r = mgIndex?.get(p.sku);
   if (r) {
     p.qty = p.type === "grouped" ? null : r.qty;
@@ -263,6 +294,18 @@ function mgAvailability(sku) {
   if (!mgGroups) return { available: null, reasons: ["Import groups to check its group"] };
   const group = mgChildGroup.get(sku);
   if (!group) return { available: false, reasons: ["Not in a group"] };
+  const duplicateParents = mgDuplicateSkus.has(group) ? mgGroupCatalogRecords.get(group) : null;
+  if (duplicateParents?.length) {
+    const linkedParents = duplicateParents.filter(parent => parent.children.includes(sku));
+    if (linkedParents.length) {
+      const visible = linkedParents.filter(parent => parent.status === 1 && parent.visibility !== 1);
+      if (visible.some(parent => parent.inStock === true)) return { available: own.ok, reasons: own.reasons };
+      if (!visible.length) return { available: false, reasons: [`Group ${group} is disabled or not visible in the catalog`] };
+      if (visible.every(parent => parent.inStock === false)) return { available: false, reasons: [`Group ${group} is Out of Stock`] };
+      return { available: null, reasons: ["Group Stock Status not known"] };
+    }
+    return { available: null, reasons: ["Duplicate group membership needs a fresh catalog check"] };
+  }
   const g = mgOwnConditions(group);
   const gVisible = mgIndex.get(group)?.visibility !== 1;
   if (g.ok === false || !gVisible) {
@@ -284,8 +327,30 @@ function isMgFlagged(sku) {
 /** The table's Available cell: the label — why not is in its tooltip. */
 function createMgAvailCell(product) {
   const { available, reasons } = mgAvailability(product.sku);
-  const wrap = document.createElement("span");
+  const groupSku = product.visibility === 1 ? mgChildGroup.get(product.sku) : null;
+  const base = String(mgStore?.baseUrl || "https://www.mioumuse.com/").replace(/\/?$/, "/");
+  const wrap = document.createElement("a");
   wrap.className = "mg-avail-cell";
+  wrap.target = "_blank";
+  wrap.rel = "noopener noreferrer";
+  wrap.style.textDecoration = "none";
+  wrap.href = product.urlKey ? `${base}${product.urlKey}.html` : `${base}catalog/product/view/id/${encodeURIComponent(product.id)}`;
+  wrap.addEventListener("click", async event => {
+    event.stopPropagation();
+    if (!groupSku) return;
+    event.preventDefault();
+    const page = window.open("about:blank", "_blank");
+    if (page) page.opener = null;
+    try {
+      const group = await callMagento("product", { sku: groupSku });
+      const url = group.urlKey ? `${base}${group.urlKey}.html` : `${base}catalog/product/view/id/${encodeURIComponent(group.id)}`;
+      wrap.href = url;
+      if (page) page.location.replace(url);
+    } catch (error) {
+      page?.close();
+      showIndicator(`Couldn't open the product page: ${error.message}`, "error");
+    }
+  });
   const pill = document.createElement("span");
   pill.className = `mg-avail-pill ${available === true ? "is-yes" : available === false ? "is-no" : "is-unknown"}`;
   pill.textContent = available === true ? "Available" : available === false ? "Not available" : "?";
@@ -446,7 +511,7 @@ async function mgFilteredSkus() {
   if (!mgIndex) await loadMgIndex();
   if (mgAvailFilter && !mgIndex) throw new Error(`Availability can't be checked: ${mgIndexError || "the catalog didn't load"}`);
   // A full catalog answers it here — no calls to Magento at all.
-  if (mgIndexIsFull()) {
+  if (mgIndexIsFull() && !mgDuplicateSkus.size) {
     const skus = mgLocalSkus().filter(passesMgClientFilter);
     return isMgLocalSort() ? sortMgSkusLocally(skus) : skus;
   }
@@ -464,15 +529,28 @@ async function mgFilteredSkus() {
 async function loadMgProductsBySku(skus) {
   if (!skus.length) return [];
   // The SKUs were already picked with the filters, so only they are sent.
-  const res = await callMagento("products", { sort: mgQuery.sort, dir: mgQuery.dir, ...mgStockParams(), page: 1, pageSize: skus.length, skus });
-  const bySku = new Map((res?.items ?? []).map(p => [p.sku, p]));
-  return skus.map(sku => bySku.get(sku)).filter(Boolean);
+  const res = await callMagento("products", { ...mgQuery, ...mgStockParams(), page: 1, pageSize: skus.length, skus });
+  const items = res?.items ?? [];
+  rememberMgProducts(items);
+  const order = new Map(skus.map((sku, i) => [sku, i]));
+  return items.sort((a, b) => order.get(a.sku) - order.get(b.sku) || Number(a.id) - Number(b.id));
 }
 
 /** The page wanted, when a filter Magento can't apply is on. */
 async function loadMgClientFilteredPage() {
   const skus = await mgFilteredSkus();
   const from = (mgQuery.page - 1) * mgQuery.pageSize;
+  if (mgDuplicateSkus.size) {
+    // SKU-based filters can match several IDs. Page the actual records so
+    // duplicate records cannot disappear at a page boundary or skew totals.
+    const uniqueSkus = [...new Set(skus)];
+    const records = new Map();
+    for (let i = 0; i < uniqueSkus.length; i += 200) {
+      for (const p of await loadMgProductsBySku(uniqueSkus.slice(i, i + 200))) records.set(mgProductKey(p), p);
+    }
+    const items = [...records.values()];
+    return { items: items.slice(from, from + mgQuery.pageSize), total: items.length, page: mgQuery.page, pageSize: mgQuery.pageSize };
+  }
   return { items: await loadMgProductsBySku(skus.slice(from, from + mgQuery.pageSize)), total: skus.length, page: mgQuery.page, pageSize: mgQuery.pageSize };
 }
 

@@ -18,7 +18,7 @@
  * The three style reports (Need to Shoot, a photoshoot, POs) are landscape
  * and share their columns: photo, Style #, Color, Description, Type (from
  * the PO), Available, Shoot (Photoshoot / CG) and Notes. A photoshoot's own
- * report has Sample (TOP / SHOW / PP / FIRST) after Color in place of Shoot.
+ * report has Sample (TOP / SHOW / PP) after Color in place of Shoot.
  * A set's pieces are boxed together and kept on one page.
  */
 
@@ -337,7 +337,7 @@ function styleExportFields(styleNo, color) {
     ihd: style?.ihd ?? "",
     availableDate: style?.availableDate ?? "",
     notes: style?.notes ?? "",
-    // TOP / SHOW / PP / FIRST, "" for none.
+    // TOP / SHOW / PP, "" for none.
     sampleStatus: style?.sampleStatus ?? "",
     // From its PO, not chosen (js/store.js getShootType).
     type: getShootType(styleNo, color),
@@ -408,7 +408,7 @@ function reportStyleColumns(rows) {
 /** A row's Available month as the pill (amber when it disagrees with the PO), "–" without one. */
 function reportAvailableHtml(r) {
   return r.availableDate
-    ? `<span class="available-pill${r.style?.availMismatch ? " is-mismatch" : ""}">${escapeReportHtml(formatMonYY(r.availableDate))}</span>`
+    ? `<span class="available-pill${r.style?.availMismatch ? " is-mismatch" : ""}">${escapeReportHtml(formatAvailableMonth(r.availableDate))}</span>`
     : "–";
 }
 
@@ -533,7 +533,7 @@ function compareStyleNos(a, b) {
  * A shoot's styles in a PDF order — whole outfits moved (a set's pieces in
  * one colour stay together), ties kept in the shoot's order:
  *   available — as the Available heading sorts: Available, then IHD
- *   sample    — TOP, SHOW, PP, FIRST, then none (a set by its pieces' highest status)
+ *   sample    — TOP, SHOW, PP, then none (a set by its pieces' highest status)
  *   style     — sets first, then the rest, each by Style # and colour
  */
 function shootStylesInOrder(shoot, order) {
@@ -574,7 +574,7 @@ function exportShootPdf(id, order = "") {
       ["Model", shoot.model || "—"],
       ["Status", shoot.status === "complete" ? "Complete" : "Planned"],
       // On one shaded box: Styles, Outfits (a set's pieces in one colour
-      // count as one), then how many are TOP / SHOW / PP / FIRST / None.
+      // count as one), then how many are TOP / SHOW / PP / None.
       ["Styles", String(rows.length), { qty: true, total: true }],
       ["Outfits", String(countShootOutfits(shoot.styles)), { qty: true, total: true }],
       ...countSampleStatuses(rows).map(s => [s.label, String(s.count), { qty: true }]),
@@ -901,13 +901,13 @@ function exportPoPdf() {
     columns: [
       cols.styleNo, cols.color, cols.description,
       {
-        label: "PO # · ETA",
+        label: "PO #",
         cell: r => ({
-          html: r.pos.map(po => `${escapeReportHtml(po.poNo)} · ${!po.eta || isPlaceholderDate(po.eta) ? "–" : escapeReportHtml(formatReportDate(po.eta))}${po.statuses.size ? ` <span class="sub-note">${escapeReportHtml(po.statuses.size > 1 ? "Part closed" : [...po.statuses][0])}</span>` : ""}`).join("<br>"),
+          html: r.pos.map(po => po.statuses.size === 1 && po.statuses.has("Closed") ? `<s>${escapeReportHtml(po.poNo)}</s>` : escapeReportHtml(po.poNo)).join("<br>"),
           className: "nowrap",
         }),
       },
-      cols.type, cols.available,
+      cols.type, cols.availableIhd,
       { label: "N41", cell: r => ({ text: r.n41, className: "nowrap" }) },
       cols.shoot, cols.notes,
     ],

@@ -6,7 +6,9 @@
 <title>MIOU MUSE</title>
 <link rel="icon" href="favicon.png?v=2" type="image/png" />
 <link rel="apple-touch-icon" href="favicon.png?v=2" />
-<link rel="stylesheet" href="crm.css?v=20261116-1923" />
+<!-- CodeMirror's own styles (before crm.css, which recolours it); its scripts load when Edit HTML is first opened (js/email.js). -->
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.css" />
+<link rel="stylesheet" href="crm.css?v=20261116-1652" />
 </head>
 <body>
 
@@ -109,17 +111,13 @@
           <span>Classic chips</span>
           <svg class="header-menu-item-check" xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg>
         </button>
-        <button type="button" class="header-menu-item" id="headerMenuImportStyles" role="menuitem" data-pages="styles">
+        <button type="button" class="header-menu-item" id="headerMenuImportN41Data" role="menuitem" data-pages="styles pos magento:products">
           <svg class="header-menu-item-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M17 8l-5-5-5 5"/><path d="M12 3v12"/></svg>
-          <span>Import CSV</span>
+          <span>Import N41 Data</span>
         </button>
         <button type="button" class="header-menu-item" id="headerMenuImportProduction" role="menuitem" data-pages="styles pos">
           <svg class="header-menu-item-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M17 8l-5-5-5 5"/><path d="M12 3v12"/></svg>
           <span>Import Production Sheet</span>
-        </button>
-        <button type="button" class="header-menu-item" id="headerMenuImportAts" role="menuitem" data-pages="styles magento:products">
-          <svg class="header-menu-item-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M17 8l-5-5-5 5"/><path d="M12 3v12"/></svg>
-          <span>Import ATS</span>
         </button>
         <button type="button" class="header-menu-item" id="headerMenuImportGroups" role="menuitem" data-pages="magento:products">
           <svg class="header-menu-item-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M17 8l-5-5-5 5"/><path d="M12 3v12"/></svg>
@@ -128,10 +126,6 @@
         <button type="button" class="header-menu-item" id="headerMenuImportN41" role="menuitem" data-pages="magento:orders">
           <svg class="header-menu-item-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M17 8l-5-5-5 5"/><path d="M12 3v12"/></svg>
           <span>Import N41 Sales Orders</span>
-        </button>
-        <button type="button" class="header-menu-item" id="headerMenuImportPoColors" role="menuitem" data-pages="pos">
-          <svg class="header-menu-item-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M17 8l-5-5-5 5"/><path d="M12 3v12"/></svg>
-          <span>Import N41 POs</span>
         </button>
         <button type="button" class="header-menu-item" id="headerMenuExportCsv" role="menuitem" data-pages="campaigns tradeShows needToShoot styles magento:products magento:orders magento:customers">
           <svg class="header-menu-item-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5"/><path d="M12 3v12"/></svg>
@@ -330,8 +324,6 @@
       <option value="all">All months</option>
       <option value="month">This month</option>
     </select>
-    <input type="file" id="poN41File" accept=".xlsx,.xls" hidden />
-    <input type="file" id="atsImportFile" accept=".xlsx,.xls" hidden />
   </div>
 
   <!-- Colours with no photos not on Need to Shoot yet (js/purchase-orders.js). -->
@@ -443,6 +435,7 @@
       <button type="button" class="filter-btn mg-flagged-btn" id="mgFlaggedBtn">Flagged</button>
       <div class="selection-bar" id="mgSelectionBar" hidden>
         <span class="selection-count" id="mgSelectionCount"></span>
+        <button type="button" class="btn" id="mgBulkAddGroupsBtn">Add to matching groups</button>
         <button type="button" class="btn" id="mgBulkEnableBtn">Enable</button>
         <button type="button" class="btn" id="mgBulkDisableBtn">Disable</button>
         <select class="form-input selection-select" id="mgBulkAddCategory" aria-label="Add to a category"></select>
@@ -542,6 +535,10 @@
     <button type="button" class="btn btn-primary" id="emailMcBtn" title="Put this email into a Mailchimp campaign">
       <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4z"/></svg>
       Send to Mailchimp
+    </button>
+    <button type="button" class="btn" id="emailHtmlBtn" title="Edit the email's HTML — its text and anything else">
+      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true"><path d="m16 18 6-6-6-6M8 6l-6 6 6 6"/></svg>
+      Edit HTML
     </button>
     <button type="button" class="btn" id="emailCopyBtn" title="Copy the email's HTML for Mailchimp (Code your own)">
       <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
@@ -752,15 +749,11 @@
         <col class="col-description" />
         <col class="col-category" />
         <col class="col-season" />
+        <col class="col-show" />
         <col class="col-status" />
         <col class="col-magento" />
         <col class="col-available" />
-        <col class="col-invqty" />
-        <col class="col-qty" />
-        <col class="col-qty" />
-        <col class="col-qty" />
-        <col class="col-qty" />
-        <col class="col-ihd" />
+        <col class="col-qtys" />
         <col class="col-shoot" />
         <col class="col-notes" />
       </colgroup>
@@ -773,21 +766,25 @@
           <th data-col="description">Description</th>
           <th data-col="category">Category</th>
           <th data-col="season">Season</th>
+          <th data-col="show" title="The Style Master's user2: 1, 2 or blank">Show</th>
           <th data-col="status">N41 Status</th>
           <th data-col="magento" title="Showing on the webstore: the colour's Magento item (STYLE#-COLOR) is enabled, in stock, salable qty above 0, and in an available group">Magento Status</th>
           <th data-col="available" title="N41 available date">Available</th>
-          <th data-col="invQty" title="Inventory qty, from N41's ATS report (Import ATS)">Inv Qty</th>
-          <th data-col="oh" title="On hand, from N41's ATS report (Import ATS)">OH</th>
-          <th data-col="wip" title="Work in progress, from N41's ATS report">WIP</th>
-          <th data-col="oo" title="On order, from N41's ATS report">OO</th>
-          <th data-col="ats" title="Available to sell, from N41's ATS report">ATS</th>
-          <th data-col="ihd" title="In-house date">IHD</th>
+          <!-- One column, a sub-header per figure — each sorts and filters (js/styles.js). -->
+          <th data-col="qtys" class="th-qtys" data-label="Qty (OH / WIP / OO / ATS / Received / Invoiced)"><span class="style-qtys style-qtys-head">
+            <span class="style-qty-head" data-col="oh" title="On hand, from N41's ATS report (Import N41 Data)">OH</span>
+            <span class="style-qty-head" data-col="wip" title="Work in progress, from N41's ATS report">WIP</span>
+            <span class="style-qty-head" data-col="oo" title="On order, from N41's ATS report">OO</span>
+            <span class="style-qty-head" data-col="ats" title="Available to sell, from N41's ATS report">ATS</span>
+            <span class="style-qty-head" data-col="receivedQty" title="Received qty, from the Style Master">Received</span>
+            <span class="style-qty-head" data-col="invQty" title="Total inv qty, from N41's ATS report">Invoiced</span>
+          </span></th>
           <th data-col="shoot">Shoot</th>
           <th data-col="notes">Notes</th>
         </tr>
       </thead>
       <tbody id="stylesTableBody">
-        <tr class="state-row"><td colspan="18">Loading styles…</td></tr>
+        <tr class="state-row"><td colspan="14">Loading styles…</td></tr>
       </tbody>
     </table>
     </div>
@@ -898,17 +895,30 @@
         </div>
       </div>
     </div>
-    <aside class="email-edit" aria-label="Edit email">
+    <aside class="email-edit" id="emailEditPanel" aria-label="Edit email">
+      <!-- Drag to make the panel wider or narrower (js/email.js). -->
+      <div class="email-edit-resizer" id="emailEditResizer" role="separator" aria-orientation="vertical" aria-label="Resize the panel" title="Drag to resize"></div>
+      <!-- Edit HTML: fills the panel in place of the links (js/email.js). -->
+      <section class="email-html-pane" id="emailHtmlPane" aria-labelledby="emailHtmlTitle" hidden>
+        <div class="email-html-bar">
+          <h2 id="emailHtmlTitle">Edit HTML</h2>
+          <input type="search" class="email-html-find" id="emailHtmlFind" placeholder="Find… (Enter, Shift+Enter)" aria-label="Find in the HTML" />
+          <button type="button" class="email-icon-btn" id="emailHtmlCloseBtn" title="Back to the links (edits stay — Save to keep them)" aria-label="Close Edit HTML">✕</button>
+        </div>
+        <p class="email-html-hint">Click any text in the preview to find it here. The preview updates as you type.</p>
+        <div class="email-html-editor" id="emailHtmlEditor"></div>
+      </section>
       <div class="email-edit-head">
         <h2>Edit</h2>
-        <button type="button" class="btn-link email-reset" id="emailResetBtn" title="Back to the template's own links and products">Reset to template</button>
       </div>
       <p class="email-edit-hint">Click any button or photo in the preview to jump to its link.</p>
       <div class="email-edit-body" id="emailEditBody"></div>
+      <!-- Save updates this template; Save copy makes a new one (named in the list). -->
       <div class="email-edit-foot">
         <span class="email-save-state" id="emailSaveState"></span>
         <button type="button" class="btn" id="emailRevertBtn" disabled>Revert</button>
-        <button type="button" class="btn btn-primary email-save-btn" id="emailSaveBtn" disabled>Save</button>
+        <button type="button" class="btn" id="emailCopySaveBtn" title="Save what's on screen as a new template">Save copy</button>
+        <button type="button" class="btn btn-primary email-save-btn" id="emailSaveBtn" disabled title="Save changes to this template">Save</button>
       </div>
     </aside>
   </div>
@@ -931,7 +941,7 @@
       </colgroup>
       <thead>
         <tr>
-          <th data-col="po" title="PO #, its IHD (the ETA) and New / Recut / New Color">PO · IHD</th>
+          <th data-col="po" title="PO # and New / Recut / New Color">PO</th>
           <th data-col="image" aria-label="Photo"></th>
           <th data-col="color">Color</th>
           <th data-col="available" title="N41 available date (Style Master) — the month the colour is filed under">Available</th>
@@ -1126,8 +1136,8 @@
           <th data-col="status">Status</th>
           <th data-col="available" title="Showing on the webstore: enabled, in stock, salable qty above 0, and (for an item) in an available group">Available</th>
           <th data-col="n41Avail" title="N41's available month for this Style # + Color (the Style Master)">N41&#10;Available</th>
-          <th data-col="n41Inv" title="Inventory qty for this Style # + Color, from N41's ATS report (Import ATS)">Inv&#10;Qty</th>
-          <th data-col="n41Oh" title="On hand, from N41's ATS report (Import ATS)">OH</th>
+          <th data-col="n41Inv" title="Inventory qty for this Style # + Color, from N41's ATS report (Import N41 Data)">Inv&#10;Qty</th>
+          <th data-col="n41Oh" title="On hand, from N41's ATS report (Import N41 Data)">OH</th>
           <th data-col="n41Wip" title="Work in progress, from N41's ATS report">WIP</th>
           <th data-col="n41Oo" title="On order, from N41's ATS report">OO</th>
           <th data-col="n41Ats" title="Available to sell, from N41's ATS report (Magento's own is the ATS column)">N41&#10;ATS</th>
@@ -1463,6 +1473,7 @@
 
 <footer id="appFooter" class="app-footer">
   <div class="app-footer-message-slot">
+    <span id="mgGroupProgress" class="save-indicator" role="status" aria-live="polite" hidden></span>
     <div class="save-indicator-wrap" id="saveIndicatorWrap" hidden>
       <div class="save-indicator" id="saveIndicator" role="alert" aria-live="polite"></div>
       <button type="button" class="message-dismiss-btn save-indicator-dismiss" id="saveIndicatorDismiss" aria-label="Dismiss message" hidden>✕</button>
@@ -1915,17 +1926,23 @@
   </div>
 </div>
 
-<!-- ── E-Mail → Send to Mailchimp: which campaign gets the HTML (js/email.js) ── -->
+<!-- ── E-Mail → Send to Mailchimp: which email gets the HTML (js/email.js) ──
+     Titled with the template's name; the Email tasks grouped by their
+     campaign or trade show, in its colour, each with its own button. -->
 <div id="emailMcOverlay" class="modal-backdrop">
-  <div class="modal-card company-form-card mc-link-card" role="dialog" aria-modal="true" aria-labelledby="emailMcTitle">
+  <div class="modal-card company-form-card mc-link-card email-mc-card" role="dialog" aria-modal="true" aria-labelledby="emailMcTitle">
     <div class="modal-header">
-      <h3 id="emailMcTitle">Send to Mailchimp</h3>
+      <h3 id="emailMcTitle"></h3>
       <button type="button" class="btn-close" id="emailMcCloseBtn" aria-label="Close">✕</button>
     </div>
     <div class="modal-body mc-link-body">
-      <span class="mc-form-task" id="emailMcLabel"></span>
       <div class="email-mc-warning" id="emailMcWarning" hidden></div>
-      <div class="mc-link-list" id="emailMcList"></div>
+      <div class="email-mc-filters" id="emailMcFilters" role="group" aria-label="Show">
+        <button type="button" class="cal-filter-btn" data-filter="all">All</button>
+        <button type="button" class="cal-filter-btn" data-filter="campaign" data-kind="campaign">Campaign</button>
+        <button type="button" class="cal-filter-btn" data-filter="show" data-kind="show">Trade show</button>
+      </div>
+      <div class="mc-link-list email-mc-list" id="emailMcList"></div>
       <button type="button" class="btn-link email-mc-more" id="emailMcMoreBtn">Other drafts in Mailchimp…</button>
     </div>
   </div>
@@ -1971,6 +1988,50 @@
           <button type="button" class="btn" id="sampleBrowserUnlink" hidden>Unlink current</button>
         </div>
       </aside>
+    </div>
+  </div>
+</div>
+
+<!-- ── Import N41 Data: Style Master, PO detail, ATS report (js/n41-import.js) ── -->
+<div id="n41ImportOverlay" class="modal-backdrop">
+  <div class="modal-card n41-import-card" role="dialog" aria-modal="true" aria-labelledby="n41ImportTitle">
+    <div class="modal-header">
+      <h3 id="n41ImportTitle">Import N41 Data</h3>
+      <button type="button" class="btn-close" id="n41ImportCloseBtn" aria-label="Close">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="n41-import-boxes">
+        <div class="n41-import-box" data-kind="style" tabindex="0" role="button" aria-label="Style Master: drop a file or click to browse">
+          <input type="file" accept=".csv,text/csv,.xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel" hidden />
+          <svg class="n41-import-box-icon" xmlns="http://www.w3.org/2000/svg" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M12 18v-6M9 15l3-3 3 3"/></svg>
+          <span class="n41-import-box-title">Style Master</span>
+          <span class="n41-import-box-hint">.csv or .xlsx · the changes are reviewed before saving</span>
+          <span class="n41-import-box-file"></span>
+          <button type="button" class="n41-import-box-clear" aria-label="Remove the Style Master" hidden>✕</button>
+        </div>
+        <div class="n41-import-box" data-kind="po" tabindex="0" role="button" aria-label="PO detail: drop a file or click to browse">
+          <input type="file" accept=".csv,text/csv,.xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel" hidden />
+          <svg class="n41-import-box-icon" xmlns="http://www.w3.org/2000/svg" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M12 18v-6M9 15l3-3 3 3"/></svg>
+          <span class="n41-import-box-title">PO Detail</span>
+          <span class="n41-import-box-hint">N41's PO export · replaces the POs in it</span>
+          <span class="n41-import-box-file"></span>
+          <button type="button" class="n41-import-box-clear" aria-label="Remove the PO detail" hidden>✕</button>
+        </div>
+        <div class="n41-import-box" data-kind="ats" tabindex="0" role="button" aria-label="ATS report: drop a file or click to browse">
+          <input type="file" accept=".csv,text/csv,.xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel" hidden />
+          <svg class="n41-import-box-icon" xmlns="http://www.w3.org/2000/svg" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M12 18v-6M9 15l3-3 3 3"/></svg>
+          <span class="n41-import-box-title">ATS Report</span>
+          <span class="n41-import-box-hint">OH / WIP / OO / ATS / Inv Qty</span>
+          <span class="n41-import-box-file"></span>
+          <button type="button" class="n41-import-box-clear" aria-label="Remove the ATS report" hidden>✕</button>
+        </div>
+      </div>
+      <p class="form-hint n41-import-note">Drop or click to browse — any one, two or all three. They're saved in this order: Style Master (after you review its changes), then PO detail, then ATS report, so new styles get their POs and stock.</p>
+    </div>
+    <div class="modal-footer">
+      <span class="modal-footer-message" id="n41ImportMessage"></span>
+      <button type="button" class="btn" id="n41ImportCancelBtn">Cancel</button>
+      <button type="button" class="btn btn-primary" id="n41ImportConfirmBtn" disabled>Import</button>
     </div>
   </div>
 </div>
@@ -2155,53 +2216,54 @@
   </div>
 </div>
 
-<script src="js/config.js?v=20261116-1923"></script>
+<script src="js/config.js?v=20261116-1652"></script>
 <!-- Needs SUPABASE_URL/KEY from config.js and the CDN client above. -->
-<script src="js/auth.js?v=20261116-1923"></script>
-<script src="js/util.js?v=20261116-1923"></script>
-<script src="js/dates.js?v=20261116-1923"></script>
-<script src="js/store.js?v=20261116-1923"></script>
-<script src="js/tasks.js?v=20261116-1923"></script>
-<script src="js/app-shell.js?v=20261116-1923"></script>
-<script src="js/table-pager.js?v=20261116-1923"></script>
-<script src="js/record-list.js?v=20261116-1923"></script>
-<script src="js/item-pane.js?v=20261116-1923"></script>
-<script src="js/campaign-form.js?v=20261116-1923"></script>
-<script src="js/trade-show-form.js?v=20261116-1923"></script>
-<script src="js/banners.js?v=20261116-1923"></script>
-<script src="js/banner-form.js?v=20261116-1923"></script>
-<script src="js/mailchimp.js?v=20261116-1923"></script>
-<script src="js/style-import.js?v=20261116-1923"></script>
-<script src="js/column-filter.js?v=20261116-1923"></script>
-<script src="js/styles.js?v=20261116-1923"></script>
-<script src="js/style-images.js?v=20261116-1923"></script>
-<script src="js/sample-photos.js?v=20261116-1923"></script>
-<script src="js/photoshoots.js?v=20261116-1923"></script>
-<script src="js/complete.js?v=20261116-1923"></script>
-<script src="js/photoshoot-form.js?v=20261116-1923"></script>
-<script src="js/purchase-orders.js?v=20261116-1923"></script>
-<script src="js/production-import.js?v=20261116-1923"></script>
-<script src="js/ats-import.js?v=20261116-1923"></script>
-<script src="js/style-pane.js?v=20261116-1923"></script>
-<script src="js/magento.js?v=20261116-1923"></script>
-<script src="js/magento-availability.js?v=20261116-1923"></script>
-<script src="js/magento-photos.js?v=20261116-1923"></script>
-<script src="js/magento-group-order.js?v=20261116-1923"></script>
-<script src="js/magento-sales.js?v=20261116-1923"></script>
-<script src="js/magento-n41.js?v=20261116-1923"></script>
-<script src="js/magento-events.js?v=20261116-1923"></script>
-<script src="js/trade-show-import.js?v=20261116-1923"></script>
-<script src="js/magento-groups.js?v=20261116-1923"></script>
-<script src="js/table-view.js?v=20261116-1923"></script>
-<script src="js/exports.js?v=20261116-1923"></script>
-<script src="js/copy-menu.js?v=20261116-1923"></script>
-<script src="js/row-quick-select.js?v=20261116-1923"></script>
-<script src="js/pane-dismiss.js?v=20261116-1923"></script>
-<script src="js/shortcuts.js?v=20261116-1923"></script>
-<script src="js/header-search.js?v=20261116-1923"></script>
-<script src="js/calendar.js?v=20261116-1923"></script>
-<script src="js/holidays.js?v=20261116-1923"></script>
-<script src="js/email.js?v=20261116-1923"></script>
-<script src="js/main.js?v=20261116-1923"></script>
+<script src="js/auth.js?v=20261116-1652"></script>
+<script src="js/util.js?v=20261116-1652"></script>
+<script src="js/dates.js?v=20261116-1652"></script>
+<script src="js/store.js?v=20261116-1652"></script>
+<script src="js/tasks.js?v=20261116-1652"></script>
+<script src="js/app-shell.js?v=20261116-1652"></script>
+<script src="js/table-pager.js?v=20261116-1652"></script>
+<script src="js/record-list.js?v=20261116-1652"></script>
+<script src="js/item-pane.js?v=20261116-1652"></script>
+<script src="js/campaign-form.js?v=20261116-1652"></script>
+<script src="js/trade-show-form.js?v=20261116-1652"></script>
+<script src="js/banners.js?v=20261116-1652"></script>
+<script src="js/banner-form.js?v=20261116-1652"></script>
+<script src="js/mailchimp.js?v=20261116-1652"></script>
+<script src="js/style-import.js?v=20261116-1652"></script>
+<script src="js/column-filter.js?v=20261116-1652"></script>
+<script src="js/styles.js?v=20261116-1652"></script>
+<script src="js/style-images.js?v=20261116-1652"></script>
+<script src="js/sample-photos.js?v=20261116-1652"></script>
+<script src="js/photoshoots.js?v=20261116-1652"></script>
+<script src="js/complete.js?v=20261116-1652"></script>
+<script src="js/photoshoot-form.js?v=20261116-1652"></script>
+<script src="js/purchase-orders.js?v=20261116-1652"></script>
+<script src="js/production-import.js?v=20261116-1652"></script>
+<script src="js/ats-import.js?v=20261116-1652"></script>
+<script src="js/n41-import.js?v=20261116-1652"></script>
+<script src="js/style-pane.js?v=20261116-1652"></script>
+<script src="js/magento.js?v=20261116-1652"></script>
+<script src="js/magento-availability.js?v=20261116-1652"></script>
+<script src="js/magento-photos.js?v=20261116-1652"></script>
+<script src="js/magento-group-order.js?v=20261116-1652"></script>
+<script src="js/magento-sales.js?v=20261116-1652"></script>
+<script src="js/magento-n41.js?v=20261116-1652"></script>
+<script src="js/magento-events.js?v=20261116-1652"></script>
+<script src="js/trade-show-import.js?v=20261116-1652"></script>
+<script src="js/magento-groups.js?v=20261116-1652"></script>
+<script src="js/table-view.js?v=20261116-1652"></script>
+<script src="js/exports.js?v=20261116-1652"></script>
+<script src="js/copy-menu.js?v=20261116-1652"></script>
+<script src="js/row-quick-select.js?v=20261116-1652"></script>
+<script src="js/pane-dismiss.js?v=20261116-1652"></script>
+<script src="js/shortcuts.js?v=20261116-1652"></script>
+<script src="js/header-search.js?v=20261116-1652"></script>
+<script src="js/calendar.js?v=20261116-1652"></script>
+<script src="js/holidays.js?v=20261116-1652"></script>
+<script src="js/email.js?v=20261116-1652"></script>
+<script src="js/main.js?v=20261116-1652"></script>
 </body>
 </html>

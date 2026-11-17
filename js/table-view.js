@@ -406,7 +406,8 @@ function initTableViews() {
     const columns = ths.map((th, i) => ({
       col: th.dataset.col,
       // The header's words; the tick-box column has none, and icon-only ones go by their aria-label.
-      label: th.dataset.col === "select" ? "Select (tick box)" : (th.querySelector(".th-label") ?? th).textContent.trim() || th.getAttribute("aria-label") || th.dataset.col,
+      // data-label names a header made of several (the Styles table's Qty).
+      label: th.dataset.col === "select" ? "Select (tick box)" : th.dataset.label || (th.querySelector(".th-label") ?? th).textContent.trim() || th.getAttribute("aria-label") || th.dataset.col,
       th,
       colEl: cols[i] ?? null,
     }));

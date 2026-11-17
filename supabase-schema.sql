@@ -277,6 +277,8 @@ alter table styles add column if not exists notes text not null default '';
 alter table styles add column if not exists available_date text not null default '';
 alter table styles add column if not exists memo text not null default '';
 alter table styles add column if not exists received_qty numeric;
+-- The Style Master's user2 column, shown in the app as "Show": '1', '2' or ''.
+alter table styles add column if not exists show text not null default '';
 
 -- From the production sheet (Styles → Import Production Sheet): the date the
 -- TOP sample's comments came in ('YYYY-MM-DD', '' = no TOP yet) and its PO #.
@@ -626,6 +628,19 @@ create table if not exists email_settings (
   updated_at timestamptz not null default now(),
   primary key (user_id, template_id)
 );
+
+-- Swapped pictures (a new hero …): image key → URL (uploads go in the banners bucket).
+alter table email_settings add column if not exists images jsonb not null default '{}'::jsonb;
+
+-- The template's HTML as edited in the HTML window ('' = use the file's).
+alter table email_settings add column if not exists html text not null default '';
+
+-- Templates are edited here: a new name ('' = the file's), and copies (Save
+-- copy) — rows "copy-…" with their full HTML and the folder their relative
+-- images come from.
+alter table email_settings add column if not exists name text not null default '';
+alter table email_settings add column if not exists folder text not null default '';
+alter table email_settings add column if not exists created_at timestamptz not null default now();
 
 alter table email_settings enable row level security;
 

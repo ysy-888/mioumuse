@@ -142,7 +142,6 @@ const SAMPLE_STATUSES = [
   { key: "top", label: "TOP" },
   { key: "show", label: "SHOW" },
   { key: "pp", label: "PP" },
-  { key: "first", label: "FIRST" },
 ];
 const SAMPLE_STATUS_KEYS = SAMPLE_STATUSES.map(s => s.key);
 

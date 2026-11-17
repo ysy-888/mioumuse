@@ -1,7 +1,7 @@
 /**
  * POs — N41's PO lines, a month at a time (view "pos").
  *
- * Menu → Import N41 POs reads N41's PO export (po.xls — see parseN41Pos):
+ * Menu → Import N41 Data → PO detail reads N41's PO export (po.xls — see parseN41Pos):
  * Status, PO #, ETA, Style, Color. The POs in the file replace the saved
  * ones; every other PO is kept (js/store.js).
  *
@@ -136,22 +136,22 @@ function parseN41Pos(workbook) {
   return lines;
 }
 
-async function importN41Pos(file) {
-  if (!file) return;
-  try {
-    showIndicator("Reading the N41 PO export…");
-    await loadSheetJs();
-    const workbook = XLSX.read(await file.arrayBuffer(), { type: "array" });
-    const lines = parseN41Pos(workbook);
-    if (!lines.length) throw new Error("No PO # / Style / Color columns with PO lines were found.");
-    const pos = new Set(lines.map(l => l.poNo)).size;
-    await mergePoLines(lines, (n, total) => showIndicator(`Saving POs… ${Math.round((n / total) * 100)}%`));
-    if (!poMonth) poMonth = defaultPoMonth();
-    refreshPoDependentViews();
-    showIndicator(`N41 POs imported — ${pos.toLocaleString()} POs, ${lines.length.toLocaleString()} style colours`, "success");
-  } catch (err) {
-    showIndicator(`N41 POs: ${err.message || "couldn't read the file."}`, "error");
-  }
+/** Read and check N41's PO detail export: its lines. */
+async function readN41PoFile(file) {
+  await loadSheetJs();
+  const workbook = XLSX.read(await file.arrayBuffer(), { type: "array" });
+  const lines = parseN41Pos(workbook);
+  if (!lines.length) throw new Error("No PO # / Style / Color columns with PO lines were found.");
+  return lines;
+}
+
+/** Save the PO lines (they replace those POs) and refresh what shows IHDs. A summary back. */
+async function saveN41PoLines(lines, onProgress) {
+  const pos = new Set(lines.map(l => l.poNo)).size;
+  await mergePoLines(lines, onProgress);
+  if (!poMonth) poMonth = defaultPoMonth();
+  refreshPoDependentViews();
+  return `POs: ${pos.toLocaleString()} POs, ${lines.length.toLocaleString()} style colours`;
 }
 
 /** The Styles database's colours for a PO's style: as written, or without a trailing ST. */
@@ -618,7 +618,7 @@ function createPoEntryAction(po, styleNo) {
 }
 
 /**
- * One PO in the PO cell: its number, its IHD (the ETA), its status and kind
+ * One PO in the PO cell: its number, its status and kind
  * pill — and, on a flagged one, a delete button (restore, when showing deleted).
  */
 function createPoEntry(po, styleNo) {
@@ -629,16 +629,13 @@ function createPoEntry(po, styleNo) {
   no.append("PO # ");
   const num = document.createElement("span");
   mountSearchHighlightedText(num, po.poNo || EMPTY_DISPLAY);
+  if (po.statuses?.size === 1 && po.statuses.has("Closed")) {
+    num.classList.add("is-closed");
+    no.title = "Closed — received";
+  }
   no.appendChild(num);
-  const eta = document.createElement("span");
-  eta.className = "po-entry-eta";
-  eta.textContent = formatIhd(po.eta);
-  eta.title = po.fromReceived ? "Received date (N41's ETA was never updated from 1/1)" : "IHD (the PO's ETA)";
-  eta.classList.toggle("is-past", Boolean(po.eta) && po.eta < todayYmd());
-  if (po.flagged?.length && !poShowDeleted) eta.appendChild(createPoEtaFlag(po));
-  // An empty slot when there's no status, so the kind pills line up.
-  const status = (po.statuses && createPoStatus(po)) || Object.assign(document.createElement("span"), { className: "po-status" });
-  row.append(no, eta, status, createPoLineChip(po));
+  if (po.flagged?.length && !poShowDeleted) no.appendChild(createPoEtaFlag(po));
+  row.append(no, createPoLineChip(po));
   if (styleNo && (poShowDeleted || po.flagged?.length)) row.appendChild(createPoEntryAction(po, styleNo));
   return row;
 }
@@ -682,7 +679,22 @@ function createPoColorRow(group, style, cols, first) {
     if (col === "image") td.appendChild(createStyleThumb(style.styleNo, style.color));
     else if (col === "color") mountSearchHighlightedText(td, style.color);
     else if (col === "status") td.appendChild(createStyleStatusPill(style.status));
-    else if (col === "available") { const pill = createAvailablePill(style.availableDate, style); if (pill) td.appendChild(pill); else setDisplayText(td, EMPTY_DISPLAY); }
+    else if (col === "available") {
+      const dates = document.createElement("div");
+      dates.className = "po-color-dates";
+      const pill = createAvailablePill(style.availableDate, style);
+      if (pill) dates.appendChild(pill);
+      else {
+        const empty = document.createElement("span");
+        setDisplayText(empty, EMPTY_DISPLAY);
+        dates.appendChild(empty);
+      }
+      const ihd = document.createElement("span");
+      ihd.className = "po-color-ihd";
+      ihd.textContent = formatIhd(style.ihd);
+      dates.appendChild(ihd);
+      td.appendChild(dates);
+    }
     else if (col === "ihd") setDisplayText(td, formatIhd(style.ihd));
     else if (col === "shoot") td.appendChild(createStyleShootCell(style, { suggested: Boolean(suggestPoReason(group, style)) }));
     else if (col === "notes") td.appendChild(createStyleNotesInput(style, { onSaved: refreshStylePaneSummary }));
@@ -733,7 +745,7 @@ function renderPoView() {
 
   if (!groups.length) {
     const msg = poShowDeleted ? "No deleted POs." : !months.length
-      ? (poLinesTableReady ? "No PO data yet — use Import N41 POs in the menu (⋮)." : "Create the n41_po_lines table in Supabase (supabase-schema.sql), then use Import N41 POs in the menu (⋮).")
+      ? (poLinesTableReady ? "No PO data yet — use Import N41 Data in the menu (⋮)." : "Create the n41_po_lines table in Supabase (supabase-schema.sql), then use Import N41 Data in the menu (⋮).")
       : "No styles match the current filters.";
     tbody.innerHTML = `<tr class="state-row"><td colspan="${cols.length}">${escapeHtml(msg)}</td></tr>`;
     return;
@@ -828,14 +840,6 @@ async function addPoSuggested() {
 }
 
 function initPurchaseOrders() {
-  document.getElementById("headerMenuImportPoColors")?.addEventListener("click", () => {
-    closeHeaderMenu();
-    const input = document.getElementById("poN41File");
-    if (!input) return;
-    input.value = "";
-    input.click();
-  });
-  document.getElementById("poN41File")?.addEventListener("change", e => importN41Pos(e.target.files?.[0]));
   // A new day: ETAs that passed yesterday stop counting.
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "visible") refreshPoIhds();

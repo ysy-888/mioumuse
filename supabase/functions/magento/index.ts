@@ -46,8 +46,9 @@
  *   customer   { id }               one customer, with their orders
  *   skuList    { …products filters } every matching SKU, in sort order
  *   catalogIndex                    every product's [sku, type, status,
- *                                   visibility, qty, inStock], for
- *                                   working out availability
+ *                                   visibility, qty, inStock, …,
+ *                                   groupItems], for working out
+ *                                   availability
  *   facets                          product counts per status, type and
  *                                   visibility value (for the filters)
  *   colorOptions                    Color's choices { options, problem }
@@ -90,7 +91,7 @@ import { AsyncLocalStorage } from "node:async_hooks";
  * copy running in Supabase is older than the app expects. Bump it (and
  * MG_HELPER_VERSION in js/magento.js) whenever this file changes.
  */
-const HELPER_VERSION = "2026-11-11.2";
+const HELPER_VERSION = "2026-11-16.4";
 
 /**
  * Where a request's time went: each Magento call is counted and timed, per
@@ -1713,12 +1714,14 @@ const actions: Record<string, (p: any) => Promise<unknown>> = {
     const skus = Array.isArray(params.skus) ? params.skus.map(String) : [];
     if (skus.length) {
       // Chosen SKUs: a few short searches at once, not one over-long one.
-      const bodies = await Promise.all(skuBatches(skus.slice(0, 200)).map(batch => {
-        const { query } = buildSearchCriteria({ ...params, skus: batch, page: 1, pageSize: batch.length });
-        query.set("fields", `items[${LIST_FIELDS}],total_count`);
-        return mg(`/products?${query}`);
-      }));
-      raw = bodies.flatMap(b => b?.items ?? []);
+      const bodies = await Promise.all(skuBatches(skus.slice(0, 200)).map(batch =>
+        allProductPages(page => {
+          const { query } = buildSearchCriteria({ ...params, skus: batch, page, pageSize: 200 });
+          query.set("fields", `items[${LIST_FIELDS}],total_count`);
+          return query;
+        }, 200, 2)
+      ));
+      raw = bodies.flat();
       total = raw.length;
       pageSize = skus.length;
     } else {
@@ -1761,7 +1764,7 @@ const actions: Record<string, (p: any) => Promise<unknown>> = {
 
   /**
    * The whole catalog in brief: each product's
-   *   [sku, type, status, visibility, qty, inStock, name, price, updatedAt, categoryIds]
+   *   [sku, type, status, visibility, qty, inStock, name, price, updatedAt, categoryIds, preOrderDate, groupItems]
    * — enough for the app to work out availability, and to filter, search and
    * sort by itself when a filter Magento can't apply (Available, Flagged) is
    * on, so it only asks Magento for the page shown. Stock comes in bulk — the
@@ -1776,7 +1779,7 @@ const actions: Record<string, (p: any) => Promise<unknown>> = {
       allProductPages(page => new URLSearchParams({
         "searchCriteria[pageSize]": "1000",
         "searchCriteria[currentPage]": String(page),
-        fields: "items[id,sku,type_id,status,visibility,name,price,updated_at,extension_attributes[category_links[category_id]]],total_count",
+        fields: "items[id,sku,type_id,status,visibility,name,price,updated_at,extension_attributes[category_links[category_id]],product_links[link_type,linked_product_sku,position]],total_count",
       }), 1000, 2),
       catalogStock(),
       catalogPreOrderDates(),
@@ -1801,6 +1804,19 @@ const actions: Record<string, (p: any) => Promise<unknown>> = {
           // deno-lint-ignore no-explicit-any
           (p.extension_attributes?.category_links ?? []).map((l: any) => String(l.category_id)).join(","),
           preOrders.get(String(p.sku)) ?? "",
+          // A Grouped product's items as Magento has them now (enabled only)
+          // — so the app sees items added since its imported export.
+          grouped
+            ? (p.product_links ?? [])
+              // deno-lint-ignore no-explicit-any
+              .filter((l: any) => l.link_type === "associated")
+              // deno-lint-ignore no-explicit-any
+              .sort((a: any, b: any) => (a.position ?? 0) - (b.position ?? 0))
+              // deno-lint-ignore no-explicit-any
+              .map((l: any) => String(l.linked_product_sku))
+              .join(",")
+            : null,
+          String(p.id), // Keep duplicate-SKU group records distinct in the app.
         ];
       }),
     };
@@ -2187,6 +2203,45 @@ const actions: Record<string, (p: any) => Promise<unknown>> = {
    * order, any others after them. Items it doesn't have aren't added. Then
    * it's read back, and any item that went missing is reported.
    */
+  async groupAdd({ assignments }) {
+    if (!Array.isArray(assignments) || !assignments.length || assignments.length > 5) {
+      throw new UserError("Send at most 5 products per group-add request. Refresh the app to use the updated bulk action.");
+    }
+    const results = [];
+    // Sequential: two children of the same group must not overwrite each other.
+    for (const assignment of assignments) {
+      const sku = String(assignment.sku || "");
+      const groupSku = String(assignment.groupSku || "");
+      try {
+        if (!sku || !groupSku || !sku.startsWith(`${groupSku}-`)) throw new UserError("The SKU doesn't match this group.");
+        const path = `/products/${encodeURIComponent(groupSku)}`;
+        const [group, child] = await Promise.all([
+          mg(path, {}, "all"), mg(`/products/${encodeURIComponent(sku)}`, {}, "all"),
+        ]);
+        if (group.type_id !== "grouped") throw new UserError(`${groupSku} isn't a Grouped product.`);
+        if (child.type_id !== "simple" && child.type_id !== "virtual") throw new UserError("Only Simple or Virtual products can be added.");
+        const links = (group.product_links ?? []).filter((l: any) => l.link_type === "associated");
+        if (!links.some((l: any) => l.linked_product_sku === sku)) {
+          const items = [...links, {
+            sku: groupSku, link_type: "associated", linked_product_sku: sku,
+            linked_product_type: child.type_id,
+            position: Math.max(0, ...links.map((l: any) => Number(l.position) || 0)) + 1,
+            extension_attributes: { qty: 0 },
+          }];
+          await mg(`${path}/links`, { method: "POST", body: JSON.stringify({ items }) }, "all");
+        }
+        const after = await mg(path, {}, "all");
+        const childSkus = (after.product_links ?? []).filter((l: any) => l.link_type === "associated").map((l: any) => String(l.linked_product_sku));
+        if (!childSkus.includes(sku)) throw new UserError("Magento didn't retain the new group link.");
+        if (links.some((l: any) => !childSkus.includes(String(l.linked_product_sku)))) throw new UserError("Magento dropped an existing group link. Check this group in Magento.");
+        results.push({ sku, groupSku, ok: true, childSkus });
+      } catch (error) {
+        results.push({ sku, groupSku, ok: false, error: error instanceof Error ? error.message : String(error) });
+      }
+    }
+    return { results };
+  },
+
   async groupReorder({ sku, childSkus }) {
     if (!sku) throw new UserError("Which product?");
     const wanted: string[] = Array.isArray(childSkus) ? [...new Set(childSkus.map(String))] : [];

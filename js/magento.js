@@ -66,7 +66,31 @@ let mgError = "";
 let mgRequestSeq = 0;
 
 /** Ticked products, by SKU. Kept across pages so a selection can span several. */
-let mgSelected = new Set();
+let mgSelected = new Set(); // product IDs, never SKUs
+const mgSelectionProducts = new Map();
+const mgDuplicateSkus = new Set();
+const mgProductKey = p => String(p.id ?? p.sku);
+function rememberMgProducts(items) {
+  const idsBySku = new Map();
+  for (const p of items) {
+    mgSelectionProducts.set(mgProductKey(p), p);
+    if (!idsBySku.has(p.sku)) idsBySku.set(p.sku, new Set());
+    idsBySku.get(p.sku).add(mgProductKey(p));
+  }
+  // Include records seen on other pages.
+  for (const p of mgSelectionProducts.values()) {
+    if (idsBySku.has(p.sku)) idsBySku.get(p.sku).add(mgProductKey(p));
+  }
+  for (const [sku, ids] of idsBySku) if (ids.size > 1) mgDuplicateSkus.add(sku);
+}
+function mgSelectedSkus() {
+  return [...new Set([...mgSelected].map(id => mgSelectionProducts.get(id)?.sku).filter(Boolean))];
+}
+function mgRequireUniqueSku(sku) {
+  if (!mgDuplicateSkus.has(sku)) return true;
+  showIndicator(`${sku} has multiple product IDs. Use the row's Magento link to edit the exact record.`, "error");
+  return false;
+}
 
 /** The product in the pane: what Magento has (`saved`) and the edit in progress (`draft`). */
 let mgPane = null;
@@ -77,7 +101,7 @@ let mgSalableWarned = false;
 let mgTableRenderWaiting = false;
 
 /** The helper version this app expects (HELPER_VERSION in supabase/functions/magento). */
-const MG_HELPER_VERSION = "2026-11-11.2";
+const MG_HELPER_VERSION = "2026-11-16.4";
 
 /** Per action, the last call's timing: { roundTripMs, totalMs, authMs, magentoCalls, magentoMs, slowest… }. */
 const mgTimings = {};
@@ -95,6 +119,16 @@ function noteMgTiming(action, timing, roundTripMs) {
 }
 
 async function callMagento(action, params = {}) {
+  const skuWrites = new Set(["update", "photoAdd", "photoUpdate", "photoReorder", "photoDelete", "groupReorder"]);
+  if (skuWrites.has(action) && mgDuplicateSkus.has(params.sku)) {
+    throw new Error(`${params.sku} has multiple product IDs. Edit the exact record through its Magento link.`);
+  }
+  if (action === "groupAdd" && params.assignments?.some(a => mgDuplicateSkus.has(a.sku) || mgDuplicateSkus.has(a.groupSku))) {
+    throw new Error("A product or matching group has duplicate SKUs. Edit the exact product ID in Magento.");
+  }
+  if (action === "bulk" && params.skus?.some(sku => mgDuplicateSkus.has(sku))) {
+    throw new Error("The selection includes duplicate SKUs. Edit those product IDs in Magento.");
+  }
   if (!supabaseClient) throw new Error("Supabase isn't configured.");
   const started = performance.now();
   const { data, error } = await supabaseClient.functions.invoke(MG_FUNCTION, {
@@ -105,7 +139,7 @@ async function callMagento(action, params = {}) {
     let message = error.message || "Couldn't reach Magento.";
     try {
       const body = await error.context?.json?.();
-      if (body?.error) message = body.error;
+      if (body?.error || body?.message || body?.msg) message = body.error || body.message || body.msg;
       if (body) noteMgTiming(action, body.timing, performance.now() - started);
     } catch {
       /* keep the generic message */
@@ -117,8 +151,11 @@ async function callMagento(action, params = {}) {
     if (/^Unknown action/.test(message)) {
       message = `The Magento helper in Supabase is out of date (it doesn't know "${action}") — paste the latest supabase/functions/magento/index.ts into Edge Functions → magento and Deploy.`;
     }
+    const status = error.context?.status;
+    if (status === 504 || status === 546) message = "The Magento request timed out. Some changes may already have saved; refresh before retrying.";
+    else if (/non-2xx/.test(message)) message = `Magento helper request failed (HTTP ${status || "unknown"}, ${action}).`;
     const err = new Error(message);
-    err.status = error.context?.status;
+    err.status = status;
     throw err;
   }
   noteMgTiming(action, data?.timing, performance.now() - started);
@@ -180,6 +217,7 @@ function createMgStockControl(product) {
   select.setAttribute("aria-label", `Stock Status for ${product.sku}`);
   select.append(new Option("In Stock", "true"), new Option("Out of Stock", "false"));
   select.value = String(product.inStock);
+  select.disabled = mgDuplicateSkus.has(product.sku);
   select.addEventListener("change", () => saveMgTableStock(product, { inStock: select.value === "true" }, select));
   return select;
 }
@@ -192,6 +230,7 @@ function createMgQtyInput(product) {
   input.min = "0";
   input.step = "any";
   input.value = String(product.qty);
+  input.disabled = mgDuplicateSkus.has(product.sku);
   input.setAttribute("aria-label", `Qty for ${product.sku}`);
   const save = () => {
     const unchanged = input.value.trim() === "" || Number(input.value) === product.qty;
@@ -217,6 +256,7 @@ function createMgQtyInput(product) {
 
 /** Stock changed from the table: saved at once, with what it changes redrawn. */
 async function saveMgTableStock(product, changes, control) {
+  if (!mgRequireUniqueSku(product.sku)) return;
   control.disabled = true;
   control.blur();
   try {
@@ -319,6 +359,7 @@ async function loadMagentoProducts() {
     const page = hasMgClientFilter() ? await loadMgClientFilteredPage() : await callMagento("products", { ...mgQuery, ...mgStockParams() });
     if (seq !== mgRequestSeq) return;
     // Stock from the catalog when the page came without it (mgStockParams).
+    rememberMgProducts(page.items);
     page.items.forEach(p => absorbMgProduct(applyMgGroups(mgIndex && p.qty === null && p.inStock === null ? fillMgStockFromIndex(p) : p)));
     mgPage = page;
   } catch (err) {
@@ -608,7 +649,9 @@ function createMgStatusSwitch(product) {
     btn.title = on ? "Enabled — click to disable" : "Disabled — click to enable";
   };
   paint();
+  btn.disabled = mgDuplicateSkus.has(product.sku);
   btn.addEventListener("click", async () => {
+    if (!mgRequireUniqueSku(product.sku)) return;
     const next = product.status === 1 ? 2 : 1;
     btn.disabled = true;
     btn.classList.add("is-saving");
@@ -654,25 +697,35 @@ function pickMgSummary(p) {
 function arrangeMgRows(items) {
   // Sorted by a figure (OH, Qty…): just as sorted, items not pulled under their groups.
   if (mgQuery.type !== null || isMgLocalSort()) return items.map(product => ({ product, role: null }));
-  const bySku = new Map(items.map(p => [p.sku, p]));
-  // Simple items that have their Grouped item on this page.
+  const bySku = new Map();
+  items.forEach(p => {
+    if (!bySku.has(p.sku)) bySku.set(p.sku, []);
+    bySku.get(p.sku).push(p);
+  });
   const underParent = new Set();
   items.forEach(p => {
-    if (p.type === "grouped") (p.childSkus ?? []).forEach(sku => { if (bySku.has(sku) && sku !== p.sku) underParent.add(sku); });
+    if (p.type === "grouped") (p.childSkus ?? []).forEach(sku => {
+      for (const child of bySku.get(sku) ?? []) {
+        if (child.type !== "grouped") underParent.add(mgProductKey(child));
+      }
+    });
   });
   const rows = [];
   const placed = new Set();
   items.forEach(p => {
-    if (placed.has(p.sku) || (underParent.has(p.sku) && p.type !== "grouped")) return;
-    placed.add(p.sku);
+    const id = mgProductKey(p);
+    if (placed.has(id) || underParent.has(id)) return;
+    placed.add(id);
     if (p.type !== "grouped") {
       rows.push({ product: p, role: null });
       return;
     }
-    const children = (p.childSkus ?? []).filter(sku => bySku.has(sku) && !placed.has(sku)).map(sku => bySku.get(sku));
+    const children = [...new Map((p.childSkus ?? []).flatMap(sku => bySku.get(sku) ?? [])
+      .filter(child => child.type !== "grouped" && !placed.has(mgProductKey(child)))
+      .map(child => [mgProductKey(child), child])).values()];
     rows.push({ product: p, role: children.length ? "parent" : "solo" });
     children.forEach((child, i) => {
-      placed.add(child.sku);
+      placed.add(mgProductKey(child));
       rows.push({ product: child, role: i === children.length - 1 ? "last" : "child" });
     });
   });
@@ -696,6 +749,12 @@ function createMgNameCell(product, role) {
   text.className = "mg-name-text";
   mountSearchHighlightedText(text, product.name);
   wrap.appendChild(text);
+  if (mgDuplicateSkus.has(product.sku)) {
+    const warning = document.createElement("span");
+    warning.className = "mg-unlinked-flag";
+    warning.textContent = "Duplicate SKU";
+    wrap.appendChild(warning);
+  }
   if (product.type === "grouped") wrap.appendChild(createMgChildCount(product));
   if (product.unlinkedGroup) wrap.appendChild(createMgUnlinkedFlag(product));
   const admin = createMgAdminIcon("products", product.id, "Open in Magento");
@@ -719,10 +778,16 @@ function createMgChildCount(product) {
 
 /** A Simple item whose SKU matches a group it isn't in on Magento. */
 function createMgUnlinkedFlag(product) {
-  const flag = document.createElement("span");
+  const flag = document.createElement("button");
+  flag.type = "button";
   flag.className = "mg-unlinked-flag";
   flag.textContent = `Not in ${product.unlinkedGroup}`;
   flag.title = `This SKU matches group ${product.unlinkedGroup}, but it isn't in that group on Magento (as of the imported export).`;
+  flag.title += " Click to add this product to the group.";
+  flag.addEventListener("click", event => {
+    event.stopPropagation();
+    addMgMatchingGroups([product.sku]);
+  });
   return flag;
 }
 
@@ -836,11 +901,13 @@ function renderMgProducts() {
   }
 
   setActiveSearchQuery(mgQuery.search.toLowerCase());
+  rememberMgProducts(mgPage.items);
   const rows = arrangeMgRows(mgPage.items).map(({ product, role }) => {
     const tr = document.createElement("tr");
     tr.className = "clickable-row";
     tr.dataset.sku = product.sku;
-    if (mgPane?.saved.sku === product.sku) tr.classList.add("is-open");
+    tr.dataset.productId = mgProductKey(product);
+    if (mgPane && mgProductKey(mgPane.saved) === mgProductKey(product)) tr.classList.add("is-open");
     // Name and SKU go grey when the product isn't showing on the webstore
     // (not just when it's disabled); while that's still unknown, they don't.
     if (mgAvailability(product.sku).available === false) tr.classList.add("mg-row-unavailable");
@@ -979,10 +1046,10 @@ function createMgCheckbox(product) {
   const cb = document.createElement("input");
   cb.type = "checkbox";
   cb.className = "row-select";
-  cb.checked = mgSelected.has(product.sku);
+  cb.checked = mgSelected.has(mgProductKey(product));
   cb.setAttribute("aria-label", `Select ${product.sku}`);
   cb.addEventListener("change", () => {
-    if (cb.checked) mgSelected.add(product.sku); else mgSelected.delete(product.sku);
+    if (cb.checked) mgSelected.add(mgProductKey(product)); else mgSelected.delete(mgProductKey(product));
     syncMgSelectionUi();
   });
   return cb;
@@ -991,7 +1058,7 @@ function createMgCheckbox(product) {
 function syncMgSelectionUi() {
   const all = document.getElementById("mgSelectAll");
   if (all) {
-    const onPage = mgPage.items.filter(p => mgSelected.has(p.sku)).length;
+    const onPage = mgPage.items.filter(p => mgSelected.has(mgProductKey(p))).length;
     all.checked = onPage > 0 && onPage === mgPage.items.length;
     all.indeterminate = onPage > 0 && onPage < mgPage.items.length;
   }
@@ -1008,6 +1075,71 @@ function clearMgSelection() {
   renderMgProducts();
 }
 
+/** Add flagged products only; leave unmatched selections alone. */
+let mgAddingGroups = false;
+async function addMgMatchingGroups(skus) {
+  if (mgAddingGroups) {
+    showIndicator("Products are already being added; progress is in the footer.", "error");
+    return;
+  }
+  if (skus.some(sku => !mgRequireUniqueSku(sku))) return;
+  const assignments = skus.flatMap(sku => {
+    const groupSku = !mgChildGroup.has(sku) && !mgGroups?.has(sku) ? prefixGroupFor(sku) : null;
+    return groupSku ? [{ sku, groupSku }] : [];
+  });
+  if (!assignments.length) {
+    showIndicator("No flagged products selected with a matching group.", "error");
+    return;
+  }
+  mgAddingGroups = true;
+  const progress = document.getElementById("mgGroupProgress");
+  const addButton = document.getElementById("mgBulkAddGroupsBtn");
+  const results = [];
+  const updateProgress = () => {
+    if (!progress) return;
+    const added = results.filter(r => r.ok).length;
+    const failed = results.length - added;
+    progress.hidden = false;
+    progress.textContent = `Adding to groups: ${results.length}/${assignments.length} processed · ${added} added${failed ? ` · ${failed} failed` : ""}`;
+  };
+  if (addButton) addButton.disabled = true;
+  updateProgress();
+  try {
+    for (let i = 0; i < assignments.length; i += 5) {
+      const response = await callMagento("groupAdd", { assignments: assignments.slice(i, i + 5) });
+      results.push(...response.results);
+      for (const result of response.results) {
+        if (!result.ok) continue;
+        setMgLiveGroups([[result.groupSku, result.childSkus]]);
+        mgApiChildren.set(result.groupSku, result.childSkus);
+        for (const id of mgSelected) if (mgSelectionProducts.get(id)?.sku === result.sku) mgSelected.delete(id);
+      }
+      updateProgress();
+      forgetMgSkuList();
+      mgPage.items.forEach(applyMgGroups);
+      renderMgProducts();
+      renderMgAvailControls();
+    }
+    const failed = results.filter(r => !r.ok);
+    const skipped = skus.length - assignments.length;
+    showIndicator(`${results.filter(r => r.ok).length} added to their groups${skipped ? `; ${skipped} without a flag skipped` : ""}${failed.length ? `; ${failed.length} failed: ${failed.map(r => `${r.sku}: ${r.error}`).join("; ")}` : ""}`, failed.length ? "error" : "success");
+  } catch (error) {
+    showIndicator(`${results.filter(r => r.ok).length} added before stopping. ${error.message || "Couldn't add products to their groups."}`, "error");
+  } finally {
+    if (progress) progress.hidden = true;
+    if (addButton) addButton.disabled = false;
+    mgAddingGroups = false;
+    forgetMgSkuList();
+    mgPage.items.forEach(applyMgGroups);
+    if (mgPane) {
+      applyMgGroups(mgPane.saved);
+      applyMgGroups(mgPane.draft);
+      renderMagentoPane();
+    }
+    await loadMagentoProducts();
+  }
+}
+
 const MG_BULK_LABELS = {
   enable: n => `Enable ${n}?`,
   disable: n => `Disable ${n}? They'll disappear from the store.`,
@@ -1016,7 +1148,8 @@ const MG_BULK_LABELS = {
 };
 
 async function runMgBulk(op, categoryId = "") {
-  const skus = [...mgSelected];
+  const skus = mgSelectedSkus();
+  if (skus.some(sku => !mgRequireUniqueSku(sku))) return;
   if (!skus.length) return;
   const n = skus.length === 1 ? "1 product" : `${skus.length.toLocaleString()} products`;
   if (!confirm(MG_BULK_LABELS[op](n, categoryId ? getMgCategoryPath(categoryId) : ""))) return;
@@ -1030,7 +1163,7 @@ async function runMgBulk(op, categoryId = "") {
       results.push(...(res?.results ?? []));
     }
     const failed = results.filter(r => !r.ok);
-    mgSelected = new Set(failed.map(r => r.sku));
+    mgSelected = new Set([...mgSelected].filter(id => failed.some(r => r.sku === mgSelectionProducts.get(id)?.sku)));
     // Category changes move the counts on the Categories view too.
     if (op === "addCategory" || op === "removeCategory") {
       mgCategories = await callMagento("categories").catch(() => mgCategories);
@@ -1074,6 +1207,7 @@ function isMagentoPaneOpen() {
 }
 
 async function openMagentoPane(sku) {
+  if (!mgRequireUniqueSku(sku)) return;
   const pane = document.getElementById("mgProductPane");
   if (!pane) return;
   if (mgPane && isMgPaneDirty() && mgPane.saved.sku !== sku && !confirm("Discard your unsaved changes to this product?")) return;
@@ -2091,20 +2225,20 @@ async function exportMagentoCsv() {
     return;
   }
   const EXPORT_PAGE = 200;
-  const products = new Map(); // by SKU — a product edited mid-export can move pages
+  const products = new Map(); // by product ID — a product edited mid-export can move pages
   setAppLoading(true, "Exporting from Magento…");
   try {
     if (hasMgClientFilter()) {
       // Availability / Flagged: the SKUs that pass, fetched 200 at a time.
       const skus = await mgFilteredSkus();
       for (let i = 0; i < skus.length; i += EXPORT_PAGE) {
-        (await loadMgProductsBySku(skus.slice(i, i + EXPORT_PAGE))).forEach(p => products.set(p.sku, applyMgGroups(mgIndex ? fillMgStockFromIndex(p) : p)));
+        (await loadMgProductsBySku(skus.slice(i, i + EXPORT_PAGE))).forEach(p => products.set(mgProductKey(p), applyMgGroups(mgIndex ? fillMgStockFromIndex(p) : p)));
         setAppLoading(true, `Exporting from Magento… ${products.size.toLocaleString()} of ${skus.length.toLocaleString()}`);
       }
     } else {
       for (let page = 1; ; page++) {
         const res = await callMagento("products", { ...mgQuery, ...mgStockParams(), page, pageSize: EXPORT_PAGE });
-        (res?.items ?? []).forEach(p => products.set(p.sku, applyMgGroups(mgIndex ? fillMgStockFromIndex(p) : p)));
+        (res?.items ?? []).forEach(p => products.set(mgProductKey(p), applyMgGroups(mgIndex ? fillMgStockFromIndex(p) : p)));
         setAppLoading(true, `Exporting from Magento… ${products.size.toLocaleString()} of ${res.total.toLocaleString()}`);
         if (!res?.items?.length || page * EXPORT_PAGE >= res.total) break;
       }
@@ -2118,6 +2252,7 @@ async function exportMagentoCsv() {
   }
 
   const rows = [...products.values()].map(p => [
+    p.id,
     p.sku,
     p.name,
     p.color,
@@ -2143,7 +2278,7 @@ async function exportMagentoCsv() {
     p.updatedAt,
   ]);
   downloadCsv(`Magento products ${todayYmd()}`,
-    ["SKU", "Name", "Color", "Type", "Simple Items", "Simple Item SKUs", "Group", "Group Flag", "Status", "Visibility", "Price", "Special Price", "Qty", "ATS", "Stock Status", "Pre-Order Date", "Available", "Why Not Available", "Categories", "Category IDs", "URL Key", "Image URL", "Created", "Updated"],
+    ["Product ID", "SKU", "Name", "Color", "Type", "Simple Items", "Simple Item SKUs", "Group", "Group Flag", "Status", "Visibility", "Price", "Special Price", "Qty", "ATS", "Stock Status", "Pre-Order Date", "Available", "Why Not Available", "Categories", "Category IDs", "URL Key", "Image URL", "Created", "Updated"],
     rows);
   showIndicator(`Exported ${rows.length.toLocaleString()} products`, "success");
 }
@@ -2223,7 +2358,8 @@ function initMagento() {
   document.getElementById("mgProductsBody")?.addEventListener("contextmenu", e => {
     const cell = e.target.closest('td[data-col="name"]');
     const sku = cell?.closest("tr[data-sku]")?.dataset.sku;
-    const product = sku && mgPage.items.find(p => p.sku === sku);
+    const id = cell?.closest("tr[data-product-id]")?.dataset.productId;
+    const product = id && mgPage.items.find(p => mgProductKey(p) === id);
     if (product) openCopyMenu(e, mgCopyText(product));
   });
 
@@ -2234,7 +2370,7 @@ function initMagento() {
       if (e.target.tagName !== "INPUT") e.target.closest("td").querySelector("input")?.click();
       return;
     }
-    if (e.target.closest(".mg-status-switch, .mg-stock-select, .mg-qty-input")) return;
+    if (e.target.closest("a, .mg-status-switch, .mg-stock-select, .mg-qty-input")) return;
     const tr = e.target.closest("tr[data-sku]");
     if (tr) openMagentoPane(tr.dataset.sku);
   });
@@ -2267,11 +2403,12 @@ function initMagento() {
 
   document.getElementById("mgSelectAll")?.addEventListener("change", e => {
     mgPage.items.forEach(p => {
-      if (e.target.checked) mgSelected.add(p.sku); else mgSelected.delete(p.sku);
+      if (e.target.checked) mgSelected.add(mgProductKey(p)); else mgSelected.delete(mgProductKey(p));
     });
     renderMgProducts();
   });
   document.getElementById("mgClearSelectionBtn")?.addEventListener("click", clearMgSelection);
+  document.getElementById("mgBulkAddGroupsBtn")?.addEventListener("click", () => addMgMatchingGroups(mgSelectedSkus()));
   document.getElementById("mgBulkEnableBtn")?.addEventListener("click", () => runMgBulk("enable"));
   document.getElementById("mgBulkDisableBtn")?.addEventListener("click", () => runMgBulk("disable"));
   ["mgBulkAddCategory", "mgBulkRemoveCategory"].forEach(id => {

@@ -64,17 +64,81 @@ function renderStylePaneSummary(style) {
   // Just one: shown as it is, nothing to unfold.
   const poValue = lines.length > 1 ? posBox : lines.length === 1 ? pos.firstElementChild : "";
 
+  // A block across the whole pane: its key on top, the value under it.
+  const block = (label, content, className = "") => {
+    const wrap = document.createElement("div");
+    wrap.className = "style-pane-block" + (className ? ` ${className}` : "");
+    const l = document.createElement("span");
+    l.className = "item-pane-label";
+    l.textContent = label;
+    wrap.append(l, content);
+    return wrap;
+  };
+  const memo = style.memo ? createStylePaneMemo(style) : document.createElement("span");
+  if (!style.memo) {
+    memo.className = "style-pane-memo is-empty";
+    memo.textContent = "—";
+  }
+
   document.getElementById("stylePaneSummary").replaceChildren(
-    ...field("Category", createStylePaneCategory(style), { wide: true }),
-    ...field("IHD", createIhdInput(style, { onSaved: () => refreshPhotoshootViews() })),
-    // N41's available month (Styles CSV column D).
-    ...field("Available", createAvailablePill(style.availableDate, style) ?? ""),
-    ...field("PO", poValue),
-    ...field("Rcvd Qty", style.receivedQty ? Number(style.receivedQty).toLocaleString() : ""),
-    ...field("Inv Qty", style.invQty ? Number(style.invQty).toLocaleString() : ""),
-    ...field("Memo", style.memo ? createStylePaneMemo(style) : "", { wide: true }),
+    // N41's available month, with the IHD beside it once it's confirmed.
+    ...field("Available", createStylePaneAvailable(style)),
+    ...field("Category", createStylePaneCategory(style)),
+    block("Memo", memo),
+    createStylePaneQtys(style),
     ...field("Notes", createStylePaneNotes(style), { wide: true }),
+    ...field("PO", poValue, { wide: true }),
   );
+}
+
+/**
+ * The Available pill and the IHD. On a PO, the IHD shows only once its ETA
+ * is confirmed (not N41's 1/1 placeholder); off every PO it's typed in here.
+ */
+function createStylePaneAvailable(style) {
+  const wrap = document.createElement("span");
+  wrap.className = "style-pane-available";
+  const pill = createAvailablePill(style.availableDate, style);
+  if (pill) wrap.appendChild(pill);
+  if (style.ihdFromPo) {
+    if (style.ihd && !isPlaceholderDate(style.ihd)) {
+      const ihd = createPoIhdText(style);
+      ihd.classList.add("style-pane-ihd");
+      ihd.textContent = `IHD ${ihd.textContent}`;
+      wrap.appendChild(ihd);
+    }
+  } else {
+    const ihd = createIhdInput(style, { onSaved: () => refreshPhotoshootViews() });
+    ihd.classList.add("style-pane-ihd");
+    ihd.title = "IHD — typed in (this colour isn't on a PO)";
+    wrap.appendChild(ihd);
+  }
+  if (!wrap.childNodes.length) wrap.textContent = EMPTY_DISPLAY;
+  return wrap;
+}
+
+/**
+ * OH / WIP / OO / ATS / Received / Invoiced in a box, each key over its
+ * figure. 0 or blank is a light dash — except ATS, which reads 0, green
+ * above 0 and red at or below it.
+ */
+function createStylePaneQtys(style) {
+  const box = document.createElement("div");
+  box.className = "style-pane-qtys";
+  // The same figures, order and colours as the Styles table's Qty column (js/styles.js).
+  styleQtyFigures(style).forEach(({ label, text, tone }) => {
+    const cell = document.createElement("div");
+    cell.className = "style-pane-qty";
+    const l = document.createElement("span");
+    l.className = "style-pane-qty-label";
+    l.textContent = label;
+    const v = document.createElement("span");
+    v.className = "style-pane-qty-value" + (tone ? ` is-${tone}` : "");
+    v.textContent = text;
+    cell.append(l, v);
+    box.appendChild(cell);
+  });
+  return box;
 }
 
 /**

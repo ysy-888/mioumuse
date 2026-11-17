@@ -27,12 +27,20 @@ let stylePageSize = TABLE_PAGE_SIZE_DEFAULT; // read once the page loads (initSt
  */
 let selectedStyleKeys = new Set();
 
+/** The figures, in order: the style's field and its key. Received is the Style Master's; the rest the ATS report's. */
+const STYLE_QTY_FIGURES = [
+  { col: "oh", label: "OH" }, { col: "wip", label: "WIP" }, { col: "oo", label: "OO" }, { col: "ats", label: "ATS" },
+  { col: "receivedQty", label: "Received" }, { col: "invQty", label: "Invoiced" },
+];
+
 const STYLE_COLUMNS = {
   styleNo: { value: s => s.styleNo },
   color: { value: s => s.color },
   description: { value: s => s.description },
   category: { value: s => s.category },
   season: { value: s => s.season },
+  // The Style Master's user2: "1", "2" or blank.
+  show: { value: s => s.show ?? "" },
   status: { value: s => s.status },
   // Showing on the webstore (js/magento-availability.js).
   magento: { value: s => styleMgStatusText(s) },
@@ -41,22 +49,44 @@ const STYLE_COLUMNS = {
   // "YYYY-MM-DD" sorts as a date; blanks on top soonest first, at the bottom latest first.
   ihd: { value: s => ihdSortValue(s) }, // as it shows: a PO's 1/1 placeholder as blank, an old 0026-… as 2026
   notes: { value: s => s.notes ?? "" },
-  // Inv Qty, OH, WIP, OO and ATS: all from N41's ATS report.
-  // Sorted as numbers, blanks last either way; 0 and blank show as "–".
-  ...Object.fromEntries(Object.entries({ invQty: "invQty", oh: "oh", wip: "wip", oo: "oo", ats: "ats" }).map(([col, field]) => [col, {
-    value: s => numOrNull(s[field]),
-    display: s => formatStyleQty(s[field]),
+  // The figures, shown together in the Qty column (createStyleQtyStrip) but
+  // each sorted and filtered from its own sub-header. Sorted as numbers,
+  // blanks last either way.
+  ...Object.fromEntries(STYLE_QTY_FIGURES.map(({ col }) => [col, {
+    value: s => numOrNull(s[col]),
     numeric: true,
   }])),
 };
 
-/** The figure columns: column → the style's field. */
-const STYLE_QTY_COLS = ["invQty", "oh", "wip", "oo", "ats"];
+/** The figure columns, in the order the Qty column and the style pane show them. */
+const STYLE_QTY_COLS = STYLE_QTY_FIGURES.map(f => f.col);
 
-/** 1,234; "–" for 0 or blank. */
-function formatStyleQty(v) {
-  const n = numOrNull(v);
-  return n === null || n === 0 ? EMPTY_DISPLAY : n.toLocaleString();
+/**
+ * A style's figures to show: { col, label, text, tone } in order. 0 or blank
+ * is a light dash ("empty") — except ATS, which reads 0 and is "pos" above
+ * 0, "neg" at or below.
+ */
+function styleQtyFigures(style) {
+  return STYLE_QTY_FIGURES.map(({ col, label }) => {
+    const n = numOrNull(style[col]);
+    if (col === "ats" && n !== null) return { col, label, text: n.toLocaleString(), tone: n > 0 ? "pos" : "neg" };
+    if (n === null || n === 0) return { col, label, text: "—", tone: "empty" };
+    return { col, label, text: n.toLocaleString(), tone: "" };
+  });
+}
+
+/** The Styles table's Qty cell: the six figures in a row, lined up under the sub-headers. */
+function createStyleQtyStrip(style) {
+  const strip = document.createElement("span");
+  strip.className = "style-qtys";
+  styleQtyFigures(style).forEach(({ col, text, tone }) => {
+    const v = document.createElement("span");
+    v.className = "style-qty" + (tone ? ` is-${tone}` : "");
+    v.dataset.col = col;
+    v.textContent = text;
+    strip.appendChild(v);
+  });
+  return strip;
 }
 
 /** A figure's filter choice: above 0, 0 or blank, below 0 (as on Magento Products). */
@@ -89,8 +119,12 @@ function formatMonYY(ym) {
  * The Available month as a rounded pill (null when there's none) — amber
  * when the colour's newest PO is filed under another month (applyPoIhds).
  */
+function formatAvailableMonth(ym) {
+  return formatMonYY(ym).split(" ")[0];
+}
+
 function createAvailablePill(ym, style = null) {
-  const text = formatMonYY(ym);
+  const text = formatAvailableMonth(ym);
   if (!text) return null;
   const pill = document.createElement("span");
   pill.className = "available-pill";
@@ -102,6 +136,31 @@ function createAvailablePill(ym, style = null) {
       + (po.tentative ? " (ETA not set yet)" : ` (ETA ${formatMdy(po.etaFinal)}${po.etaFromReceived ? ", received" : ""})`);
   }
   return pill;
+}
+
+/**
+ * The Available pill with the IHD under it once it's confirmed — a PO ETA
+ * that isn't N41's 1/1 placeholder, or a date typed in (as on the POs page).
+ */
+function createAvailableWithIhd(style) {
+  const dates = document.createElement("div");
+  dates.className = "po-color-dates";
+  const pill = createAvailablePill(style.availableDate, style);
+  if (pill) dates.appendChild(pill);
+  else {
+    const empty = document.createElement("span");
+    setDisplayText(empty, EMPTY_DISPLAY);
+    dates.appendChild(empty);
+  }
+  const ihd = ihdSortValue(style);
+  if (ihd) {
+    const date = document.createElement("span");
+    date.className = "po-color-ihd";
+    date.textContent = formatMdy(ihd);
+    date.title = style.ihdFromPo ? "IHD — from the PO ETA" : "IHD — typed in";
+    dates.appendChild(date);
+  }
+  return dates;
 }
 
 /** What search looks through for a style. */
@@ -170,8 +229,8 @@ function applyStyleFilters({ keepShown = false } = {}) {
     if (!columnFilterPasses("stylesTable", "status", statusFilterKey(s.status))) return false;
     if (!columnFilterPasses("stylesTable", "category", statusFilterKey(s.category))) return false;
     if (!columnFilterPasses("stylesTable", "season", statusFilterKey(s.season))) return false;
+    if (!columnFilterPasses("stylesTable", "show", statusFilterKey(s.show))) return false;
     if (noPhotos && (NO_PHOTOS_SKIP_STATUSES.some(st => statusFilterKey(s.status).toUpperCase().startsWith(st)) || hasStyleImages(s.styleNo, s.color))) return false;
-    if (!columnFilterPasses("stylesTable", "ihd", monthFilterKey(s.ihd))) return false;
     if (!STYLE_QTY_COLS.every(col => columnFilterPasses("stylesTable", col, styleQtyFilterKey(STYLE_COLUMNS[col].value(s))))) return false;
     if (!q) return true;
     return styleSearchText(s).includes(q);
@@ -275,7 +334,7 @@ function sampleStatusTitle(saved) {
 
 /**
  * How many of these styles ([{ styleNo, color }]) are at each sample status:
- * [{ key, label, count }] for TOP / SHOW / PP / FIRST, then None ("").
+ * [{ key, label, count }] for TOP / SHOW / PP, then None ("").
  */
 function countSampleStatuses(styles) {
   const counts = new Map([...SAMPLE_STATUS_KEYS, ""].map(k => [k, 0]));
@@ -286,21 +345,29 @@ function countSampleStatuses(styles) {
   return [...SAMPLE_STATUSES, { key: "", label: "None" }].map(s => ({ ...s, count: counts.get(s.key) }));
 }
 
-/** The colour's sample status (TOP / SHOW / PP / FIRST) as a read-only pill, nothing if none. */
+/** Flagged: Show (the Style Master's user2) is 1 or 2, but the sample is only PP. */
+function isShowSamplePp(style, status = style?.sampleStatus) {
+  return status === "pp" && (style?.show === "1" || style?.show === "2");
+}
+
+/** The colour's sample status (TOP / SHOW / PP) as a read-only pill, nothing if none. */
 function addSampleStatusPill(wrap, style) {
   const saved = findStyle(style.styleNo, style.color) ?? style;
-  if (!saved.sampleStatus) return;
+  if (!getSampleStatusLabel(saved.sampleStatus)) return;
   wrap.classList.add("has-top");
   const pill = document.createElement("span");
   pill.className = "style-top-pill";
   pill.dataset.sample = saved.sampleStatus;
   pill.textContent = getSampleStatusLabel(saved.sampleStatus);
-  pill.title = `Sample status: ${pill.textContent}${saved.sampleStatus === "top" && saved.topDate ? ` · ${sampleStatusTitle(saved)}` : ""}`;
+  const flagged = isShowSamplePp(saved);
+  pill.classList.toggle("is-show-pp", flagged);
+  pill.title = `Sample status: ${pill.textContent}${saved.sampleStatus === "top" && saved.topDate ? ` · ${sampleStatusTitle(saved)}` : ""}`
+    + (flagged ? `\n⚑ Show is ${saved.show}, but the sample is only PP` : "");
   wrap.appendChild(pill);
 }
 
 /**
- * The sample status as a dropdown (— / TOP / SHOW / PP / FIRST) that saves
+ * The sample status as a dropdown (— / TOP / SHOW / PP) that saves
  * as soon as it's picked — Need to Shoot and the shoot pane.
  */
 function createSampleStatusSelect(style) {
@@ -313,7 +380,11 @@ function createSampleStatusSelect(style) {
     select.value = value;
     select.dataset.sample = value;
     const top = value === "top" ? sampleStatusTitle(saved) : "";
-    select.title = value ? `Sample status: ${getSampleStatusLabel(value)}${top ? ` · ${top}` : ""}` : "Sample status";
+    const flagged = isShowSamplePp(saved, value);
+    select.classList.toggle("is-show-pp", flagged);
+    select.title = value
+      ? `Sample status: ${getSampleStatusLabel(value)}${top ? ` · ${top}` : ""}${flagged ? `\n⚑ Show is ${saved.show}, but the sample is only PP` : ""}`
+      : "Sample status";
   };
   show(saved?.sampleStatus ?? "");
   if (!saved) {
@@ -356,7 +427,7 @@ function renderStylesTable() {
     const msg = styleShowDeleted
       ? (getDeletedStyles().length ? "No deleted styles match the search." : "No deleted styles.")
       : getAllStyles().length === 0
-        ? "No styles yet — use Import CSV in the menu (⋮) to load the style export."
+        ? "No styles yet — use Import N41 Data in the menu (⋮) to load the Style Master."
         : "No styles match the current filters.";
     tbody.innerHTML = `<tr class="state-row"><td colspan="${cols.length}">${escapeHtml(msg)}</td></tr>`;
     renderStylesPager();
@@ -375,11 +446,11 @@ function renderStylesTable() {
       if (col === "select") td.appendChild(createStyleCheckbox(style));
       else if (col === "image") td.appendChild(createStyleThumb(style.styleNo, style.color));
       else if (col === "shoot") td.appendChild(createStyleShootCell(style));
-      else if (col === "ihd") td.appendChild(createIhdInput(style));
       else if (col === "notes") td.appendChild(createStyleNotesInput(style, { onSaved: refreshStylePaneSummary }));
       else if (col === "status") td.appendChild(createStyleStatusPill(style.status));
       else if (col === "magento") td.appendChild(createStyleMgStatusCell(style));
-      else if (col === "available") { const pill = createAvailablePill(style.availableDate, style); if (pill) td.appendChild(pill); }
+      else if (col === "available") td.appendChild(createAvailableWithIhd(style));
+      else if (col === "qtys") td.appendChild(createStyleQtyStrip(style));
       else {
         mountSearchHighlightedText(td, (STYLE_COLUMNS[col].display ?? STYLE_COLUMNS[col].value)(style));
         if (STYLE_COLUMNS[col].numeric) td.classList.add("cell-num");
@@ -739,7 +810,8 @@ function sortStylesBy(col) {
     styleSortCol = col;
     styleSortDir = 1;
   }
-  document.querySelectorAll("#stylesTable thead th[data-col]").forEach(th => {
+  // The headers, and the Qty column's sub-headers.
+  document.querySelectorAll("#stylesTable thead th[data-col], #stylesTable thead .style-qty-head").forEach(th => {
     th.classList.remove("sorted-asc", "sorted-desc");
     if (styleSortCol && th.dataset.col === styleSortCol) th.classList.add(styleSortDir === 1 ? "sorted-asc" : "sorted-desc");
   });
@@ -754,12 +826,15 @@ function initStylesView() {
     if (!STYLE_COLUMNS[th.dataset.col]) th.classList.add("th-no-sort");
     th.addEventListener("click", () => sortStylesBy(th.dataset.col));
   });
-  initColumnFilter("stylesTable", "ihd", {
-    options: () => monthFilterOptions(getAllStyles().map(s => s.ihd)),
-    onChange: () => applyStyleFilters(),
-    sortable: true,
+  // Each figure in the Qty column sorts from its own sub-header (the column itself doesn't).
+  document.querySelectorAll("#stylesTable thead .style-qty-head").forEach(head => {
+    head.addEventListener("click", e => {
+      e.stopPropagation();
+      sortStylesBy(head.dataset.col);
+    });
   });
   STYLE_QTY_COLS.forEach(col => initColumnFilter("stylesTable", col, {
+    el: document.querySelector(`#stylesTable thead .style-qty-head[data-col="${col}"]`),
     options: () => styleQtyFilterOptions(col),
     onChange: () => applyStyleFilters(),
     sortable: true,
@@ -771,6 +846,11 @@ function initStylesView() {
   });
   initColumnFilter("stylesTable", "season", {
     options: () => statusFilterOptions(getAllStyles().map(s => s.season)),
+    onChange: () => applyStyleFilters(),
+    sortable: true,
+  });
+  initColumnFilter("stylesTable", "show", {
+    options: () => statusFilterOptions(getAllStyles().map(s => s.show)),
     onChange: () => applyStyleFilters(),
     sortable: true,
   });

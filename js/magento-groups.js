@@ -17,10 +17,26 @@
  * Magento is flagged.
  */
 
-/** groupSku → [childSku] from the last import; null until loaded (or not set up). */
+/**
+ * groupSku → [childSku]: the last import, with Magento's live links laid
+ * over it (below); null until loaded (or not set up).
+ */
 let mgGroups = null;
 /** childSku → groupSku. */
 let mgChildGroup = new Map();
+/** The import alone — what a new export is compared with. */
+let mgExportGroups = null;
+/**
+ * groupSku → [childSku] as Magento's API lists them now (enabled items only)
+ * — from the catalog check and from products loaded. An item added to a
+ * group since the export counts as in it straight away; the export still
+ * supplies the disabled ones.
+ */
+const mgLiveGroups = new Map();
+/** Each Magento record keeps its own links, including duplicate-SKU groups. */
+const mgLiveGroupRecords = new Map();
+/** Enabled SKUs from the same catalog snapshot as the live group links. */
+let mgLiveEnabledSkus = null;
 let mgGroupsImportedAt = "";
 /** false when the magento_groups table isn't there yet. */
 let mgGroupsTableReady = true;
@@ -38,10 +54,70 @@ async function loadMagentoGroups() {
 }
 
 function setMagentoGroups(groups, importedAt) {
-  mgGroups = groups && groups.size ? groups : null;
+  mgExportGroups = groups && groups.size ? groups : null;
   mgGroupsImportedAt = importedAt;
+  rebuildMgGroups();
+}
+
+/**
+ * Magento's live items for some groups ({ groupSku: [childSku] } or a Map).
+ * Returns whether anything changed.
+ */
+function setMgLiveGroups(entries, enabledSkus = null) {
+  const before = JSON.stringify([...mgLiveGroups]);
+  if (enabledSkus !== null) {
+    mgLiveEnabledSkus = enabledSkus;
+    mgLiveGroupRecords.clear();
+  }
+  let row = 0;
+  for (const [group, children, id] of entries) {
+    const key = id != null ? `id:${id}` : enabledSkus !== null ? `snapshot:${group}:${row++}` : `sku:${group}`;
+    // An old cached snapshot has no IDs. A partial page must not replace
+    // its combined evidence with just one duplicate record's links.
+    if (enabledSkus === null && mgDuplicateSkus.has(group) && id == null) continue;
+    mgLiveGroupRecords.set(key, { group, children: [...new Set((children ?? []).map(String))] });
+  }
+  mgLiveGroups.clear();
+  for (const { group, children } of mgLiveGroupRecords.values()) {
+    mgLiveGroups.set(group, [...new Set([...(mgLiveGroups.get(group) ?? []), ...children])]);
+  }
+  const changed = enabledSkus !== null || before !== JSON.stringify([...mgLiveGroups]);
+  if (changed) rebuildMgGroups();
+  return changed;
+}
+
+/**
+ * The import with the live links over it. Live wins for enabled items (it's
+ * current): an item Magento lists under a group is in that group. Enabled
+ * items absent from a checked group lose stale export links. Disabled or
+ * unknown items retain export links because the API can omit them.
+ */
+function rebuildMgGroups() {
   mgChildGroup = new Map();
-  mgGroups?.forEach((children, group) => children.forEach(child => mgChildGroup.set(child, group)));
+  if (!mgExportGroups) {
+    mgGroups = null;
+    renderMgGroupsStatus();
+    return;
+  }
+  const liveChild = new Map();
+  mgLiveGroups.forEach((children, group) => children.forEach(child => liveChild.set(child, group)));
+  const merged = new Map();
+  mgExportGroups.forEach((children, group) => {
+    const live = mgLiveGroups.get(group) ?? [];
+    const kept = children.filter(child => {
+      if (liveChild.has(child)) return liveChild.get(child) === group;
+      // Magento omits disabled children. Preserve their export links, but
+      // an enabled child absent from a checked group is genuinely unlinked.
+      return !mgLiveGroups.has(group) || !mgLiveEnabledSkus?.has(child);
+    });
+    merged.set(group, [...kept, ...live.filter(child => !kept.includes(child))]);
+  });
+  // Groups newer than the export.
+  mgLiveGroups.forEach((children, group) => {
+    if (!merged.has(group)) merged.set(group, [...children]);
+  });
+  mgGroups = merged;
+  mgGroups.forEach((children, group) => children.forEach(child => mgChildGroup.set(child, group)));
   renderMgGroupsStatus();
 }
 
@@ -65,11 +141,16 @@ function prefixGroupFor(sku, groups = mgGroups) {
  */
 function applyMgGroups(product) {
   if (!product) return product;
+  // Straight from Magento (not already applied): its items are the live ones.
+  if (product.groupSource === undefined && product.type === "grouped" && Array.isArray(product.childSkus)) {
+    setMgLiveGroups([[product.sku, product.childSkus, product.id]]);
+  }
   product.groupSource = "api";
   product.groupSku = null;
   product.unlinkedGroup = null;
   if (!mgGroups) return product;
   if (product.type === "grouped") {
+    if (mgDuplicateSkus.has(product.sku)) return product;
     if (mgGroups.has(product.sku)) {
       product.childSkus = [...mgGroups.get(product.sku)];
       product.groupSource = "export";
@@ -87,7 +168,7 @@ function renderMgGroupsStatus() {
   el.classList.toggle("is-warning", !mgGroups);
   if (mgGroups) {
     el.textContent = `Groups: export of ${formatMdy(mgGroupsImportedAt.slice(0, 10))}`;
-    el.title = `${mgGroups.size.toLocaleString()} groups, ${mgChildGroup.size.toLocaleString()} items — from the Magento export imported ${new Date(mgGroupsImportedAt).toLocaleString()}. Import a newer export after changing groups in Magento.`;
+    el.title = `${mgGroups.size.toLocaleString()} groups, ${mgChildGroup.size.toLocaleString()} items — from the Magento export imported ${new Date(mgGroupsImportedAt).toLocaleString()}, with items added in Magento since then picked up live (enabled items only). Import a newer export to pick up disabled items too.`;
   } else {
     el.textContent = "Groups: enabled items only";
     el.title = "Magento's API leaves disabled items out of groups. Import groups from a Magento product export to see every item.";
@@ -237,14 +318,15 @@ function renderMgGroupsImport() {
   // Against the last import.
   const changes = document.getElementById("mgGroupsImportChanges");
   const save = document.getElementById("mgGroupsImportSaveBtn");
-  if (!mgGroups) {
+  const before = mgExportGroups;
+  if (!before) {
     changes.textContent = "First import — every group above will be saved.";
     save.disabled = false;
   } else {
     const same = (a, b) => a.length === b.length && a.every((x, i) => x === b[i]);
-    const added = [...p.groups.keys()].filter(g => !mgGroups.has(g));
-    const removed = [...mgGroups.keys()].filter(g => !p.groups.has(g));
-    const changed = [...p.groups.keys()].filter(g => mgGroups.has(g) && !same(mgGroups.get(g), p.groups.get(g)));
+    const added = [...p.groups.keys()].filter(g => !before.has(g));
+    const removed = [...before.keys()].filter(g => !p.groups.has(g));
+    const changed = [...p.groups.keys()].filter(g => before.has(g) && !same(before.get(g), p.groups.get(g)));
     const n = added.length + removed.length + changed.length;
     const sample = list => list.slice(0, 8).join(", ") + (list.length > 8 ? ` and ${list.length - 8} more` : "");
     const lines = [];
