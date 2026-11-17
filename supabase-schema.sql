@@ -593,6 +593,56 @@ drop policy if exists "n41_po_lines: own rows only" on n41_po_lines;
 create policy "n41_po_lines: own rows only" on n41_po_lines
   for all using (user_id = auth.uid()) with check (user_id = auth.uid());
 
+-- PO detail page (js/po-detail.js): fit comments per PO # + Style # and
+-- round (PP 1, PP 2 … TOP 1 …), with pictures in the private fit-photos
+-- bucket; and a PP sample checkbox per colour on the PO.
+create table if not exists po_fit_comments (
+  user_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
+  po_no text not null,
+  style_no text not null,
+  round_type text not null check (round_type in ('pp', 'top')),
+  round_no int not null check (round_no > 0),
+  comment text not null default '',
+  images jsonb not null default '[]'::jsonb,
+  comment_date date,
+  updated_at timestamptz not null default now(),
+  primary key (user_id, po_no, style_no, round_type, round_no)
+);
+alter table po_fit_comments enable row level security;
+drop policy if exists "po_fit_comments: own rows only" on po_fit_comments;
+create policy "po_fit_comments: own rows only" on po_fit_comments
+  for all using (user_id = auth.uid()) with check (user_id = auth.uid());
+
+create table if not exists po_color_samples (
+  user_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
+  po_no text not null,
+  style_no text not null,
+  color text not null,
+  pp_sample boolean not null default false,
+  updated_at timestamptz not null default now(),
+  primary key (user_id, po_no, style_no, color)
+);
+alter table po_color_samples enable row level security;
+drop policy if exists "po_color_samples: own rows only" on po_color_samples;
+create policy "po_color_samples: own rows only" on po_color_samples
+  for all using (user_id = auth.uid()) with check (user_id = auth.uid());
+
+insert into storage.buckets (id, name, public)
+values ('fit-photos', 'fit-photos', false)
+on conflict (id) do nothing;
+drop policy if exists "fit-photos: upload own" on storage.objects;
+create policy "fit-photos: upload own" on storage.objects
+  for insert to authenticated
+  with check (bucket_id = 'fit-photos' and (storage.foldername(name))[1] = auth.uid()::text);
+drop policy if exists "fit-photos: read own" on storage.objects;
+create policy "fit-photos: read own" on storage.objects
+  for select to authenticated
+  using (bucket_id = 'fit-photos' and (storage.foldername(name))[1] = auth.uid()::text);
+drop policy if exists "fit-photos: delete own" on storage.objects;
+create policy "fit-photos: delete own" on storage.objects
+  for delete to authenticated
+  using (bucket_id = 'fit-photos' and (storage.foldername(name))[1] = auth.uid()::text);
+
 -- ── Holidays (Home → menu → Add Holiday) ────────────────────────────────────
 --
 -- A named run of days marked on the Home calendar. Not a task: there's
@@ -647,3 +697,719 @@ alter table email_settings enable row level security;
 drop policy if exists "email_settings: own rows only" on email_settings;
 create policy "email_settings: own rows only" on email_settings
   for all using (user_id = auth.uid()) with check (user_id = auth.uid());
+
+
+-- ════════════════════════════════════════════════════════════════════════
+-- Team workspace (supabase/migrations/20261117150000_team_workspace.sql).
+-- Runs after everything above: it replaces each "own rows only" policy with
+-- a shared team one.
+-- ════════════════════════════════════════════════════════════════════════
+
+-- Shared team data.
+--
+-- Every table's user_id now names the team's workspace rather than the person
+-- who wrote the row: it defaults to current_workspace(), and each table's
+-- policy lets in everyone in that workspace. The workspace's id is the first
+-- account's own id, so the rows already there stay exactly where they are.
+--
+-- Only people listed in team_members see anything: a signed-in account that
+-- isn't on the team gets a null workspace, so no rows and no writes. To add
+-- someone, create their account in Supabase (Authentication → Users), then:
+--   insert into team_members (user_id, workspace_id)
+--   select u.id, m.workspace_id from auth.users u, team_members m
+--   where u.email = '<their email>' and m.role = 'owner';
+--
+-- role is there for the permissions to come; for now everyone can do everything.
+-- table_views (each person's column layouts) stays personal.
+
+create table if not exists team_members (
+  user_id uuid primary key references auth.users(id) on delete cascade,
+  workspace_id uuid not null,
+  role text not null default 'member' check (role in ('owner', 'admin', 'member')),
+  created_at timestamptz not null default now()
+);
+
+create index if not exists team_members_workspace_idx on team_members (workspace_id);
+
+-- The team's first account owns the workspace (its id is the workspace's id).
+insert into team_members (user_id, workspace_id, role)
+select id, id, 'owner' from auth.users
+order by created_at
+limit 1
+on conflict (user_id) do nothing;
+
+/** The signed-in person's workspace; null when they aren't on a team. */
+create or replace function public.current_workspace()
+returns uuid
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select workspace_id from public.team_members where user_id = auth.uid()
+$$;
+
+revoke all on function public.current_workspace() from public;
+grant execute on function public.current_workspace() to authenticated;
+
+alter table team_members enable row level security;
+drop policy if exists "team_members: same workspace" on team_members;
+create policy "team_members: same workspace" on team_members
+  for select to authenticated
+  using (workspace_id = (select public.current_workspace()));
+
+-- Every shared table: the workspace's rows, for everyone on it.
+do $$
+declare
+  t text;
+begin
+  foreach t in array array[
+    'banners', 'campaigns', 'completed_tasks', 'email_settings', 'holidays',
+    'magento_groups', 'n41_orders', 'n41_po_deleted', 'n41_po_lines',
+    'photoshoots', 'po_color_samples', 'po_colors', 'po_fit_comments',
+    'po_lines', 'po_month_archive', 'sample_photo_links', 'shoot_list',
+    'style_completions', 'style_imports', 'styles', 'task_links', 'trade_shows'
+  ] loop
+    if to_regclass('public.' || t) is null then
+      continue;
+    end if;
+    execute format('alter table public.%I alter column user_id set default public.current_workspace()', t);
+    execute format('drop policy if exists %I on public.%I', t || ': own rows only', t);
+    execute format('drop policy if exists %I on public.%I', t || ': team rows', t);
+    execute format(
+      'create policy %I on public.%I for all to authenticated '
+      'using (user_id = (select public.current_workspace())) '
+      'with check (user_id = (select public.current_workspace()))',
+      t || ': team rows', t);
+  end loop;
+end $$;
+
+-- Storage: files live under the workspace's folder (the owner's id, as before).
+drop policy if exists "banners: upload own" on storage.objects;
+drop policy if exists "banners: update own" on storage.objects;
+drop policy if exists "banners: delete own" on storage.objects;
+drop policy if exists "banners: read own" on storage.objects;
+drop policy if exists "fit-photos: upload own" on storage.objects;
+drop policy if exists "fit-photos: read own" on storage.objects;
+drop policy if exists "fit-photos: delete own" on storage.objects;
+
+drop policy if exists "banners: team upload" on storage.objects;
+create policy "banners: team upload" on storage.objects
+  for insert to authenticated
+  with check (bucket_id = 'banners' and (storage.foldername(name))[1] = (select public.current_workspace())::text);
+drop policy if exists "banners: team update" on storage.objects;
+create policy "banners: team update" on storage.objects
+  for update to authenticated
+  using (bucket_id = 'banners' and (storage.foldername(name))[1] = (select public.current_workspace())::text);
+drop policy if exists "banners: team delete" on storage.objects;
+create policy "banners: team delete" on storage.objects
+  for delete to authenticated
+  using (bucket_id = 'banners' and (storage.foldername(name))[1] = (select public.current_workspace())::text);
+drop policy if exists "banners: team read" on storage.objects;
+create policy "banners: team read" on storage.objects
+  for select to authenticated
+  using (bucket_id = 'banners' and (storage.foldername(name))[1] = (select public.current_workspace())::text);
+
+drop policy if exists "fit-photos: team upload" on storage.objects;
+create policy "fit-photos: team upload" on storage.objects
+  for insert to authenticated
+  with check (bucket_id = 'fit-photos' and (storage.foldername(name))[1] = (select public.current_workspace())::text);
+drop policy if exists "fit-photos: team read" on storage.objects;
+create policy "fit-photos: team read" on storage.objects
+  for select to authenticated
+  using (bucket_id = 'fit-photos' and (storage.foldername(name))[1] = (select public.current_workspace())::text);
+drop policy if exists "fit-photos: team delete" on storage.objects;
+create policy "fit-photos: team delete" on storage.objects
+  for delete to authenticated
+  using (bucket_id = 'fit-photos' and (storage.foldername(name))[1] = (select public.current_workspace())::text);
+
+-- People: a name for each account, seen by their team (chat, and later
+-- assignments). A new account gets one from its email.
+create table if not exists profiles (
+  id uuid primary key references auth.users(id) on delete cascade,
+  display_name text not null default '',
+  email text not null default '',
+  avatar_color text not null default '',
+  updated_at timestamptz not null default now()
+);
+
+alter table profiles enable row level security;
+drop policy if exists "profiles: team reads" on profiles;
+create policy "profiles: team reads" on profiles
+  for select to authenticated
+  using (exists (
+    select 1 from public.team_members m
+    where m.user_id = profiles.id and m.workspace_id = (select public.current_workspace())
+  ));
+drop policy if exists "profiles: own edits" on profiles;
+create policy "profiles: own edits" on profiles
+  for update to authenticated
+  using (id = auth.uid())
+  with check (id = auth.uid());
+
+create or replace function public.profile_name_from_email(email text)
+returns text
+language sql
+immutable
+as $$
+  select initcap(replace(replace(split_part(coalesce(email, ''), '@', 1), '.', ' '), '_', ' '))
+$$;
+
+create or replace function public.handle_new_user_profile()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  insert into public.profiles (id, email, display_name)
+  values (
+    new.id,
+    coalesce(new.email, ''),
+    coalesce(nullif(new.raw_user_meta_data->>'full_name', ''), public.profile_name_from_email(new.email))
+  )
+  on conflict (id) do nothing;
+  return new;
+end;
+$$;
+
+drop trigger if exists on_auth_user_created_profile on auth.users;
+create trigger on_auth_user_created_profile
+  after insert on auth.users
+  for each row execute function public.handle_new_user_profile();
+
+insert into profiles (id, email, display_name)
+select id, coalesce(email, ''), coalesce(nullif(raw_user_meta_data->>'full_name', ''), public.profile_name_from_email(email))
+from auth.users
+on conflict (id) do nothing;
+
+
+-- ════════════════════════════════════════════════════════════════════════
+-- Messages (supabase/migrations/20261117150100_chat.sql).
+-- ════════════════════════════════════════════════════════════════════════
+
+-- Messages: direct messages and group chats between people on the team
+-- (js/chat.js). Only a chat's members see it or its messages. Chats are
+-- started, joined, renamed and marked read through the functions below, so
+-- the tables themselves only take new messages and leaving a group.
+
+create table if not exists chat_conversations (
+  id uuid primary key default gen_random_uuid(),
+  workspace_id uuid not null default public.current_workspace(),
+  kind text not null check (kind in ('dm', 'group')),
+  title text not null default '',
+  -- Two people's ids, sorted: one direct message per pair.
+  dm_key text unique,
+  created_by uuid not null default auth.uid() references auth.users(id) on delete cascade,
+  created_at timestamptz not null default now(),
+  last_message_at timestamptz not null default now()
+);
+
+create table if not exists chat_members (
+  conversation_id uuid not null references chat_conversations(id) on delete cascade,
+  user_id uuid not null references auth.users(id) on delete cascade,
+  last_read_at timestamptz not null default now(),
+  joined_at timestamptz not null default now(),
+  primary key (conversation_id, user_id)
+);
+
+create index if not exists chat_members_user_idx on chat_members (user_id);
+
+create table if not exists chat_messages (
+  id uuid primary key default gen_random_uuid(),
+  conversation_id uuid not null references chat_conversations(id) on delete cascade,
+  sender_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
+  body text not null default '',
+  created_at timestamptz not null default now(),
+  edited_at timestamptz,
+  deleted_at timestamptz,
+  check (deleted_at is not null or char_length(body) between 1 and 8000)
+);
+
+create index if not exists chat_messages_conversation_idx on chat_messages (conversation_id, created_at desc);
+
+/** Whether the signed-in person is in this chat (for the policies, without them looking at themselves). */
+create or replace function public.is_chat_member(conv uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select exists (select 1 from public.chat_members where conversation_id = conv and user_id = auth.uid())
+$$;
+
+revoke all on function public.is_chat_member(uuid) from public;
+grant execute on function public.is_chat_member(uuid) to authenticated;
+
+alter table chat_conversations enable row level security;
+alter table chat_members enable row level security;
+alter table chat_messages enable row level security;
+
+drop policy if exists "chat_conversations: members read" on chat_conversations;
+create policy "chat_conversations: members read" on chat_conversations
+  for select to authenticated
+  using (public.is_chat_member(id));
+
+drop policy if exists "chat_members: members read" on chat_members;
+create policy "chat_members: members read" on chat_members
+  for select to authenticated
+  using (public.is_chat_member(conversation_id));
+
+drop policy if exists "chat_members: leave a group" on chat_members;
+create policy "chat_members: leave a group" on chat_members
+  for delete to authenticated
+  using (
+    user_id = auth.uid()
+    and exists (select 1 from public.chat_conversations c where c.id = conversation_id and c.kind = 'group')
+  );
+
+drop policy if exists "chat_messages: members read" on chat_messages;
+create policy "chat_messages: members read" on chat_messages
+  for select to authenticated
+  using (public.is_chat_member(conversation_id));
+
+drop policy if exists "chat_messages: members send" on chat_messages;
+create policy "chat_messages: members send" on chat_messages
+  for insert to authenticated
+  with check (sender_id = auth.uid() and deleted_at is null and edited_at is null and public.is_chat_member(conversation_id));
+
+-- A new message moves its chat up the list, and counts as read by whoever sent it.
+create or replace function public.chat_after_message()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  update public.chat_conversations set last_message_at = new.created_at where id = new.conversation_id;
+  update public.chat_members set last_read_at = greatest(last_read_at, new.created_at)
+    where conversation_id = new.conversation_id and user_id = new.sender_id;
+  return new;
+end;
+$$;
+
+drop trigger if exists chat_messages_after_insert on chat_messages;
+create trigger chat_messages_after_insert
+  after insert on chat_messages
+  for each row execute function public.chat_after_message();
+
+/** Everyone given must be on the caller's team. */
+create or replace function public.chat_require_team(ids uuid[])
+returns uuid
+language plpgsql
+stable
+security definer
+set search_path = public
+as $$
+declare
+  ws uuid := public.current_workspace();
+begin
+  if ws is null then
+    raise exception 'You''re not on a team yet.';
+  end if;
+  if exists (
+    select 1 from unnest(ids) as x(id)
+    where not exists (select 1 from public.team_members m where m.user_id = x.id and m.workspace_id = ws)
+  ) then
+    raise exception 'Everyone in a chat has to be on the team.';
+  end if;
+  return ws;
+end;
+$$;
+
+/** The direct message with someone, started if there isn't one yet. */
+create or replace function public.chat_start_dm(other uuid)
+returns uuid
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  me uuid := auth.uid();
+  ws uuid;
+  key text;
+  conv uuid;
+begin
+  if other is null or other = me then
+    raise exception 'Pick someone else to message.';
+  end if;
+  ws := public.chat_require_team(array[other]);
+  key := least(me::text, other::text) || ':' || greatest(me::text, other::text);
+  insert into public.chat_conversations (workspace_id, kind, dm_key, created_by)
+  values (ws, 'dm', key, me)
+  on conflict (dm_key) do nothing;
+  select id into conv from public.chat_conversations where dm_key = key;
+  insert into public.chat_members (conversation_id, user_id)
+  values (conv, me), (conv, other)
+  on conflict do nothing;
+  return conv;
+end;
+$$;
+
+/** A new group chat with these people (and the caller). */
+create or replace function public.chat_create_group(group_title text, member_ids uuid[])
+returns uuid
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  me uuid := auth.uid();
+  ws uuid;
+  conv uuid;
+begin
+  ws := public.chat_require_team(coalesce(member_ids, '{}'));
+  insert into public.chat_conversations (workspace_id, kind, title, created_by)
+  values (ws, 'group', left(trim(coalesce(group_title, '')), 120), me)
+  returning id into conv;
+  insert into public.chat_members (conversation_id, user_id)
+  select conv, x from unnest(array_append(coalesce(member_ids, '{}'), me)) as t(x)
+  on conflict do nothing;
+  return conv;
+end;
+$$;
+
+/** Add people to a group the caller is in. */
+create or replace function public.chat_add_members(conv uuid, member_ids uuid[])
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if not public.is_chat_member(conv) then
+    raise exception 'You''re not in that chat.';
+  end if;
+  if not exists (select 1 from public.chat_conversations where id = conv and kind = 'group') then
+    raise exception 'People can only be added to a group chat.';
+  end if;
+  perform public.chat_require_team(coalesce(member_ids, '{}'));
+  insert into public.chat_members (conversation_id, user_id)
+  select conv, x from unnest(member_ids) as t(x)
+  on conflict do nothing;
+end;
+$$;
+
+/** Rename a group the caller is in. */
+create or replace function public.chat_rename(conv uuid, new_title text)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if not public.is_chat_member(conv) then
+    raise exception 'You''re not in that chat.';
+  end if;
+  update public.chat_conversations set title = left(trim(coalesce(new_title, '')), 120)
+  where id = conv and kind = 'group';
+end;
+$$;
+
+/** Everything in the chat up to now has been seen. */
+create or replace function public.chat_mark_read(conv uuid)
+returns void
+language sql
+security definer
+set search_path = public
+as $$
+  update public.chat_members set last_read_at = greatest(last_read_at, now())
+  where conversation_id = conv and user_id = auth.uid()
+$$;
+
+/** Change the text of one of your own messages. */
+create or replace function public.chat_edit_message(message uuid, new_body text)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if char_length(trim(coalesce(new_body, ''))) not between 1 and 8000 then
+    raise exception 'A message needs some text.';
+  end if;
+  update public.chat_messages set body = new_body, edited_at = now()
+  where id = message and sender_id = auth.uid() and deleted_at is null;
+end;
+$$;
+
+/** Take back one of your own messages (it shows as deleted). */
+create or replace function public.chat_delete_message(message uuid)
+returns void
+language sql
+security definer
+set search_path = public
+as $$
+  update public.chat_messages set body = '', deleted_at = now()
+  where id = message and sender_id = auth.uid() and deleted_at is null
+$$;
+
+/** The caller's chats, newest first: members, last message, unread count. */
+create or replace function public.chat_inbox()
+returns table (
+  id uuid,
+  kind text,
+  title text,
+  last_message_at timestamptz,
+  last_read_at timestamptz,
+  member_ids uuid[],
+  last_body text,
+  last_sender_id uuid,
+  last_deleted boolean,
+  unread_count int
+)
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select
+    c.id, c.kind, c.title, c.last_message_at, me.last_read_at,
+    (select array_agg(m.user_id order by m.joined_at) from public.chat_members m where m.conversation_id = c.id),
+    lm.body, lm.sender_id, lm.deleted_at is not null,
+    (select count(*)::int from public.chat_messages x
+      where x.conversation_id = c.id and x.created_at > me.last_read_at and x.sender_id <> auth.uid() and x.deleted_at is null)
+  from public.chat_members me
+  join public.chat_conversations c on c.id = me.conversation_id
+  left join lateral (
+    select body, sender_id, deleted_at from public.chat_messages
+    where conversation_id = c.id order by created_at desc limit 1
+  ) lm on true
+  where me.user_id = auth.uid()
+  order by c.last_message_at desc
+$$;
+
+do $$
+declare
+  f text;
+begin
+  foreach f in array array[
+    'chat_require_team(uuid[])', 'chat_start_dm(uuid)', 'chat_create_group(text, uuid[])',
+    'chat_add_members(uuid, uuid[])', 'chat_rename(uuid, text)', 'chat_mark_read(uuid)',
+    'chat_edit_message(uuid, text)', 'chat_delete_message(uuid)', 'chat_inbox()'
+  ] loop
+    execute format('revoke all on function public.%s from public', f);
+    execute format('grant execute on function public.%s to authenticated', f);
+  end loop;
+end $$;
+
+-- Live: new messages, edits, and chats someone adds you to.
+do $$
+declare
+  t text;
+begin
+  if not exists (select 1 from pg_publication where pubname = 'supabase_realtime') then
+    create publication supabase_realtime;
+  end if;
+  foreach t in array array['chat_messages', 'chat_members', 'chat_conversations'] loop
+    if not exists (
+      select 1 from pg_publication_tables
+      where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = t
+    ) then
+      execute format('alter publication supabase_realtime add table public.%I', t);
+    end if;
+  end loop;
+end $$;
+
+-- Activity log: every add, change and removal in the team's data, with who
+-- made it and when (Activity page, and each style's History in its pane).
+--
+-- Filled by triggers on the shared tables, never by the app itself, so every
+-- page's edits land here without any of them having to remember to. Nobody
+-- can write to it or change it from the app; the team can only read their
+-- workspace's entries.
+--
+-- An entry:
+--   action   insert | update | delete
+--   changes  update: { column: { from, to } } — only the columns that changed
+--              (a list column: { added: [...], removed: [...] }, or
+--               { reordered: true }; very long text: { edited: true })
+--            insert / delete: the row as it was (minus bookkeeping columns)
+--   label    a readable name for the row ("P7903ST CREAM/BLACK", a campaign's
+--            name), style_no / color for a style's history
+--
+-- Left out on purpose: bookkeeping columns (updated_at, imported_at…) and the
+-- N41 stock numbers that refresh on every N41 import (n41_oh, n41_wip,
+-- n41_oo, n41_ats, inv_qty); tables that are straight copies of an import
+-- (n41_po_lines, n41_orders, po_lines, po_colors, magento_groups — the
+-- imports keep their own record), chat, and each person's column layouts.
+--
+-- To add a new table: create trigger <table>_activity after insert or update
+-- or delete on <table> for each row execute function log_activity('<key col>', ...);
+
+create table if not exists activity_log (
+  id bigint generated always as identity primary key,
+  workspace_id uuid not null,
+  actor_id uuid,
+  at timestamptz not null default now(),
+  table_name text not null,
+  action text not null check (action in ('insert', 'update', 'delete')),
+  row_key text not null,
+  label text,
+  style_no text,
+  color text,
+  changes jsonb not null default '{}'::jsonb
+);
+
+create index if not exists activity_log_feed_idx on activity_log (workspace_id, at desc, id desc);
+create index if not exists activity_log_style_idx on activity_log (workspace_id, style_no, at desc) where style_no is not null;
+
+alter table activity_log enable row level security;
+drop policy if exists "activity_log: team reads" on activity_log;
+create policy "activity_log: team reads" on activity_log
+  for select using (workspace_id = (select public.current_workspace()));
+revoke insert, update, delete on activity_log from anon, authenticated;
+grant select on activity_log to authenticated;
+
+/** The trigger: its arguments are the row's key columns. */
+create or replace function public.log_activity()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  o jsonb := case when tg_op <> 'INSERT' then to_jsonb(old) end;
+  n jsonb := case when tg_op <> 'DELETE' then to_jsonb(new) end;
+  r jsonb := coalesce(n, o);
+  skip text[] := array['user_id', 'updated_at', 'created_at', 'imported_at', 'ats_at',
+    'n41_oh', 'n41_wip', 'n41_oo', 'n41_ats', 'inv_qty', 'n41_id', 'linked_at', 'added_at'];
+  diff jsonb := '{}'::jsonb;
+  k text;
+  ov jsonb;
+  nv jsonb;
+  added jsonb;
+  removed jsonb;
+  ws uuid := (r->>'user_id')::uuid;
+  rk text;
+begin
+  if ws is null then return null; end if;
+
+  if tg_op = 'UPDATE' then
+    for k in select jsonb_object_keys(n) loop
+      continue when k = any(skip);
+      ov := o->k;
+      nv := n->k;
+      continue when ov is not distinct from nv;
+      if jsonb_typeof(ov) = 'array' and jsonb_typeof(nv) = 'array' then
+        select coalesce(jsonb_agg(e), '[]'::jsonb) into added
+          from jsonb_array_elements(nv) e
+          where not exists (select 1 from jsonb_array_elements(ov) x where x = e);
+        select coalesce(jsonb_agg(e), '[]'::jsonb) into removed
+          from jsonb_array_elements(ov) e
+          where not exists (select 1 from jsonb_array_elements(nv) x where x = e);
+        diff := diff || jsonb_build_object(k,
+          case when added = '[]'::jsonb and removed = '[]'::jsonb
+            then jsonb_build_object('reordered', true)
+            else jsonb_build_object('added', added, 'removed', removed) end);
+      elsif length(coalesce(ov::text, '')) > 1000 or length(coalesce(nv::text, '')) > 1000 then
+        diff := diff || jsonb_build_object(k, jsonb_build_object('edited', true));
+      else
+        diff := diff || jsonb_build_object(k, jsonb_build_object('from', ov, 'to', nv));
+      end if;
+    end loop;
+    -- Nothing that counts changed (an import re-saving the same values).
+    if diff = '{}'::jsonb then return null; end if;
+  else
+    select coalesce(jsonb_object_agg(key,
+             case when length(value::text) > 1000 then '"(long)"'::jsonb else value end), '{}'::jsonb)
+      into diff
+      from jsonb_each(r)
+      where not (key = any(skip)) and value <> 'null'::jsonb;
+  end if;
+
+  select string_agg(coalesce(r->>c, ''), ' · ') into rk from unnest(tg_argv) c;
+
+  insert into activity_log (workspace_id, actor_id, table_name, action, row_key, label, style_no, color, changes)
+  values (
+    ws,
+    auth.uid(),
+    tg_table_name,
+    lower(tg_op),
+    coalesce(rk, ''),
+    coalesce(
+      nullif(concat_ws(' ', r->>'po_no', coalesce(r->>'style_no', r->>'style'), r->>'color'), ''),
+      r->>'name', r->>'show', r->>'month', r->>'task_id', r->>'template_id', r->>'id'),
+    r->>'style_no',
+    r->>'color',
+    diff
+  );
+  return null;
+end;
+$$;
+
+revoke all on function public.log_activity() from public;
+
+do $$
+declare
+  t record;
+begin
+  for t in select * from (values
+    ('styles', 'style_no, color'),
+    ('shoot_list', 'style_no, color'),
+    ('style_completions', 'id'),
+    ('sample_photo_links', 'style_no, color'),
+    ('photoshoots', 'id'),
+    ('po_fit_comments', 'po_no, style_no, round_type, round_no'),
+    ('po_color_samples', 'po_no, style_no, color'),
+    ('po_month_archive', 'month'),
+    ('campaigns', 'id'),
+    ('trade_shows', 'id'),
+    ('banners', 'id'),
+    ('holidays', 'id'),
+    ('email_settings', 'template_id'),
+    ('completed_tasks', 'task_id')
+  ) as v(tbl, keys) loop
+    execute format('drop trigger if exists %I on %I', t.tbl || '_activity', t.tbl);
+    execute format(
+      'create trigger %I after insert or update or delete on %I for each row execute function public.log_activity(%s)',
+      t.tbl || '_activity', t.tbl,
+      (select string_agg(quote_literal(trim(c)), ', ') from unnest(string_to_array(t.keys, ',')) c));
+  end loop;
+end $$;
+
+/** Who and which areas have entries — the Activity page's filters list only these. */
+create or replace function public.activity_facets()
+returns table (table_name text, actor_id uuid, entries bigint)
+language sql
+stable
+set search_path = public
+as $$
+  select table_name, actor_id, count(*)
+  from activity_log
+  where workspace_id = (select public.current_workspace())
+  group by table_name, actor_id;
+$$;
+
+revoke all on function public.activity_facets() from public;
+grant execute on function public.activity_facets() to authenticated;
+
+-- Which samples a colour has, so its sample status (the one taken to the
+-- photoshoot: TOP / SHOW / PP) can only be one that exists.
+--
+--   pp_samples   how many PP samples are in: 0–3 (PP1, PP2, PP3 — ticked in
+--                order, so it's a count)
+--   top_sample   the TOP sample is in
+--   show         (already there) the Style Master's user2 — show samples
+--
+-- Ticked in the style pane and on a PO's detail page. The production sheet
+-- import (TOP comments in) ticks TOP too.
+--
+-- The earlier per-PO PP tick (po_color_samples) is no longer used; it had no
+-- ticks. Colours already set to TOP or PP get that sample ticked, so their
+-- status stays valid. (Not logged as activity: it's the setup, not an edit.)
+
+alter table styles
+  add column if not exists pp_samples smallint not null default 0 check (pp_samples between 0 and 3),
+  add column if not exists top_sample boolean not null default false;
+
+alter table styles disable trigger styles_activity;
+
+update styles set top_sample = true
+where not top_sample and (sample_status = 'top' or coalesce(top_date::text, '') <> '');
+
+update styles set pp_samples = 1
+where pp_samples = 0 and sample_status = 'pp';
+
+alter table styles enable trigger styles_activity;

@@ -109,7 +109,6 @@ function mountSearchHighlightedText(el, text) {
 // ── App-level status messages ────────────────────────────────────────────────
 
 let appLoadingActive = true;
-let indicatorTimer;
 
 function setAppLoading(active, message = "Loading...") {
   appLoadingActive = active;
@@ -124,27 +123,4 @@ function setAppLoading(active, message = "Loading...") {
   if (msgEl && active) msgEl.textContent = message;
 }
 
-function clearIndicator() {
-  const wrap = document.getElementById("saveIndicatorWrap");
-  const el = document.getElementById("saveIndicator");
-  if (wrap) wrap.hidden = true;
-  if (el) el.className = "save-indicator";
-}
-
-/** type: "" | "success" | "error". Success auto-dismisses; errors persist. */
-function showIndicator(msg, type = "") {
-  const el = document.getElementById("saveIndicator");
-  const wrap = document.getElementById("saveIndicatorWrap");
-  const dismiss = document.getElementById("saveIndicatorDismiss");
-  if (!el) return;
-
-  el.textContent = msg;
-  if (wrap) wrap.hidden = false;
-  el.className = "save-indicator visible" + (type ? ` ${type}` : "");
-  clearTimeout(indicatorTimer);
-
-  if (dismiss) dismiss.hidden = type !== "error";
-  if (type === "success" || !type) {
-    indicatorTimer = setTimeout(clearIndicator, 2500);
-  }
-}
+// showIndicator and clearIndicator: js/notifications.js (bottom-right messages).

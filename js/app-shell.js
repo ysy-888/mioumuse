@@ -11,7 +11,7 @@
  * js/photoshoots.js, js/magento.js), not as a view of its own.
  */
 
-const APP_VIEWS = ["home", "campaigns", "tradeShows", "platforms", "styles", "photoshoots", "needToShoot", "complete", "pos", "magento", "email"];
+const APP_VIEWS = ["home", "messages", "activity","campaigns", "tradeShows", "platforms", "styles", "photoshoots", "needToShoot", "complete", "pos", "magento", "email"];
 
 let currentAppView = "home";
 
@@ -46,6 +46,8 @@ function switchAppView(view) {
   if (currentAppView !== view && !closeMagentoPane({ force: false })) return;
   // So isn't an unsaved email (js/email.js).
   if (currentAppView !== view && !confirmLeaveEmail()) return;
+  // An open PO detail page gives way to the page picked (js/po-detail.js).
+  if (typeof closePoDetail === "function") closePoDetail();
 
   if (!navigatingBack && currentAppView !== view) {
     appViewHistory.push(currentAppView);
@@ -84,6 +86,8 @@ function switchAppView(view) {
     emailToolbar: view === "email",
     emailWrap: view === "email",
     calendarWrap: view === "home",
+    messagesWrap: view === "messages", // js/chat.js
+    activityWrap: view === "activity", // js/activity.js
   };
   Object.entries(panes).forEach(([id, visible]) => {
     const el = document.getElementById(id);
@@ -105,6 +109,8 @@ function switchAppView(view) {
   if (view === "pos") renderPoView();
   if (view === "magento") enterMagentoView();
   if (view === "email") renderEmailView();
+  if (view === "messages") renderMessagesPage();
+  if (view === "activity") renderActivityPage();
   // The photoshoot and Magento tables show and hide with their page, but
   // none of them belongs anywhere else.
   if (view !== "photoshoots") leaveShootsPage();
@@ -132,7 +138,7 @@ function switchAppView(view) {
 /** The page you're on: its group (none for Home) and title. */
 function getAppPageInfo() {
   const item = document.querySelector(".app-sidenav-item.active");
-  const title = item?.textContent.trim() || "Home";
+  const title = (item?.querySelector(".app-sidenav-label") ?? item)?.textContent.trim() || "Home";
   let group = "";
   for (let el = item?.previousElementSibling; el; el = el.previousElementSibling) {
     if (el.classList.contains("app-sidenav-group")) { group = el.textContent.trim(); break; }
@@ -435,6 +441,4 @@ function initAppNav() {
       setAppLoading(false);
     }
   });
-
-  document.getElementById("saveIndicatorDismiss")?.addEventListener("click", clearIndicator);
 }

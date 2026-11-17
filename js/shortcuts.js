@@ -36,6 +36,7 @@ function shortcutsBlocked(e) {
   const t = e.target;
   if (t?.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t?.tagName ?? "")) return true;
   if (document.querySelector(".modal-backdrop.open")) return true;
+  if (document.body.classList.contains("is-po-detail-open")) return true; // js/po-detail.js
   // Popovers and menus are shown by dropping [hidden] (some are position:
   // fixed, which offsetParent can't see), so that's what's checked.
   const open = el => Boolean(el && !el.hidden);

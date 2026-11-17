@@ -654,7 +654,6 @@ function renderNeedTable() {
     if (needFilter === "undecided" && r.method) return false;
     if ((needFilter === "photoshoot" || needFilter === "cg") && r.method !== needFilter) return false;
     if (needReasonFilter !== "all" && r.type !== needReasonFilter) return false;
-    if (!columnFilterPasses("needTable", "ihd", monthFilterKey(findStyle(r.styleNo, r.color)?.ihd))) return false;
     if (!columnFilterPasses("needTable", "n41", statusFilterKey(r.n41))) return false;
     if (!columnFilterPasses("needTable", "type", r.type || BLANK_FILTER_LABEL)) return false;
     if (!columnFilterPasses("needTable", "available", monthFilterKey(r.availableDate))) return false;
@@ -738,19 +737,17 @@ function renderNeedTable() {
         }
         case "type": td.appendChild(createShootTypePill(r.styleNo, r.color)); break;
         case "available": {
-          const pill = createAvailablePill(r.availableDate, findStyle(r.styleNo, r.color));
-          if (pill) td.appendChild(pill); else setDisplayText(td, EMPTY_DISPLAY);
+          // The month pill, and under it the IHD once it's confirmed (as on Styles and POs).
+          const style = findStyle(r.styleNo, r.color);
+          if (style) td.appendChild(createAvailableWithIhd(style));
+          else {
+            const pill = createAvailablePill(r.availableDate, null);
+            if (pill) td.appendChild(pill); else setDisplayText(td, EMPTY_DISPLAY);
+          }
           break;
         }
         case "shoot": td.appendChild(createStyleShootCell(findStyle(r.styleNo, r.color) ?? { styleNo: r.styleNo, color: r.color, status: r.n41 }, { editSample: true })); break;
         case "n41": td.appendChild(createStyleStatusPill(r.n41)); break;
-        case "ihd": {
-          // Editable here too.
-          const style = findStyle(r.styleNo, r.color);
-          if (style) td.appendChild(createIhdInput(style, { onSaved: refreshPhotoshootViews }));
-          else setDisplayText(td, EMPTY_DISPLAY);
-          break;
-        }
         case "added": setDisplayText(td, r.addedAt ? formatLongDate(r.addedAt.slice(0, 10)) : EMPTY_DISPLAY); break;
         case "notes": {
           const style = findStyle(r.styleNo, r.color);
@@ -928,13 +925,30 @@ async function removeNeedSelection() {
 
 // ── Shoots list ──────────────────────────────────────────────────────────────
 
+/** The Photoshoots page's search, lower-cased ("" when empty). */
+function getShootSearchQuery() {
+  if (getCurrentAppView() !== "photoshoots") return "";
+  return (document.getElementById("shootSearchInput")?.value ?? "").trim().toLowerCase();
+}
+
+/** Whether a shoot's style matches the search: its Style #, colour, description or notes. */
+function shootStyleMatches(s, q) {
+  const style = findStyle(s.styleNo, s.color);
+  return `${s.styleNo} ${s.color} ${style?.description ?? ""} ${style?.notes ?? ""}`.toLowerCase().includes(q);
+}
+
+/** Whether the search names the shoot itself (name, model, type, notes) rather than its styles. */
+function shootItselfMatches(s, q) {
+  return `${getPhotoshootTitle(s)} ${s.model} ${getPhotoshootTypeLabel(s.type)} ${s.notes}`.toLowerCase().includes(q);
+}
+
 function renderShootsTable() {
-  const q = (document.getElementById("shootSearchInput")?.value ?? "").trim().toLowerCase();
+  const q = getShootSearchQuery();
   setActiveSearchQuery(q);
   const rows = getAllPhotoshoots().filter(s => {
     if (shootFilter !== "all" && s.status !== shootFilter) return false;
     if (!q) return true;
-    return `${getPhotoshootTitle(s)} ${s.model} ${getPhotoshootTypeLabel(s.type)} ${s.notes} ${s.styles.map(x => x.styleNo).join(" ")}`.toLowerCase().includes(q);
+    return shootItselfMatches(s, q) || s.styles.some(x => shootStyleMatches(x, q));
   });
   // Planned: soonest first. Complete: most recent first.
   rows.sort((a, b) => (shootFilter === "complete" ? -1 : 1) * a.date.localeCompare(b.date));
@@ -1185,14 +1199,26 @@ function renderShootPane(shoot) {
   // One block per style group: a style alone, or a Style # in several colours,
   // or a set in all its colours — in one box, moved as one by its first row's
   // grip and buttons. A set's pieces in one colour sit together inside it.
-  const blocks = getShootBlocks(shoot);
-  let index = 0;
+  let blocks = getShootBlocks(shoot);
+  /** Each style's place in the whole shoot, so its # stays put while searching. */
+  const place = new Map(shoot.styles.map((s, i) => [s, i]));
+  // Searching: just the sets with a matching piece — the whole set, its
+  // pieces together. (A search naming only the shoot shows all of it.)
+  // Reordering waits until the search is cleared.
+  const q = getShootSearchQuery();
+  const searching = !!q && shoot.styles.some(s => shootStyleMatches(s, q));
+  if (getCurrentAppView() === "photoshoots") setActiveSearchQuery(q);
+  if (searching) {
+    blocks = blocks
+      .map(block => block.filter(set => set.some(s => shootStyleMatches(s, q))))
+      .filter(block => block.length);
+  }
   const nodes = blocks.map((block, b) => {
     const grouped = block.flat().length > 1;
     const sets = block.map((set, k) => {
-      const rows = set.map((s, i) => createShootStyleRow(shoot, s, index++, b, blocks.length, {
+      const rows = set.map((s, i) => createShootStyleRow(shoot, s, place.get(s), b, blocks.length, {
         inSet: set.length > 1,
-        lead: k === 0 && i === 0,
+        lead: !searching && k === 0 && i === 0,
         grouped,
       }));
       if (rows.length === 1) return rows[0];
@@ -1301,9 +1327,9 @@ function createShootStyleRow(shoot, s, index, block, blockCount, { inSet = false
   // Style # large, its Color beside it a little lighter.
   const name = cell("shoot-style-name");
   const no = document.createElement("strong");
-  no.textContent = s.styleNo;
+  mountSearchHighlightedText(no, s.styleNo);
   const col = document.createElement("span");
-  col.textContent = s.color;
+  mountSearchHighlightedText(col, s.color);
   name.append(no, col);
   name.title = `${s.styleNo} · ${s.color}`;
   if (inSet) name.appendChild(createSetTag(s.styleNo, s.color));
@@ -1327,7 +1353,11 @@ function createShootStyleRow(shoot, s, index, block, blockCount, { inSet = false
       type.appendChild(createShootTypePill(s.styleNo, s.color));
       return type;
     },
-    desc: () => cell("shoot-style-desc", style ? style.description : "Not in the Styles database"),
+    desc: () => {
+      const desc = cell("shoot-style-desc", style ? style.description : "Not in the Styles database");
+      if (style) mountSearchHighlightedText(desc, style.description);
+      return desc;
+    },
     // The Available pill, and under it the IHD when there is one (read-only).
     avail: () => {
       const avail = cell("shoot-style-avail");
@@ -1646,11 +1676,6 @@ function initPhotoshoots() {
   document.addEventListener("scroll", e => { if (!e.target.closest?.("#shootMenu")) closeShootMenu(); }, true);
   initColumnSort("needTable", needSort, NEED_SORT_COLUMNS, renderNeedTable);
   initColumnSort("shootsTable", shootSort, SHOOT_SORT_COLUMNS, renderShootsTable);
-  initColumnFilter("needTable", "ihd", {
-    options: () => monthFilterOptions(buildNeedRows().map(r => findStyle(r.styleNo, r.color)?.ihd ?? "")),
-    onChange: renderNeedTable,
-    sortable: true,
-  });
   initColumnFilter("needTable", "type", {
     options: () => needTypeFilterOptions(buildNeedRows()),
     onChange: renderNeedTable,
@@ -1704,7 +1729,24 @@ function initPhotoshoots() {
   document.querySelectorAll("#shootFilters .filter-btn").forEach(btn => {
     btn.addEventListener("click", () => { shootFilter = btn.dataset.filter; renderShootsTable(); });
   });
-  document.getElementById("shootSearchInput")?.addEventListener("input", renderShootsTable);
+  // The search narrows the list and the open shoot's styles.
+  // The shoot open when the search started comes back once it's listed again.
+  // (Picked while searching, a shoot becomes the one to come back to.)
+  let heldShootId = null;
+  let heldAuto = null;
+  document.getElementById("shootSearchInput")?.addEventListener("input", () => {
+    if (paneShootId && paneShootId !== heldAuto) heldShootId = paneShootId;
+    const before = paneShootId;
+    renderShootsTable();
+    const listed = heldShootId && document.querySelector(`#shootsTableBody tr[data-shoot-id="${CSS.escape(heldShootId)}"]`);
+    if (listed && paneShootId !== heldShootId) openShootPane(heldShootId);
+    else if (paneShootId && paneShootId === before) {
+      const shoot = getAllPhotoshoots().find(s => s.id === paneShootId);
+      if (shoot) renderShootPane(shoot);
+    }
+    // Opened by the search itself (the held one isn't listed): not the user's pick.
+    heldAuto = paneShootId !== heldShootId ? paneShootId : null;
+  });
   document.getElementById("newShootBtn")?.addEventListener("click", () => openPhotoshootForm(null, []));
   document.getElementById("shootsTableBody")?.addEventListener("click", e => {
     const tr = e.target.closest("tr[data-shoot-id]");

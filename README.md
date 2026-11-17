@@ -69,7 +69,8 @@ reference in index.html so the URLs change on every deploy.
 | `js/complete.js` | The Complete page — the history of styles shot (photoshoot) or made in CG, filtered by how |
 | `js/production-import.js` | Import Production Sheet — reads the production .xlsx and sets the sample status of each Style # + Color with a TOP date to TOP |
 | `js/ats-import.js` | The ATS report (from Import N41 Data) — N41's ATS report → each Style # + Color's OH / WIP / OO / ATS / Inv Qty |
-| `js/purchase-orders.js` | The POs page — importing N41's PO export, New / Recut / New Color, the month list (counts of styles without photos, auto-archiving), POs by ETA month with each colour and its shoot buttons |
+| `js/purchase-orders.js` | The POs page — importing N41's PO export, New / Recut / New Color, the month list (counts of styles without photos, auto-archiving), a box per PO by ETA month with each colour and its shoot buttons |
+| `js/po-detail.js` | The PO detail page (whole window) — a PO's colours with their samples (Show, PP1–PP3, TOP), and fit comments by round (PP 1… TOP 1…) with pictures |
 | `js/photoshoot-form.js` | Create / edit photoshoot modal |
 | `js/magento-sales.js` | Magento → Orders and Customers (read-only): lists with Status / Group filters, date quick filters, search, sort, paging; the order / customer pane |
 | `js/magento-n41.js` | Magento → Orders against N41: Import N41 Sales Orders, N41 Status, the Closed on N41 filter, tick orders and cancel them on Magento |
@@ -119,6 +120,27 @@ rows like a spreadsheet, then press Space to tick them:
 Picked rows are light blue and ticked rows light green. While rows are
 picked, Space ticks instead of jumping to search. Ctrl-, Shift-clicks and
 drags don't open the side pane.
+
+## Activity
+
+**Activity** in the left menu lists every add, change and removal in the
+team's data, newest first: who made it, when, and for a change each field's
+old → new value. Filter by person (once there's more than one), area, and
+period; search by Style # or name. Many like changes made together (an
+import, a bulk edit) fold into one line, "changed 512 styles", with
+**Show all**. Clicking a style, shoot, campaign or show opens it.
+
+Each style's pane has a **History** section with its latest changes from
+every page (Styles, Need to Shoot, Complete, sample photos, fit comments);
+**See all** opens Activity searching for that Style #.
+
+The database writes the log itself (triggers, `js/activity.js` only reads
+it), so nothing can be edited without being logged, and nobody can change the
+log from the app. Not logged: bookkeeping columns, the N41 stock numbers each
+N41 import refreshes, tables that are straight copies of an import (N41 PO
+lines, orders, PO sheets, Magento groups — imports keep their own record),
+chat, and column layouts. A new table gets logged by adding its trigger (see
+the top of `supabase/migrations/20261117170000_activity_log.sql`).
 
 ## Header menus
 
@@ -616,17 +638,32 @@ the colour doesn't match, the PO # is looked up in the N41 POs for that
 style's colour. The window lists what will be marked, dated rows that match
 no style, and TOP cells that aren't dates, and saves only on confirm
 (`top_date` / `top_po` — run the styles SQL in `supabase-schema.sql`; the
-latest date wins), and sets that colour's sample status to **TOP**.
+latest date wins), ticks that colour's **TOP** sample and sets its sample
+status to **TOP**.
 
-**Sample status** — TOP, SHOW or PP (`sample_status`, blank for none; FIRST
-was dropped, and an old FIRST reads as none) — is picked from a dropdown on Need to Shoot (after the shoot buttons) and in
-a shoot's style list (its own Sample column); it saves as soon as it's picked. The
-import above only ever sets TOP, and only for a newer TOP date, so a status
-picked by hand stays through a re-import of the same sheet. Elsewhere (Styles,
-POs, the style pane) it shows as a plain, uncoloured read-only pill. One
-exception: a colour whose **Show** is 1 or 2 but whose sample is only **PP**
-is flagged — the dropdown or pill turns red with a ⚑. A TOP pill shows the
-TOP date and PO on hover.
+**Samples** — which samples a colour has, on one line under the style pane's
+**Samples** key (above PO) and on a PO's detail page:
+- **SHOW n** — the Style Master's user2 (Import N41 Data); read-only.
+- **PP1 / PP2 / PP3** — tick boxes in order (`pp_samples`, a count 0–3): PP2
+  shows once PP1 is ticked, PP3 once PP2 is, and only the last one ticked can
+  be cleared.
+- **TOP** — a tick box (`top_sample`).
+
+**Sample status** — the sample taken to the shoot: TOP, SHOW or PP
+(`sample_status`, blank for none) — is picked from a dropdown on Need to Shoot
+(after the shoot buttons), in a shoot's style list (its Sample column), in the
+style pane beside its photoshoot (under Photos); it saves as soon as it's
+picked. Only samples the colour has can be picked (the others are greyed
+out), and clearing the sample that's picked clears the status. The import
+above only ever sets TOP, and only for a newer TOP date, so a status picked by
+hand stays through a re-import of the same sheet. Elsewhere (Styles, POs) it
+shows as a plain read-only pill.
+
+The status is **flagged** — the dropdown or pill turns red with a ⚑ — when a
+better sample is in (best first: **TOP**, then **SHOW**, then **PP**; e.g. PP
+picked but there's a Show sample), or when the picked sample isn't there (SHOW
+picked but Show is blank in N41). A TOP pill shows the TOP date and PO on
+hover.
 
 Banner Style # fields look styles up as you type: suggestions, the style's
 colours, and its description and status under the row and in the banner pane.
@@ -826,11 +863,26 @@ New / Recut / New Color; it's kept in its own table (`n41_po_deleted`), so
 importing N41's POs again doesn't bring it back. Tick **Show deleted POs** to
 list them (every month) and restore one.
 
-Each style has a row with its Style # and description, then the
-colours on its POs that month under it (photo, Available pill, shoot buttons, N41 status),
-with its POs in a box down the first column: **PO #**, its IHD (the ETA) and
-a **New** / **Recut** / **New Color** pill (**Recut + NC** when a PO has
-both; hover for the PO date and colours). Filter by **New** / **Recut** /
+Each PO has a box of its own: a row with its Style # and description, then
+just that PO's colours (photo, Available pill, shoot buttons, N41 status),
+with the PO in the first column: **PO #** and a **New** / **Recut** /
+**New Color** pill (**Recut + NC** when a PO has both; hover for the PO date
+and colours). A style on two POs shows twice, once per PO. Click the PO
+(here, or a PO in the style pane) for its **PO detail** page:
+
+- It's a full page in the main area — the menu, header and footer stay;
+  Back, Esc or picking another page leaves it: PO #, kind, Open / Closed, the
+  style and description, PO date, ETA, and any other styles on the same PO #.
+- **Colors** — each colour on the PO with its **Samples**: **Show** (the
+  Style Master's user2, a count from N41), the **PP1–PP3 / TOP** tick boxes
+  (the colour's own — the same as in its style pane). Which sample goes to
+  the shoot is picked on Need to Shoot or in the shoot.
+- **Fit comments** by round — **+ PP n** / **+ TOP n** add the next one, and
+  they list PP 1, PP 2 … then TOP 1, TOP 2 …; only rounds added show. Each
+  has a date, the comment (saved as you type) and pictures (click **+
+  Pictures**, or drop / paste them on the round). Saved in `po_fit_comments`;
+  pictures go in the private `fit-photos` bucket and show through
+  hour-long signed links. Filter by **New** / **Recut** /
 **New Color**, by **All** / **Has photos** / **No photos** (needs the image
 folder linked). **No photos** lists every colour without a model photo; tick **Show same
 style** to also list the colours of those styles that already have one. **Export PDF**
@@ -955,8 +1007,10 @@ puts them back on the list; deleting a completed shoot does the same. Adding
 a shot style to the list again flags it to be shot again. Opened from the
 Home calendar, a shoot still shows in a side pane.
 
-IHD shows (and can be edited) on Need to Shoot; in a shoot's style list and
-its PDF it shows under the Available pill, read-only.
+On Need to Shoot, Styles, POs, a shoot's style list and its PDF, the IHD
+shows under the Available pill, read-only — on Need to Shoot and Styles only
+once it's confirmed (not N41's 1/1 placeholder). A colour on no PO has its
+IHD typed in the style pane.
 
 IHD also filters by month: click the funnel at
 the right of the header and tick the months to show. **No IHD** covers
@@ -1008,12 +1062,13 @@ A set's pieces are still pulled together after that.
   double-sided, **flip on long edge**, at **actual size** (no fit to page),
   and each back lands behind its own front. Needs the model photo folder
   linked.
-- **A shoot's ⋯ menu → Print sample sets**: two sets to a portrait letter
-  page, one in each half with a line across the middle between them. Each
-  set piece gets one card showing its sample photo, side by side (a set of
-  more than two pieces shrinks its cards to fit). No backs or crop marks:
-  the piece, Style # and colour are printed under the photo. Prints
-  single-sided at actual size. Needs the sample photo folder linked.
+- **A shoot's PDF report → photo pages**: after the list, every style's
+  sample photo, big, in the list's order (whichever order was picked). Letter
+  landscape, eight to a page in four columns of two, read down each column.
+  Each photo is labelled with its # in the list, Style #, Sample (TOP / SHOW
+  / PP) and colour. A set's pieces fill one column, top over bottom, in one
+  outline with one SET pill, and never split across pages. Needs the sample
+  photo folder linked; without it the PDF is just the list.
 - PDF reports open the print window: choose **Save as PDF**. Style photos are
   included when the image folder is linked. The three style reports (Need to
   Shoot, a photoshoot, POs) are landscape and share their columns: photo,

@@ -27,6 +27,12 @@ const PANE_KEEP_OPEN = [
   ".cal-filter-menu",
   "#shootMenu",
   ".dashboard-day-pane",
+  "#poDetail", // the pane waits behind it, for Back
+  ".notif-wrap",
+  ".chat-wrap",
+  "#notifPanel",
+  "#toastStack",
+  "#chatDock",
 ].join(", ");
 
 const PANE_CLOSE_MS = 170;

@@ -149,6 +149,7 @@ function quickSelectBlockedByUi(e) {
   const t = e.target;
   if (t instanceof Element && t.closest("input, textarea, select, [contenteditable='true']")) return true;
   if (document.querySelector(".modal-backdrop.open")) return true;
+  if (document.body.classList.contains("is-po-detail-open")) return true; // js/po-detail.js
   return false;
 }
 

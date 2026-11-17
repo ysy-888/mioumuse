@@ -199,8 +199,9 @@ async function loadReportThumbs(rows) {
  * setKey:  row → what set it's in ("" for none). Rows next to each other
  *          with the same key (one colour's pieces) are joined by a bracket
  *          in front of the Style # — the column marked `bracket: true`.
+ * extraHtml / extraCss: more pages after the list (a shoot's photo pages).
  */
-async function printReport({ fileTitle, title, titleLabel = "", subtitle = "", meta = [], notes = "", columns, rows, photos, footnote = "", noun = "style", metaInHeader = false, landscape = false, groupKey = null, setKey = null }) {
+async function printReport({ fileTitle, title, titleLabel = "", subtitle = "", meta = [], notes = "", columns, rows, photos, footnote = "", noun = "style", metaInHeader = false, landscape = false, groupKey = null, setKey = null, extraHtml = "", extraCss = "" }) {
   if (!rows.length) {
     showIndicator("Nothing to export", "error");
     return;
@@ -264,7 +265,7 @@ async function printReport({ fileTitle, title, titleLabel = "", subtitle = "", m
   const metaHtml = meta.length ? `<div class="meta">${metaParts.map(part => part.qty
     ? `<div class="meta-qty">${part.items.map(metaItem).join("")}</div>`
     : part.items.map(metaItem).join("")).join("")}</div>` : "";
-  const html = `<!doctype html><html><head><meta charset="utf-8"><title>${escapeReportHtml(fileTitle)}</title><style>${REPORT_CSS}${landscape ? "@page { size: letter landscape; }" : ""}</style></head><body>
+  const html = `<!doctype html><html><head><meta charset="utf-8"><title>${escapeReportHtml(fileTitle)}</title><style>${REPORT_CSS}${landscape ? "@page { size: letter landscape; }" : ""}${extraCss}</style></head><body>
     <header>
       <div><div class="brand">${escapeReportHtml(APP_NAME)}</div><h1>${titleLabel ? `<span class="title-label">${escapeReportHtml(titleLabel)}</span><span class="title-name">${escapeReportHtml(title)}</span>` : escapeReportHtml(title)}</h1>${subtitle ? `<div class="sub">${escapeReportHtml(subtitle)}</div>` : ""}</div>
       ${metaInHeader ? metaHtml : `<div class="generated">Generated ${escapeReportHtml(generated)}<br>${rows.length} ${rows.length === 1 ? noun : `${noun}s`}</div>`}
@@ -273,6 +274,7 @@ async function printReport({ fileTitle, title, titleLabel = "", subtitle = "", m
     ${notes ? `<div class="notes">${escapeReportHtml(notes)}</div>` : ""}
     <table><thead><tr>${head}</tr></thead>${body}</table>
     ${footnote ? `<footer>${escapeReportHtml(footnote)}</footer>` : ""}
+    ${extraHtml}
   </body></html>`;
   await printHtml(html, fileTitle);
 }
@@ -554,8 +556,12 @@ function shootStylesInOrder(shoot, order) {
     .flatMap(x => x.outfit);
 }
 
-/** A shoot's PDF report — in its own order, or one of SHOOT_PDF_ORDERS. */
-function exportShootPdf(id, order = "") {
+/**
+ * A shoot's PDF report — in its own order, or one of SHOOT_PDF_ORDERS — then
+ * its photo pages: every style's sample photo, big, in the list's order
+ * (shootPhotoPagesHtml). Without the sample photo folder, just the list.
+ */
+async function exportShootPdf(id, order = "") {
   const shoot = getPhotoshootById(id);
   if (!shoot) return;
   const orderLabel = SHOOT_PDF_ORDERS[order] ?? "";
@@ -563,7 +569,18 @@ function exportShootPdf(id, order = "") {
     ? shootStylesInOrder(shoot, order).map(s => styleExportFields(s.styleNo, s.color))
     : getShootExportRows(shoot);
   const cols = reportStyleColumns(rows);
-  printReport({
+
+  let extraHtml = "";
+  let urls = null;
+  let missing = [];
+  if (rows.length && isSamplePhotoReadable()) {
+    const cards = rows.map(r => ({ styleNo: r.styleNo, color: r.color, entry: sampleSetPhotoEntry(r.styleNo, r.color) }));
+    urls = await loadPhotocardImages(cards, getSamplePhotoFile, "report");
+    extraHtml = shootPhotoPagesHtml(shoot, rows, urls);
+    missing = rows.filter(r => !urls.get(styleImageKey(r.styleNo, r.color))).map(r => `${r.styleNo} ${r.color}`);
+  }
+
+  await printReport({
     fileTitle: orderLabel ? `${shootFileBase(shoot)} ${orderLabel}` : shootFileBase(shoot),
     titleLabel: "Photoshoot",
     title: getPhotoshootTitle(shoot),
@@ -594,8 +611,114 @@ function exportShootPdf(id, order = "") {
       { ...cols.description, cell: r => ({ ...cols.description.cell(r), className: "desc muted" }) },
       cols.type, cols.notes,
     ],
+    extraHtml,
+    extraCss: extraHtml ? SHOOT_PHOTO_PAGE_CSS : "",
   });
+  if (!rows.length) return;
+  if (!urls) showIndicator("Link the sample photo folder to add the photo pages", "error");
+  else if (missing.length) showIndicator(`No sample photo for ${missing.join(", ")}`, "error");
+  if (urls) setTimeout(() => urls.forEach(url => url && URL.revokeObjectURL(url)), 60 * 1000);
 }
+
+// ── A shoot's photo pages ────────────────────────────────────────────────────
+//
+// After the list: each style's sample photo (js/sample-photos.js), big, in
+// the list's order and numbered as it is. Landscape, eight to a page in four
+// columns of two, read down each column. A set's pieces are one column, top
+// over bottom, in one outline with one SET pill; the rest fill the columns
+// in turn. A set never splits across columns or pages.
+
+/** The sample photo a style's card shows, or null. */
+function sampleSetPhotoEntry(styleNo, color) {
+  return getSamplePhotoEntries(styleNo, color)[0] ?? null;
+}
+
+const SHOOT_PHOTO_COLS = 4;
+const SHOOT_PHOTO_ROWS = 2;
+
+/** The pages' HTML. `urls`: styleImageKey → photo URL ("" when there's none). */
+function shootPhotoPagesHtml(shoot, rows, urls) {
+  const perPage = SHOOT_PHOTO_COLS * SHOOT_PHOTO_ROWS;
+  // The list's outfits, in order: a set (its pieces next to each other, two
+  // or more of them) or one style, each with its number in the list.
+  const items = [];
+  rows.forEach((r, i) => {
+    const entry = { row: r, no: i + 1 };
+    const key = reportSetKey(r);
+    const last = items[items.length - 1];
+    if (key && last?.setKey === key) last.pieces.push(entry);
+    else items.push({ setKey: key, pieces: [entry] });
+  });
+
+  // A set stands as it's worn: top (or jacket) over bottom (or skirt), each
+  // keeping its number from the list.
+  const pieceRank = ({ row }) => PHOTOCARD_PIECE_ORDER.indexOf(photocardPieceName(row.styleNo, row.color));
+  items.forEach(item => item.pieces.sort((a, b) => pieceRank(a) - pieceRank(b) || a.no - b.no));
+
+  // Placed column by column: a set starts at the top of a column.
+  const pages = [];
+  let page = null;
+  let slot = perPage;
+  items.forEach(item => {
+    const isSet = item.pieces.length > 1;
+    if (isSet && slot % SHOOT_PHOTO_ROWS) slot++;
+    const need = isSet ? Math.min(item.pieces.length, perPage) : 1;
+    if (slot + need > perPage) {
+      page = [];
+      pages.push(page);
+      slot = 0;
+    }
+    page.push({ ...item, isSet, slot });
+    slot += isSet ? Math.ceil(need / SHOOT_PHOTO_ROWS) * SHOOT_PHOTO_ROWS : 1;
+  });
+
+  const card = ({ row: r, no }) => {
+    const url = urls.get(styleImageKey(r.styleNo, r.color));
+    const sample = getSampleStatusLabel(r.sampleStatus);
+    return `<div class="sp-card">
+      <div class="sp-photo">${url ? `<img src="${url}" alt="">` : `<div class="sp-missing">No sample photo</div>`}</div>
+      <div class="sp-label">
+        <div class="sp-line"><span class="sp-no">#${no}</span><span class="sp-style">${escapeReportHtml(r.styleNo)}</span><span class="sp-sample${sample ? "" : " is-none"}">${escapeReportHtml(sample || "No sample")}</span></div>
+        <div class="sp-color">${escapeReportHtml(r.color)}</div>
+      </div>
+    </div>`;
+  };
+  const title = `${escapeReportHtml(getPhotoshootTitle(shoot))}${shoot.date ? ` · ${escapeReportHtml(formatReportDate(shoot.date))}` : ""}`;
+  return pages.map((items, p) => `<section class="sp-page">
+      <div class="sp-head"><span><b>Photoshoot</b> ${title}</span><span>Photos ${p + 1} / ${pages.length}</span></div>
+      <div class="sp-grid">${items.map(item => {
+        const col = Math.floor(item.slot / SHOOT_PHOTO_ROWS) + 1;
+        const row = (item.slot % SHOOT_PHOTO_ROWS) + 1;
+        if (!item.isSet) return `<div class="sp-cell" style="grid-column:${col};grid-row:${row}">${card(item.pieces[0])}</div>`;
+        const span = Math.ceil(Math.min(item.pieces.length, SHOOT_PHOTO_COLS * SHOOT_PHOTO_ROWS) / SHOOT_PHOTO_ROWS);
+        return `<div class="sp-cell sp-set" style="grid-column:${col} / span ${span};grid-row:1 / span ${SHOOT_PHOTO_ROWS};grid-template-columns:repeat(${span}, 1fr)">
+          <span class="sp-set-pill">SET</span>${item.pieces.map(card).join("")}</div>`;
+      }).join("")}</div>
+    </section>`).join("");
+}
+
+/** Letter landscape with 0.5in margins: a 10in × 7.5in page to fill. */
+const SHOOT_PHOTO_PAGE_CSS = `
+  .sp-page { break-before: page; page-break-before: always; height: 7.45in; display: flex; flex-direction: column; }
+  .sp-head { flex: 0 0 auto; display: flex; justify-content: space-between; align-items: baseline; padding-bottom: 5px; margin-bottom: 14px; border-bottom: 1.5px solid #1a1a18; font-size: 10px; color: #8b929c; }
+  .sp-head b { color: #1a1a18; margin-right: 4px; }
+  .sp-grid { flex: 1; min-height: 0; display: grid; grid-template-columns: repeat(${SHOOT_PHOTO_COLS}, 1fr); grid-template-rows: repeat(${SHOOT_PHOTO_ROWS}, 1fr); gap: 0.16in 0.16in; }
+  .sp-cell { min-width: 0; min-height: 0; display: flex; }
+  /* A set: its pieces top over bottom, in one magenta outline, one SET pill on it. */
+  .sp-set { position: relative; display: grid; grid-auto-flow: column; grid-template-rows: repeat(${SHOOT_PHOTO_ROWS}, 1fr); gap: 0.16in 0.16in; outline: 1.5px solid #e6a1bf; outline-offset: 0.05in; border-radius: 2px; }
+  .sp-set-pill { position: absolute; z-index: 1; top: -0.05in; left: 50%; transform: translate(-50%, -50%); padding: 1px 8px; border-radius: 9px; background: #fbe5ee; box-shadow: 0 0 0 2px #fff; color: #a3365f; font-size: 8.5px; font-weight: 700; letter-spacing: 0.08em; }
+  .sp-card { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; border: 1px solid #d9dde2; border-radius: 5px; overflow: hidden; background: #fff; }
+  .sp-photo { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; background: #fafafa; }
+  .sp-photo img { display: block; width: 100%; height: 100%; object-fit: contain; }
+  .sp-missing { color: #9aa0a8; font-size: 10px; }
+  .sp-label { flex: 0 0 auto; padding: 5px 8px 6px; border-top: 1px solid #e5e7eb; }
+  .sp-line { display: flex; align-items: center; gap: 6px; }
+  .sp-no { color: #8b929c; font-size: 10px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .sp-style { font-size: 12px; font-weight: 700; letter-spacing: 0.02em; }
+  .sp-sample { margin-left: auto; padding: 1px 6px; border-radius: 5px; background: #eef0f3; color: #4b5563; font-size: 9px; font-weight: 700; letter-spacing: 0.04em; white-space: nowrap; }
+  .sp-sample.is-none { background: none; color: #9aa0a8; font-weight: 500; }
+  .sp-color { margin-top: 1px; color: #6b7280; font-size: 9.5px; letter-spacing: 0.06em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+`;
 
 // ── Photocards ───────────────────────────────────────────────────────────────
 //
@@ -783,82 +906,6 @@ async function exportShootPhotocards(id) {
   setTimeout(() => urls.forEach(url => url && URL.revokeObjectURL(url)), 60 * 1000);
 }
 
-// ── Sample sets ──────────────────────────────────────────────────────────────
-//
-// Photocards' sibling: the same 3.5" × 5" cards, four to a page, with crop
-// marks — but each set piece once, its sample photo (js/sample-photos.js),
-// and no backs: the piece, Style # and colour are printed on the card,
-// under the photo.
-
-/** The sample photo cards print: the piece's sample, or null. */
-function sampleSetPhotoEntry(styleNo, color) {
-  return getSamplePhotoEntries(styleNo, color)[0] ?? null;
-}
-
-async function exportShootSampleSets(id) {
-  const shoot = getPhotoshootById(id);
-  if (!shoot) return;
-  if (!isSamplePhotoReadable()) {
-    showIndicator("Link the sample photo folder to print sample sets", "error");
-    return;
-  }
-  const cards = buildPhotocards(shoot, { copies: 1, entryOf: sampleSetPhotoEntry });
-  if (!cards.length) {
-    showIndicator("No sets in this shoot", "error");
-    return;
-  }
-  const urls = await loadPhotocardImages(cards, getSamplePhotoFile, "sample sets");
-
-  const card = c => {
-    const url = urls.get(styleImageKey(c.styleNo, c.color));
-    return `<div class="card sample">
-      <div class="sample-photo">${url
-        ? `<img class="photo" src="${url}" alt="">`
-        : `<div class="missing"><span>No sample photo</span></div>`}</div>
-      <div class="sample-label"><div class="sample-style"><span>${escapeReportHtml(c.name)}</span> ${escapeReportHtml(c.styleNo)}</div><div class="sample-color">${escapeReportHtml(c.color)}</div></div>
-    </div>`;
-  };
-  // Two sets per page, one in each half, its pieces side by side (a set's
-  // cards share its `back` list), with a line across the middle between them.
-  const sets = [];
-  cards.forEach(c => {
-    const last = sets[sets.length - 1];
-    if (last && last[0].back === c.back) last.push(c);
-    else sets.push([c]);
-  });
-  const half = set => `<div class="sample-set">${set.map(card).join("")}</div>`;
-  const sheets = [];
-  for (let p = 0; p < sets.length; p += 2) {
-    const pair = sets.slice(p, p + 2);
-    sheets.push(`<div class="sheet sample-sheet${pair.length > 1 ? " has-divider" : ""}">${pair.map(half).join("")}</div>`);
-  }
-  const fileTitle = `${shootFileBase(shoot)} Sample Sets`;
-  const html = `<!doctype html><html><head><meta charset="utf-8"><title>${escapeReportHtml(fileTitle)}</title><style>${PHOTOCARD_CSS}${SAMPLE_SET_CSS}</style></head><body>${sheets.join("")}</body></html>`;
-
-  const missing = new Set(cards.filter(c => !urls.get(styleImageKey(c.styleNo, c.color))).map(c => `${c.styleNo} ${c.color}`));
-  await printHtml(html, fileTitle);
-  if (missing.size) showIndicator(`No sample photo for ${[...missing].join(", ")}`, "error");
-  setTimeout(() => urls.forEach(url => url && URL.revokeObjectURL(url)), 60 * 1000);
-}
-
-/**
- * A sample sets page: two halves, a set in each, split by a line across the
- * middle. A card is the photo, uncropped, above a strip with the piece,
- * Style # and colour; a set of more than two pieces shrinks its cards to fit.
- */
-const SAMPLE_SET_CSS = `
-  .sample-sheet .sample-set { position: absolute; left: 0; right: 0; height: 5.5in; display: flex; align-items: center; justify-content: center; gap: 0.25in; padding: 0.35in 0.5in; }
-  .sample-sheet .sample-set:first-child { top: 0; }
-  .sample-sheet .sample-set:nth-child(2) { top: 5.5in; }
-  .sample-sheet.has-divider::after { content: ""; position: absolute; left: 0.5in; right: 0.5in; top: 5.5in; border-top: 1pt solid #9ca3af; }
-  .card.sample { position: relative; flex: 0 1 3.5in; min-width: 0; height: 4.8in; display: flex; flex-direction: column; }
-  .card.sample .sample-photo { flex: 1; min-height: 0; }
-  .card.sample .sample-label { flex: 0 0 auto; padding: 0.1in 0.15in 0.14in; text-align: center; border-top: 0.5pt solid #d1d5db; }
-  .card.sample .sample-style { font-size: 13pt; font-weight: 700; letter-spacing: 0.03em; }
-  .card.sample .sample-style span { margin-right: 4pt; font-size: 9pt; font-weight: 600; letter-spacing: 0.08em; color: #6b7280; }
-  .card.sample .sample-color { margin-top: 1pt; font-size: 9.5pt; letter-spacing: 0.08em; color: #6b7280; }
-`;
-
 // ── POs ──────────────────────────────────────────────────────────────────────
 
 /**
@@ -988,9 +1035,5 @@ function initExports() {
   document.getElementById("shootMenuPhotocards")?.addEventListener("click", () => {
     closeShootPaneMenu();
     if (paneShootId) exportShootPhotocards(paneShootId);
-  });
-  document.getElementById("shootMenuSampleSets")?.addEventListener("click", () => {
-    closeShootPaneMenu();
-    if (paneShootId) exportShootSampleSets(paneShootId);
   });
 }

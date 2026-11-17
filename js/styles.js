@@ -345,9 +345,47 @@ function countSampleStatuses(styles) {
   return [...SAMPLE_STATUSES, { key: "", label: "None" }].map(s => ({ ...s, count: counts.get(s.key) }));
 }
 
-/** Flagged: Show (the Style Master's user2) is 1 or 2, but the sample is only PP. */
-function isShowSamplePp(style, status = style?.sampleStatus) {
-  return status === "pp" && (style?.show === "1" || style?.show === "2");
+// ── Samples: which are in, and which one goes to the shoot ──────────────────
+//
+// A colour's samples: Show (the Style Master's user2, a count from N41),
+// PP1–PP3 (ticked in order — ppSamples is the count) and TOP. Its sample
+// status, the one taken to the photoshoot, can only be one it has; it's
+// flagged when a better one is in. Best first: TOP, SHOW, PP (SAMPLE_STATUSES).
+
+/** How many show samples (the Style Master's user2): 0 when blank. */
+function showSampleCount(style) {
+  const n = parseInt(String(style?.show ?? "").trim(), 10);
+  return Number.isFinite(n) && n > 0 ? n : 0;
+}
+
+/** Whether the colour has this sample ("top" | "show" | "pp"). */
+function hasSample(style, key) {
+  if (!style) return false;
+  if (key === "top") return Boolean(style.topSample);
+  if (key === "show") return showSampleCount(style) > 0;
+  if (key === "pp") return (style.ppSamples ?? 0) > 0;
+  return false;
+}
+
+/** The best sample it has that beats `status` (TOP over SHOW over PP), "" if none. */
+function betterSampleThan(style, status = style?.sampleStatus) {
+  const i = SAMPLE_STATUS_KEYS.indexOf(status);
+  if (i <= 0) return "";
+  return SAMPLE_STATUS_KEYS.slice(0, i).find(k => hasSample(style, k)) ?? "";
+}
+
+/**
+ * Why the status is flagged, "" when it isn't: the sample isn't in (any
+ * more), or a better one is.
+ */
+function sampleStatusFlag(style, status = style?.sampleStatus) {
+  if (!style || !status) return "";
+  const label = getSampleStatusLabel(status);
+  if (!hasSample(style, status)) {
+    return status === "show" ? "⚑ No SHOW sample — Show is blank in N41" : `⚑ No ${label} sample is ticked for this colour`;
+  }
+  const better = betterSampleThan(style, status);
+  return better ? `⚑ A ${getSampleStatusLabel(better)} sample is in — better than ${label}` : "";
 }
 
 /** The colour's sample status (TOP / SHOW / PP) as a read-only pill, nothing if none. */
@@ -359,32 +397,42 @@ function addSampleStatusPill(wrap, style) {
   pill.className = "style-top-pill";
   pill.dataset.sample = saved.sampleStatus;
   pill.textContent = getSampleStatusLabel(saved.sampleStatus);
-  const flagged = isShowSamplePp(saved);
-  pill.classList.toggle("is-show-pp", flagged);
+  const flag = sampleStatusFlag(saved);
+  pill.classList.toggle("is-show-pp", Boolean(flag));
   pill.title = `Sample status: ${pill.textContent}${saved.sampleStatus === "top" && saved.topDate ? ` · ${sampleStatusTitle(saved)}` : ""}`
-    + (flagged ? `\n⚑ Show is ${saved.show}, but the sample is only PP` : "");
+    + (flag ? `\n${flag}` : "");
   wrap.appendChild(pill);
 }
 
 /**
- * The sample status as a dropdown (— / TOP / SHOW / PP) that saves
- * as soon as it's picked — Need to Shoot and the shoot pane.
+ * The sample status — the sample taken to the shoot — as a dropdown
+ * (— / TOP / SHOW / PP) that saves as soon as it's picked: Need to Shoot,
+ * the shoot pane, the style pane, a PO's colours. Only the samples the
+ * colour has can be picked; flagged red when a better one is in.
  */
 function createSampleStatusSelect(style) {
   const saved = findStyle(style.styleNo, style.color);
   const select = document.createElement("select");
   select.className = "sample-status-select";
   select.setAttribute("aria-label", `Sample status for ${style.styleNo} ${style.color}`);
-  select.append(new Option("—", ""), ...SAMPLE_STATUSES.map(s => new Option(s.label, s.key)));
+  const options = SAMPLE_STATUSES.map(s => {
+    const has = hasSample(saved, s.key);
+    const o = new Option(s.label, s.key);
+    o.disabled = !has;
+    o.title = has ? "" : `No ${s.label} sample ticked`;
+    return o;
+  });
+  select.append(new Option("—", ""), ...options);
   const show = value => {
     select.value = value;
     select.dataset.sample = value;
     const top = value === "top" ? sampleStatusTitle(saved) : "";
-    const flagged = isShowSamplePp(saved, value);
-    select.classList.toggle("is-show-pp", flagged);
+    const flag = sampleStatusFlag(saved, value);
+    select.classList.toggle("is-show-pp", Boolean(flag));
+    const none = options.every(o => o.disabled);
     select.title = value
-      ? `Sample status: ${getSampleStatusLabel(value)}${top ? ` · ${top}` : ""}${flagged ? `\n⚑ Show is ${saved.show}, but the sample is only PP` : ""}`
-      : "Sample status";
+      ? `Sample status: ${getSampleStatusLabel(value)}${top ? ` · ${top}` : ""}${flag ? `\n${flag}` : ""}`
+      : none ? "No samples ticked yet — tick them in the style's Samples" : "Sample status";
   };
   show(saved?.sampleStatus ?? "");
   if (!saved) {
@@ -403,6 +451,9 @@ function createSampleStatusSelect(style) {
       await setStyleSampleStatus(saved.styleNo, saved.color, value);
       // Lets a count of them (a shoot's) update.
       select.dispatchEvent(new CustomEvent("samplestatuschange", { bubbles: true }));
+      // The style pane, if it's open on this colour beside the list.
+      if (select.closest("#stylePane")) refreshSampleViews(); // the lists behind it
+      else if (paneStyle?.styleNo === saved.styleNo && paneStyle?.color === saved.color) refreshStylePaneSummary();
     } catch (err) {
       show(before);
       showIndicator(err.message || "Couldn't save the sample status.", "error");
@@ -416,6 +467,68 @@ function createSampleStatusSelect(style) {
 function addSampleStatusSelect(wrap, style) {
   wrap.classList.add("has-top");
   wrap.appendChild(createSampleStatusSelect(style));
+}
+
+/**
+ * The PP1 / PP2 / PP3 and TOP tick boxes for a colour. PPs go in order:
+ * PP2 can be ticked once PP1 is, and only the last one ticked can be
+ * cleared. Saves as soon as one is clicked, then redraws every view that
+ * shows the colour's samples.
+ */
+function createSampleChecks(style) {
+  const saved = findStyle(style.styleNo, style.color);
+  const wrap = document.createElement("span");
+  wrap.className = "sample-checks";
+  const box = (label, checked, enabled, title, onChange) => {
+    const l = document.createElement("label");
+    l.className = "sample-check" + (checked ? " is-on" : "");
+    const input = document.createElement("input");
+    input.type = "checkbox";
+    input.checked = checked;
+    input.disabled = !saved || !enabled;
+    input.setAttribute("aria-label", `${label} sample for ${style.styleNo} ${style.color}`);
+    input.addEventListener("change", () => onChange(input));
+    l.title = saved ? title : "Not in the Styles database";
+    l.append(input, document.createTextNode(label));
+    // Keep a click from opening the row it sits in.
+    l.addEventListener("click", e => e.stopPropagation());
+    return l;
+  };
+  const save = async (input, change) => {
+    input.disabled = true;
+    try {
+      await setStyleSamples(saved.styleNo, saved.color, change);
+      refreshSampleViews();
+    } catch (err) {
+      input.checked = !input.checked;
+      input.disabled = false;
+      showIndicator(err.message || "Couldn't save the sample.", "error");
+    }
+  };
+  const pp = saved?.ppSamples ?? 0;
+  const pps = document.createElement("span");
+  pps.className = "sample-check-group";
+  // PP2 and PP3 show once the one before is ticked.
+  [1, 2, 3].filter(n => n <= pp + 1).forEach(n => {
+    const on = n <= pp;
+    // Tick the next one, or clear the last one.
+    const enabled = on ? n === pp : n === pp + 1;
+    const title = enabled
+      ? (on ? `PP${n} is in — untick if it isn't` : `Tick when PP${n} is in`)
+      : (on ? `Untick PP${pp} first` : `Tick PP${n - 1} first`);
+    pps.appendChild(box(`PP${n}`, on, enabled, title, input => save(input, { ppSamples: input.checked ? n : n - 1 })));
+  });
+  const top = Boolean(saved?.topSample);
+  wrap.append(pps, box("TOP", top, true, top ? "The TOP sample is in" : "Tick when the TOP sample is in", input => save(input, { topSample: input.checked })));
+  return wrap;
+}
+
+/** After a colour's samples change: every view showing them. */
+function refreshSampleViews() {
+  refreshStylePaneSummary?.();
+  if (typeof isPoDetailOpen === "function" && isPoDetailOpen()) renderPoDetailColors();
+  if (typeof isPhotoshootView === "function" && isPhotoshootView()) refreshPhotoshootViews();
+  if (getCurrentAppView() === "styles") applyStyleFilters?.();
 }
 
 function renderStylesTable() {

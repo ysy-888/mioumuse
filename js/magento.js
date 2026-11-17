@@ -1079,7 +1079,7 @@ function clearMgSelection() {
 let mgAddingGroups = false;
 async function addMgMatchingGroups(skus) {
   if (mgAddingGroups) {
-    showIndicator("Products are already being added; progress is in the footer.", "error");
+    showIndicator("Products are already being added; progress is in the bottom-right corner.", "error");
     return;
   }
   if (skus.some(sku => !mgRequireUniqueSku(sku))) return;

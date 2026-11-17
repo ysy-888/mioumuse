@@ -14,7 +14,13 @@ async function loadAndShowApp() {
   if (app) app.hidden = false;
 
   try {
+    // Not on the team: nothing would load, so say why rather than show an empty app.
+    if (!(await getWorkspaceId())) {
+      showIndicator("This account isn't on the team yet. Ask the owner to add you.", "error");
+      return;
+    }
     await loadAppData();
+    startChat(); // js/chat.js — loads in the background, then stays live
     // Your saved column layouts, before anything is drawn with them.
     await syncTableViewsFromAccount();
     // Mailchimp catches up in the background; the app doesn't wait on it.
@@ -37,6 +43,9 @@ async function bootApp() {
   initAuthForm();
   initAppNav();
   initHeaderMenu();
+  initNotifications();
+  initChat();
+  initActivity();
   initRecordLists();
   // Before the forms: its Escape handler has to see an open form first.
   initItemPane();
@@ -58,6 +67,7 @@ async function bootApp() {
   initComplete();
   initPhotoshootForm();
   initPurchaseOrders();
+  initPoDetail();
   initEmailView();
   initProductionImport();
   initN41Import();

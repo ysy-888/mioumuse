@@ -184,6 +184,26 @@ function throwIfError({ error }) {
   if (error) throw new Error(error.message);
 }
 
+// ── Team workspace ───────────────────────────────────────────────────────────
+//
+// The team shares its data: every row's user_id is the team's workspace
+// (the database fills it in), and files go under the workspace's folder.
+// Someone signed in who isn't on the team has no workspace and sees nothing.
+
+let workspaceIdPromise = null;
+
+/** The team's workspace id, or null when this account isn't on a team. */
+function getWorkspaceId() {
+  if (!workspaceIdPromise) {
+    workspaceIdPromise = (async () => {
+      const { data, error } = await requireClient().rpc("current_workspace");
+      if (error) { workspaceIdPromise = null; throw new Error(error.message); }
+      return data ?? null;
+    })();
+  }
+  return workspaceIdPromise;
+}
+
 async function persistTradeShow(tradeShow) {
   throwIfError(await requireClient().from("trade_shows").upsert(tradeShowToRow(tradeShow)));
 }
@@ -635,6 +655,87 @@ function applyPoIhds() {
     // Only while that PO is Open — once it's received, Available has done its job.
     style.availMismatch = Boolean(last && /^open$/i.test(last.status ?? "") && avail && last.month && last.month !== avail);
   });
+}
+
+// ── PO detail: fit comments and PP samples (js/po-detail.js) ─────────────────
+//
+// Loaded per PO # + Style # when its detail page opens.
+//   FitComment { roundType: "pp" | "top", roundNo, comment, commentDate, images: [{ path, name }] }
+
+const FIT_PHOTO_BUCKET = "fit-photos";
+
+function fitCommentRowToComment(row) {
+  return {
+    roundType: row.round_type === "top" ? "top" : "pp",
+    roundNo: Number(row.round_no) || 1,
+    comment: String(row.comment ?? ""),
+    commentDate: row.comment_date ? String(row.comment_date).slice(0, 10) : "",
+    images: Array.isArray(row.images) ? row.images.filter(i => i?.path) : [],
+  };
+}
+
+/** PP rounds first, then TOP, each by number. */
+function compareFitRounds(a, b) {
+  return (a.roundType === "top") - (b.roundType === "top") || a.roundNo - b.roundNo;
+}
+
+/** { comments: [FitComment] (in order) }. (A colour's samples are on the style: setStyleSamples.) */
+async function loadPoDetailData(poNo, styleNo) {
+  const fitRes = await requireClient().from("po_fit_comments").select("*").eq("po_no", poNo).eq("style_no", styleNo);
+  throwIfError(fitRes);
+  return { comments: fitRes.data.map(fitCommentRowToComment).sort(compareFitRounds) };
+}
+
+async function saveFitComment(poNo, styleNo, c) {
+  throwIfError(await requireClient().from("po_fit_comments").upsert({
+    po_no: poNo,
+    style_no: styleNo,
+    round_type: c.roundType,
+    round_no: c.roundNo,
+    comment: c.comment,
+    comment_date: c.commentDate || null,
+    images: c.images,
+    updated_at: new Date().toISOString(),
+  }, { onConflict: "user_id,po_no,style_no,round_type,round_no" }));
+}
+
+async function deleteFitComment(poNo, styleNo, c) {
+  throwIfError(await requireClient().from("po_fit_comments").delete()
+    .eq("po_no", poNo).eq("style_no", styleNo).eq("round_type", c.roundType).eq("round_no", c.roundNo));
+  await removeFitPhotos(c.images.map(i => i.path));
+}
+
+/** Upload a fit picture into the user's own folder; returns { path, name }. */
+async function uploadFitPhoto(poNo, styleNo, c, file) {
+  if (!String(file?.type).startsWith("image/")) throw new Error(`${file?.name ?? "That file"} isn't an image.`);
+  if (file.size > 15 * 1024 * 1024) throw new Error(`${file.name} is over 15 MB.`);
+  const client = requireClient();
+  const userId = await getWorkspaceId(); // the team's folder
+  if (!userId) throw new Error("Sign in again to upload pictures.");
+  const ext = (String(file.name).match(/\.([a-z0-9]+)$/i)?.[1] ?? "jpg").toLowerCase();
+  const safe = s => String(s).replace(/[^A-Za-z0-9_-]+/g, "_");
+  const path = `${userId}/${safe(poNo)}/${safe(styleNo)}/${c.roundType}${c.roundNo}-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}.${ext}`;
+  throwIfError(await client.storage.from(FIT_PHOTO_BUCKET).upload(path, file, { contentType: file.type, upsert: false }));
+  return { path, name: file.name };
+}
+
+/** Short-lived links to show private pictures: path → URL. */
+async function getFitPhotoUrls(paths) {
+  if (!paths.length) return new Map();
+  const { data, error } = await requireClient().storage.from(FIT_PHOTO_BUCKET).createSignedUrls(paths, 60 * 60);
+  if (error) throw new Error(error.message);
+  return new Map((data ?? []).filter(d => d.signedUrl).map(d => [d.path, d.signedUrl]));
+}
+
+/** Best-effort: a leftover file costs a little storage, not correctness. */
+async function removeFitPhotos(paths) {
+  const list = paths.filter(Boolean);
+  if (!list.length || !supabaseClient) return;
+  try {
+    await supabaseClient.storage.from(FIT_PHOTO_BUCKET).remove(list);
+  } catch {
+    /* ignored */
+  }
 }
 
 /** N41 puts 1/1 of the year in an ETA until the real in-house date is set. */
@@ -1175,6 +1276,9 @@ function styleRowToStyle(row) {
     // (SAMPLE_STATUSES): picked on Need to Shoot / in a shoot, TOP also set
     // by the production sheet import.
     sampleStatus: SAMPLE_STATUS_KEYS.includes(row.sample_status) ? row.sample_status : "",
+    // Which samples are in (style pane / PO detail): PP1–PP3 as a count, and TOP.
+    ppSamples: Math.max(0, Math.min(3, Number(row.pp_samples) || 0)),
+    topSample: Boolean(row.top_sample),
     // From N41's ATS report (Import ATS): null until it's been imported.
     oh: numOrNull(row.n41_oh),
     wip: numOrNull(row.n41_wip),
@@ -1475,9 +1579,32 @@ async function setStyleSampleStatus(styleNo, color, status) {
 }
 
 /**
+ * Set which samples a colour has: { ppSamples (0–3), topSample }. If its
+ * sample status was one it no longer has, the status is cleared with it.
+ */
+async function setStyleSamples(styleNo, color, { ppSamples, topSample }) {
+  const style = findStyle(styleNo, color);
+  if (!style) throw new Error(`${styleNo} ${color} isn't in the Styles database.`);
+  const next = {
+    ...style,
+    ppSamples: Math.max(0, Math.min(3, Number(ppSamples ?? style.ppSamples) || 0)),
+    topSample: Boolean(topSample ?? style.topSample),
+  };
+  const keepStatus = !style.sampleStatus || !hasSample(style, style.sampleStatus) || hasSample(next, style.sampleStatus);
+  const update = { pp_samples: next.ppSamples, top_sample: next.topSample };
+  if (!keepStatus) update.sample_status = "";
+  throwIfError(await requireClient().from("styles").update(update)
+    .eq("style_no", style.styleNo).eq("color", style.color));
+  style.ppSamples = next.ppSamples;
+  style.topSample = next.topSample;
+  if (!keepStatus) style.sampleStatus = "";
+  return style;
+}
+
+/**
  * Save TOP dates from the production sheet: [{ styleNo, color, topDate, topPo }],
- * each an existing style. Those columns are sent, and the sample status set
- * to TOP — nothing else changes.
+ * each an existing style. Those columns are sent, the TOP sample ticked and
+ * the sample status set to TOP — nothing else changes.
  */
 async function saveStyleTops(tops, onProgress) {
   const BATCH = 500;
@@ -1485,7 +1612,7 @@ async function saveStyleTops(tops, onProgress) {
   for (let i = 0; i < tops.length; i += BATCH) {
     const batch = tops.slice(i, i + BATCH);
     const res = await client.from("styles").upsert(
-      batch.map(t => ({ style_no: t.styleNo, color: t.color, top_date: t.topDate, top_po: t.topPo, sample_status: "top" })),
+      batch.map(t => ({ style_no: t.styleNo, color: t.color, top_date: t.topDate, top_po: t.topPo, top_sample: true, sample_status: "top" })),
       { onConflict: "user_id,style_no,color" },
     );
     if (res.error && /top_(date|po)/.test(res.error.message ?? "")) {
@@ -1494,7 +1621,7 @@ async function saveStyleTops(tops, onProgress) {
     throwIfError(res);
     batch.forEach(t => {
       const style = findStyle(t.styleNo, t.color);
-      if (style) { style.topDate = t.topDate; style.topPo = t.topPo; style.sampleStatus = "top"; }
+      if (style) { style.topDate = t.topDate; style.topPo = t.topPo; style.topSample = true; style.sampleStatus = "top"; }
     });
     onProgress?.(Math.min(i + BATCH, tops.length), tops.length);
   }
@@ -2321,8 +2448,7 @@ function checkBannerFile(file) {
 async function uploadBannerImage(bannerId, file) {
   checkBannerFile(file);
   const client = requireClient();
-  const { data } = await client.auth.getSession();
-  const userId = data?.session?.user?.id;
+  const userId = await getWorkspaceId(); // the team's folder
   if (!userId) throw new Error("Sign in again to upload images.");
 
   const ext = (String(file.name).match(/\.([a-z0-9]+)$/i)?.[1] ?? "png").toLowerCase();
@@ -2525,9 +2651,8 @@ function requireEmailSettingsTable() {
  */
 async function saveEmailSettings(templateId, settings, extra = {}) {
   requireEmailSettingsTable();
-  const { data: { user } } = await requireClient().auth.getUser();
   throwIfError(await requireClient().from("email_settings").upsert({
-    user_id: user?.id,
+    user_id: await getWorkspaceId(),
     template_id: templateId,
     html: settings.html ?? "",
     links: settings.links,
@@ -2541,9 +2666,8 @@ async function saveEmailSettings(templateId, settings, extra = {}) {
 /** A template's name in the list — only the name changes. */
 async function renameEmailTemplate(templateId, name) {
   requireEmailSettingsTable();
-  const { data: { user } } = await requireClient().auth.getUser();
   throwIfError(await requireClient().from("email_settings").upsert({
-    user_id: user?.id,
+    user_id: await getWorkspaceId(),
     template_id: templateId,
     name,
     updated_at: new Date().toISOString(),
@@ -2564,8 +2688,7 @@ async function deleteEmailTemplate(templateId) {
 async function uploadEmailImage(templateId, imageKey, file) {
   checkBannerFile(file);
   const client = requireClient();
-  const { data } = await client.auth.getSession();
-  const userId = data?.session?.user?.id;
+  const userId = await getWorkspaceId(); // the team's folder
   if (!userId) throw new Error("Sign in again to upload images.");
   const ext = (String(file.name).match(/\.([a-z0-9]+)$/i)?.[1] ?? "jpg").toLowerCase();
   const path = `${userId}/email/${templateId}/${imageKey}-${Date.now().toString(36)}.${ext}`;

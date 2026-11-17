@@ -51,13 +51,16 @@ function renderStylePaneSummary(style) {
   pos.className = "style-pane-pos";
   posBox.append(posSummary, pos);
   lines.forEach(line => {
-    const row = document.createElement("div");
+    // Each PO opens its detail page (js/po-detail.js).
+    const row = document.createElement("button");
+    row.type = "button";
     row.className = "style-pane-po";
+    row.addEventListener("click", () => openPoDetail(line.poNo, line.styleNo));
     // The PO # and its kind; its ETA and PO date are in the tooltip.
     const no = document.createElement("span");
     no.className = "style-pane-po-month";
     no.textContent = `PO # ${line.poNo}`;
-    row.title = `ETA ${formatIhd(line.eta)} · PO date ${line.poDate ? formatMdy(line.poDate) : EMPTY_DISPLAY}`;
+    row.title = `Open PO # ${line.poNo} · ETA ${formatIhd(line.eta)} · PO date ${line.poDate ? formatMdy(line.poDate) : EMPTY_DISPLAY}`;
     row.append(no, createPoLineChip(line));
     pos.appendChild(row);
   });
@@ -87,8 +90,26 @@ function renderStylePaneSummary(style) {
     block("Memo", memo),
     createStylePaneQtys(style),
     ...field("Notes", createStylePaneNotes(style), { wide: true }),
+    block("Samples", createStylePaneSamples(style)),
     ...field("PO", poValue, { wide: true }),
   );
+}
+
+/**
+ * The colour's samples on one line under their key: Show (from N41), then
+ * the PP1–PP3 and TOP tick boxes. (Which one goes to the shoot is picked
+ * beside the photoshoot, under Photos.)
+ */
+function createStylePaneSamples(style) {
+  const wrap = document.createElement("div");
+  wrap.className = "style-pane-samples";
+  const show = document.createElement("span");
+  const count = showSampleCount(style);
+  show.className = "style-pane-sample-show" + (count ? " is-on" : "");
+  show.title = "Show samples — the Style Master's user2 (Import N41 Data)";
+  show.textContent = count ? `SHOW ${count}` : "SHOW —";
+  wrap.append(show, createSampleChecks(style));
+  return wrap;
 }
 
 /**
@@ -373,7 +394,8 @@ function renderStylePanePhotos(style) {
   const shoot = document.getElementById("stylePaneShoot");
   const hasPhotos = getStyleImageEntries(style.styleNo, style.color).length > 0;
   shoot.hidden = hasPhotos;
-  shoot.replaceChildren(...(hasPhotos ? [] : [createStyleShootCell(style)]));
+  // Beside the shoot: which sample goes to it, as a dropdown (only samples it has).
+  shoot.replaceChildren(...(hasPhotos ? [] : [createStyleShootCell(style, { editSample: true })]));
 }
 
 function renderStylePanePhotoList(style) {
@@ -426,13 +448,14 @@ function renderStylePane() {
   if (!style) return closeStylePane();
   renderStylePaneSummary(style); // the header too
   renderStylePanePhotos(style);
+  renderStylePaneHistory(style); // js/activity.js
 }
 
 /** Mark the open style's rows in whichever table is showing. */
 function syncStylePaneRows() {
   document.querySelectorAll("tr.is-pane-open, .shoot-style-row.is-pane-open").forEach(tr => tr.classList.remove("is-pane-open"));
   if (!paneStyle) return;
-  document.querySelectorAll("#stylesTableBody tr, #needTableBody tr, #completeTableBody tr, #poTableBody tr, #shootPaneStyles .shoot-style-row").forEach(tr => {
+  document.querySelectorAll("#stylesTableBody tr, #needTableBody tr, #completeTableBody tr, #poTableBody tr, #poDetailBody tr.po-detail-color-row, #shootPaneStyles .shoot-style-row").forEach(tr => {
     if (tr.dataset.styleNo === paneStyle.styleNo && tr.dataset.color === paneStyle.color) tr.classList.add("is-pane-open");
   });
 }
@@ -454,6 +477,7 @@ function openStylePane(styleNo, color) {
 function closeStylePane() {
   if (!paneStyle) return;
   paneStyle = null;
+  document.body.classList.remove("has-po-detail-pane");
   revokeStylePaneUrls();
   const pane = document.getElementById("stylePane");
   if (pane) pane.hidden = true;
@@ -470,13 +494,17 @@ function refreshStylePane() {
 /** After a field edit: redraw just the details, so the photos don't reload. */
 function refreshStylePaneSummary() {
   const style = paneStyle && findStyle(paneStyle.styleNo, paneStyle.color);
-  if (style) renderStylePaneSummary(style);
+  if (style) {
+    renderStylePaneSummary(style);
+    renderStylePaneHistory(style); // the edit just made (js/activity.js)
+  }
 }
 
 // ── Keyboard: ↑ ↓ the next style in the list on screen, ← → its colours ─────
 
 /** Each page's clickable style rows, in the order they show. */
 const STYLE_PANE_ROW_LISTS = [
+  "#poDetailBody tr.po-detail-color-row", // first: the PO detail covers the page's own list
   "#stylesTableBody tr[data-style-no]",
   "#needTableBody tr[data-style-no]",
   "#completeTableBody tr.clickable-row[data-style-no]",
@@ -541,6 +569,8 @@ function initStylePane() {
     if (!paneStyle || !["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.key)) return;
     if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
     if (document.querySelector(".modal-backdrop.open")) return;
+    // The PO detail page is over it, unless the pane was opened from a colour there.
+    if (isPoDetailOpen() && !document.body.classList.contains("has-po-detail-pane")) return;
     // Not while typing or picking from a list.
     if (e.target.closest?.("input, textarea, select, [contenteditable='true']")) return;
     e.preventDefault();

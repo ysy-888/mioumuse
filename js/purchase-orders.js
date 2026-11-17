@@ -640,38 +640,52 @@ function createPoEntry(po, styleNo) {
   return row;
 }
 
-/** All of a style's POs, stacked, for the one PO cell beside its colours. */
-function createPoLinesCell(group, rowSpan) {
+/** The PO's own box beside its colours — click it for the PO detail page. */
+function createPoLinesCell(group, rowSpan, po = group.pos[0]) {
   const td = document.createElement("td");
   td.dataset.col = "po";
   td.rowSpan = rowSpan;
-  const list = document.createElement("div");
-  list.className = "po-lines";
-  list.append(...group.pos.map(po => createPoEntry(po, group.styleNo)));
-  td.appendChild(list);
+  const box = document.createElement("div");
+  box.className = "po-lines";
+  box.tabIndex = 0;
+  box.setAttribute("role", "button");
+  box.title = `Open PO # ${po.poNo}`;
+  box.appendChild(createPoEntry(po, group.styleNo));
+  const open = () => openPoDetail(po.poNo, group.styleNo);
+  box.addEventListener("click", e => {
+    if (e.target.closest(".po-entry-action")) return;
+    open();
+  });
+  box.addEventListener("keydown", e => {
+    if (e.target === box && (e.key === "Enter" || e.key === " ")) {
+      e.preventDefault();
+      open();
+    }
+  });
+  td.appendChild(box);
   return td;
 }
 
-/** A style with no colours in the Styles database: its POs, and nothing else. */
-function createPoLinesOnlyRow(group, cols) {
+/** A PO whose colours aren't in the Styles database: its box, and nothing else. */
+function createPoLinesOnlyRow(group, cols, po = group.pos[0]) {
   const tr = document.createElement("tr");
   tr.className = "po-line-row";
-  tr.appendChild(createPoLinesCell(group, 1));
+  tr.appendChild(createPoLinesCell(group, 1, po));
   const rest = document.createElement("td");
   rest.colSpan = cols.length - 1;
   tr.appendChild(rest);
   return tr;
 }
 
-/** `first`: the style's first colour row, which carries the PO cell for all of them. */
-function createPoColorRow(group, style, cols, first) {
+/** `first`: the PO's first colour row, which carries its PO box for all of them (`span` rows). */
+function createPoColorRow(group, style, cols, first, po = group.pos[0], span = group.colors.length) {
   const tr = document.createElement("tr");
   tr.className = "clickable-row po-color-row";
   tr.dataset.styleNo = style.styleNo;
   tr.dataset.color = style.color;
   cols.forEach(col => {
     if (col === "po") {
-      if (first) tr.appendChild(createPoLinesCell(group, group.colors.length));
+      if (first) tr.appendChild(createPoLinesCell(group, span, po));
       return;
     }
     const td = document.createElement("td");
@@ -750,20 +764,32 @@ function renderPoView() {
     tbody.innerHTML = `<tr class="state-row"><td colspan="${cols.length}">${escapeHtml(msg)}</td></tr>`;
     return;
   }
+  // A box per PO: the style's row, then just that PO's colours beside its PO box.
   const rows = [];
-  groups.forEach((group, i) => {
-    // A gap before each style after the first, so its colours read as its own.
-    if (i) {
-      const gap = document.createElement("tr");
-      gap.className = "po-gap-row";
-      gap.innerHTML = `<td colspan="${cols.length}"></td>`;
-      rows.push(gap);
-    }
-    rows.push(createPoGroupRow(group, cols));
-    if (group.colors.length) group.colors.forEach((style, n) => rows.push(createPoColorRow(group, style, cols, n === 0)));
-    else rows.push(createPoLinesOnlyRow(group, cols));
+  let blocks = 0;
+  groups.forEach(group => {
+    group.pos.forEach(po => {
+      const onPo = new Set(po.colors.map(c => c.trim().toUpperCase()));
+      const colors = group.colors.filter(s => onPo.has(s.color.trim().toUpperCase()));
+      // Filtered down to other POs' colours (photos, type…): this PO has none to show.
+      if (!colors.length && group.colors.length) return;
+      // A gap before each box after the first, so its colours read as its own.
+      if (blocks++) {
+        const gap = document.createElement("tr");
+        gap.className = "po-gap-row";
+        gap.innerHTML = `<td colspan="${cols.length}"></td>`;
+        rows.push(gap);
+      }
+      rows.push(createPoGroupRow(group, cols));
+      if (colors.length) colors.forEach((style, n) => rows.push(createPoColorRow(group, style, cols, n === 0, po, colors.length)));
+      else rows.push(createPoLinesOnlyRow(group, cols, po));
+    });
   });
   tbody.replaceChildren(...rows);
+  if (counter) {
+    counter.textContent = `${blocks.toLocaleString()} ${blocks === 1 ? "PO" : "POs"} · ${groups.length === 1 ? "1 style" : `${groups.length.toLocaleString()} styles`}`
+      + (poShowDeleted ? " · deleted" : isPoSearchingAll() ? " · all months" : "");
+  }
   syncStylePaneRows();
 }
 
@@ -890,7 +916,7 @@ function initPurchaseOrders() {
   document.getElementById("poAddSuggestedBtn")?.addEventListener("click", addPoSuggested);
   document.getElementById("poTableBody")?.addEventListener("click", e => {
     const tr = e.target.closest("tr.po-color-row");
-    if (!tr || e.target.closest(".shoot-picker, button, a, input")) return;
+    if (!tr || e.target.closest(".shoot-picker, .po-lines, button, a, input")) return;
     openStylePane(tr.dataset.styleNo, tr.dataset.color);
   });
 }
