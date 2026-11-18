@@ -3,17 +3,13 @@
  *
  * Orders go from Magento to N41, and invoicing on N41 updates Magento — but
  * canceling on N41 doesn't, so those orders sit Pending or Processing on
- * Magento forever. Import N41 Sales Orders reads the report here in the
- * browser (.xlsx, .xls or .csv) and saves each web order's status
- * (n41_orders):
+ * Magento forever. Import N41 Sales Orders reads N41's Sales Orders export
+ * (.csv, a row per order line — js/n41-orders.js parseN41SoRows) and saves
+ * every line for the N41 Orders page, and each web order's status here
+ * (n41_orders): customerPo "Web:00000061" is Magento order 61, with its SO #
+ * (orderno), customer and status. Any other PO isn't from the web store.
  *
- *   Column C  Cust. Name
- *   Column H  Order # (the SO #; an order on several rows has one for each)
- *   Column I  Status
- *   Column P  Cust. PO # — "Web:00000061" is Magento order 61; any other PO
- *             isn't from the web store and is skipped
- *
- * An order can fill several rows; it's Closed only if every row is. Reports
+ * An order fills several rows; it's Closed only if every row is. Exports
  * cover a date range, so an import adds and updates, and never clears.
  *
  * The Orders table then shows N41 Status, and flags an order that's Closed on
@@ -263,49 +259,10 @@ async function cancelMgSelectedOrders() {
 }
 
 // ── The import ───────────────────────────────────────────────────────────────
-
-/** The report's rows, cell by column letter. */
-async function readMgN41Rows(file) {
-  await loadSheetJs();
-  const book = XLSX.read(await file.arrayBuffer(), { type: "array" });
-  const sheet = book.Sheets[book.SheetNames[0]];
-  if (!sheet) throw new Error("That file has no sheets.");
-  return XLSX.utils.sheet_to_json(sheet, { header: "A", defval: "", raw: false, blankrows: true });
-}
-
-/** The web orders on the report, plus what the file says about them. */
-function extractN41Orders(rows) {
-  const cell = (r, col) => String(r[col] ?? "").trim();
-  const header = rows.slice(0, 40).findIndex(r => /^status$/i.test(cell(r, "I")) && /cust\.?\s*po/i.test(cell(r, "P")));
-  if (header < 0) {
-    throw new Error("That isn't an N41 Sales Orders report — it needs Status in column I and Cust. PO # in column P.");
-  }
-  const orders = new Map();
-  let otherRows = 0;
-  let repeatedRows = 0;
-  rows.slice(header + 1).forEach(r => {
-    const poNo = cell(r, "P");
-    const status = cell(r, "I");
-    const soNo = cell(r, "H").replace(/\.0+$/, "");
-    if (!poNo || !status) return; // blank rows and totals
-    const key = /^web\s*:/i.test(poNo) ? mgOrderKey(poNo) : "";
-    if (!key) {
-      otherRows += 1;
-      return;
-    }
-    const seen = orders.get(key);
-    if (!seen) {
-      orders.set(key, { poNo, soNo, customer: cell(r, "C"), status });
-      return;
-    }
-    repeatedRows += 1;
-    seen.soNo = [...new Set([...seen.soNo.split(", "), soNo])].filter(Boolean).join(", ");
-    // Closed only if every row is.
-    if (isMgN41Closed(seen) && !isMgN41Closed({ status })) seen.status = status;
-  });
-  if (!orders.size) throw new Error('No web orders found — Cust. PO # should read "Web:00000061".');
-  return { orders, otherRows, repeatedRows };
-}
+//
+// N41's Sales Orders export (.csv, one row per order line — js/n41-orders.js
+// reads it): every line is saved for the N41 Orders page, and each web
+// order's status for the Orders table here.
 
 function openMgN41Import() {
   const input = document.getElementById("mgImportN41File");
@@ -316,9 +273,10 @@ function openMgN41Import() {
 
 async function readMgN41File(file) {
   if (!file) return;
-  setAppLoading(true, "Reading the report…");
+  setAppLoading(true, "Reading the export…");
   try {
-    mgN41Pending = { ...extractN41Orders(await readMgN41Rows(file)), fileName: file.name };
+    const parsed = parseN41SoRows(await readN41SoFile(file));
+    mgN41Pending = { ...parsed, orders: parsed.webOrders, fileName: file.name };
     renderMgN41Import();
     document.getElementById("mgN41ImportOverlay")?.classList.add("open");
   } catch (err) {
@@ -333,23 +291,28 @@ function closeMgN41Import() {
   document.getElementById("mgN41ImportOverlay")?.classList.remove("open");
 }
 
-/** What the file holds, and how it differs from the statuses the app has now. */
+/** What the file holds, and how its web orders differ from the statuses the app has now. */
 function renderMgN41Import() {
   const p = mgN41Pending;
   if (!p) return;
-  const list = [...p.orders.values()];
-  const closed = list.filter(isMgN41Closed).length;
+  const orderNos = new Set(p.lines.map(l => l.order_no));
+  const customers = new Set(p.lines.map(l => l.customer));
+  const dates = p.lines.map(l => l.order_date).filter(Boolean).sort();
+  const range = dates.length ? `${formatMdy(dates[0])} – ${formatMdy(dates[dates.length - 1])}` : "";
   document.getElementById("mgN41ImportIntro").textContent =
-    `${p.fileName} — ${p.orders.size.toLocaleString()} web orders. Only each order's N41 Status is saved; nothing changes in N41 or on Magento.`;
+    `${p.fileName} — ${orderNos.size.toLocaleString()} SOs${range ? `, ordered ${range}` : ""}. Saved to N41 Orders, and web orders' status for Magento → Orders; nothing changes in N41 or on Magento.`;
 
+  const web = [...p.orders.values()];
+  const closed = web.filter(isMgN41Closed).length;
   const after = new Map([...mgN41, ...p.orders]);
   const flagged = mgOpenOrders?.filter(o => isMgN41Closed(after.get(mgOrderKey(o.number)))).length;
   const fields = [
-    ["Closed", closed.toLocaleString()],
-    ["Not closed", (list.length - closed).toLocaleString()],
-    ["Rows for orders already listed", p.repeatedRows.toLocaleString()],
-    ["Other POs, skipped", p.otherRows.toLocaleString()],
+    ["Sales orders", orderNos.size.toLocaleString()],
+    ["Order lines", p.lines.length.toLocaleString()],
+    ["Customers", customers.size.toLocaleString()],
+    ["Web orders (Magento)", `${web.length.toLocaleString()} · ${closed.toLocaleString()} closed`],
   ];
+  if (p.repeated) fields.push(["Repeated lines, skipped", p.repeated.toLocaleString()]);
   if (flagged !== undefined) fields.push(["Closed on N41, open on Magento", flagged.toLocaleString()]);
   document.getElementById("mgN41ImportSummary").replaceChildren(...fields.flatMap(([label, value]) => {
     const l = document.createElement("span");
@@ -361,14 +324,8 @@ function renderMgN41Import() {
     return [l, v];
   }));
 
-  // Against what's saved.
-  const changes = document.getElementById("mgN41ImportChanges");
-  if (!mgN41.size) changes.textContent = "First import — every order above will be saved.";
-  else {
-    const added = [...p.orders.keys()].filter(k => !mgN41.has(k)).length;
-    const changed = [...p.orders].filter(([k, o]) => mgN41.has(k) && mgN41.get(k).status !== o.status).length;
-    changes.textContent = `${added.toLocaleString()} new, ${changed.toLocaleString()} with a new status. Orders not on this report keep the status they have.`;
-  }
+  document.getElementById("mgN41ImportChanges").textContent =
+    "Lines already imported are updated; orders not in this file stay as they are (an export covers a date range).";
   document.getElementById("mgN41ImportMessage").textContent = "";
   document.getElementById("mgN41ImportSaveBtn").disabled = false;
 }
@@ -379,21 +336,29 @@ async function saveMgN41Import() {
   const save = document.getElementById("mgN41ImportSaveBtn");
   const message = document.getElementById("mgN41ImportMessage");
   save.disabled = true;
-  message.textContent = "Saving…";
   message.className = "modal-footer-message";
+  message.textContent = "Saving…";
   try {
-    await saveN41OrderRows(p.orders);
+    await saveN41SoLines(p.lines, (done, total) => { message.textContent = `Saving lines… ${done.toLocaleString()} / ${total.toLocaleString()}`; });
+    if (p.orders.size) {
+      message.textContent = "Saving web orders…";
+      await saveN41OrderRows(p.orders);
+    }
     mgN41TableReady = true;
+    const soCount = new Set(p.lines.map(l => l.order_no)).size;
     closeMgN41Import();
-    await refreshMgN41();
-    renderMgSales("orders");
-    if (MG_SALES.orders.query.flagged) loadMgSales("orders");
-    showIndicator(`N41 Status updated — ${p.orders.size.toLocaleString()} orders`, "success");
+    showIndicator(`N41 Sales Orders imported — ${soCount.toLocaleString()} SOs, ${p.lines.length.toLocaleString()} lines`, "success");
+    refreshN41OrdersAfterImport();
+    if (getCurrentAppView() === "magento") {
+      await refreshMgN41();
+      renderMgSales("orders");
+      if (MG_SALES.orders.query.flagged) loadMgSales("orders");
+    } else {
+      loadMgN41();
+    }
   } catch (err) {
     message.className = "modal-footer-message error";
-    message.textContent = mgN41TableReady && !/n41_orders/.test(err.message ?? "")
-      ? err.message || "Couldn't save the report."
-      : "Update the n41_orders table in Supabase first (SQL Editor — it's in supabase-schema.sql), then try again.";
+    message.textContent = err.message || "Couldn't save the export.";
     save.disabled = false;
   }
 }

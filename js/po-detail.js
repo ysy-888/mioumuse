@@ -53,6 +53,7 @@ async function openPoDetail(poNo, styleNo) {
   poDetail = { poNo, styleNo, comments: [], loading: true, error: "", request };
   el.hidden = false;
   document.body.classList.add("is-po-detail-open");
+  updateAppBackButton();
   closeColumnFilterPopover();
   renderPoDetail();
   el.querySelector(".po-detail-scroll")?.scrollTo({ top: 0 });
@@ -74,6 +75,7 @@ function closePoDetail() {
   const el = document.getElementById("poDetail");
   if (el) el.hidden = true;
   document.body.classList.remove("is-po-detail-open", "has-po-detail-pane");
+  updateAppBackButton();
 }
 
 // ── Drawing ──────────────────────────────────────────────────────────────────
@@ -513,7 +515,6 @@ async function addFitPhotos(c, files, wrap, status) {
 }
 
 function initPoDetail() {
-  document.getElementById("poDetailClose")?.addEventListener("click", closePoDetail);
   // First, so Escape here doesn't also close the style pane underneath.
   document.addEventListener("keydown", e => {
     if (e.key !== "Escape" || !poDetail) return;

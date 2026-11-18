@@ -87,7 +87,7 @@ function initColumnFilter(tableId, col, { options, onChange, width = null, hideB
 /** The tables that sort; their headers without a filter get a sort-only menu. */
 const SORT_MENU_TABLES = [
   "campaignsTable", "tradeShowsTable", "bannersTable", "stylesTable", "needTable",
-  "completeTable", "shootsTable", "mgProductsTable", "mgOrdersTable", "mgCustomersTable",
+  "completeTable", "shootsTable", "soTable", "mgProductsTable", "mgOrdersTable", "mgCustomersTable",
 ];
 const columnSortSetters = new Map(); // tableId → (col, "asc" | "desc" | null) => void
 let columnSortPassThrough = false;

@@ -1162,7 +1162,8 @@ function renderCalendar() {
 
 /** Cheap no-op unless the calendar is the active view. */
 function refreshCalendarIfActive() {
-  if (getCurrentAppView() === "home") renderCalendar();
+  if (getCurrentAppView() === "calendar") renderCalendar();
+  if (getCurrentAppView() === "home") renderHome();
 }
 
 function initCalendar() {
@@ -1228,6 +1229,6 @@ function initCalendar() {
     }).observe(calBox);
   }
   window.addEventListener("resize", () => {
-    if (getCurrentAppView() === "home") resize();
+    if (getCurrentAppView() === "calendar") resize();
   });
 }

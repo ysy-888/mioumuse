@@ -23,6 +23,7 @@ const TABLE_VIEW_TABLES = [
   { id: "needTable", label: "Photoshoots · Need to Shoot", view: "needToShoot" },
   { id: "completeTable", label: "Photoshoots · Complete", view: "complete" },
   { id: "poTable", label: "Photoshoots · POs", view: "pos" },
+  { id: "soTable", label: "N41 · Orders", view: "n41Orders" },
   { id: "mgProductsTable", label: "Magento · Products", view: "magento" },
   { id: "mgOrdersTable", label: "Magento · Orders", view: "magento" },
   { id: "mgCustomersTable", label: "Magento · Customers", view: "magento" },

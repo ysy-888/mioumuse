@@ -46,6 +46,9 @@ async function bootApp() {
   initNotifications();
   initChat();
   initActivity();
+  initN41Orders();
+  initHome();
+  initSales();
   initRecordLists();
   // Before the forms: its Escape handler has to see an open form first.
   initItemPane();

@@ -8,7 +8,7 @@
 <link rel="apple-touch-icon" href="favicon.png?v=2" />
 <!-- CodeMirror's own styles (before crm.css, which recolours it); its scripts load when Edit HTML is first opened (js/email.js). -->
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.css" />
-<link rel="stylesheet" href="crm.css?v=20261117-1447" />
+<link rel="stylesheet" href="crm.css?v=20261117-1650" />
 </head>
 <body>
 
@@ -23,6 +23,9 @@
   <nav class="app-sidenav">
     <button type="button" class="app-sidenav-item" id="navLogoHome" data-view="home">
       <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true"><path d="m3 10 9-7 9 7v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M9 22V12h6v10"/></svg><span class="app-sidenav-label">Home</span>
+    </button>
+    <button type="button" class="app-sidenav-item" id="navCalendar" data-view="calendar">
+      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18M8 14h.01M12 14h.01M16 14h.01M8 18h.01M12 18h.01"/></svg><span class="app-sidenav-label">Calendar</span>
     </button>
     <button type="button" class="app-sidenav-item" id="navMessages" data-view="messages">
       <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg><span class="app-sidenav-label">Messages</span><span class="app-sidenav-count" id="navMessagesCount" hidden></span>
@@ -63,6 +66,16 @@
       <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="m8 12 3 3 5-6"/></svg><span class="app-sidenav-label">Complete</span>
     </button>
 
+    <div class="app-sidenav-group">Sales</div>
+    <button type="button" class="app-sidenav-item" id="navSales" data-view="sales">
+      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3v18h18"/><path d="M7 15l4-4 3 3 5-6"/></svg><span class="app-sidenav-label">Sales Dashboard</span>
+    </button>
+
+    <div class="app-sidenav-group">N41</div>
+    <button type="button" class="app-sidenav-item" id="navN41Orders" data-view="n41Orders">
+      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><path d="M3 6h18"/><path d="M16 10a4 4 0 0 1-8 0"/></svg><span class="app-sidenav-label">N41 Orders</span>
+    </button>
+
     <div class="app-sidenav-group">Magento</div>
     <button type="button" class="app-sidenav-item" id="navMgProducts" data-view="magento" data-subview="products">
       <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><path d="M3.27 6.96 12 12.01l8.73-5.05M12 22.08V12"/></svg><span class="app-sidenav-label">Products</span>
@@ -96,6 +109,8 @@
     <nav class="app-breadcrumbs" id="appBreadcrumbs" aria-label="Breadcrumb" hidden></nav>
     <h1 class="app-page-title" id="appPageTitle">Home</h1>
   </div>
+  <!-- Sales Dashboard: open SOs, allocated, open pick tickets (js/sales.js). -->
+  <div class="sales-header-stats" id="salesHeaderStats" hidden></div>
   <!-- The page's search box moves here, centred (js/header-search.js). -->
   <div class="header-search" id="headerSearch"></div>
   <div class="header-right">
@@ -159,7 +174,7 @@
           <svg class="header-menu-item-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M17 8l-5-5-5 5"/><path d="M12 3v12"/></svg>
           <span>Import Groups</span>
         </button>
-        <button type="button" class="header-menu-item" id="headerMenuImportN41" role="menuitem" data-pages="magento:orders">
+        <button type="button" class="header-menu-item" id="headerMenuImportN41" role="menuitem" data-pages="magento:orders n41Orders">
           <svg class="header-menu-item-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M17 8l-5-5-5 5"/><path d="M12 3v12"/></svg>
           <span>Import N41 Sales Orders</span>
         </button>
@@ -193,7 +208,7 @@
           <svg class="header-menu-item-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 12h6"/></svg>
           <span>Unlink Sample Photo Folder</span>
         </button>
-        <button type="button" class="header-menu-item" id="headerMenuTableView" role="menuitem" data-pages="campaigns tradeShows platforms needToShoot photoshoots complete pos styles magento:products magento:orders magento:customers">
+        <button type="button" class="header-menu-item" id="headerMenuTableView" role="menuitem" data-pages="campaigns tradeShows platforms needToShoot photoshoots complete pos styles magento:products magento:orders magento:customers n41Orders">
           <svg class="header-menu-item-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9M15 21V9"/></svg>
           <span>Table View</span>
         </button>
@@ -364,6 +379,26 @@
 
   <!-- Colours with no photos not on Need to Shoot yet (js/purchase-orders.js). -->
   <div class="po-notice" id="poNotice" role="status" hidden></div>
+</div>
+
+<!-- ── N41 Orders toolbar: status, search (js/n41-orders.js) ── -->
+<div id="soToolbar" class="toolbar" hidden>
+  <div class="toolbar-filter-cluster">
+    <div class="toolbar-filter-section">
+      <div class="filter-btn-group" id="soStatusFilters" role="group" aria-label="SO status"></div>
+    </div>
+  </div>
+  <div class="toolbar-end">
+    <span class="so-imported" id="soImported"></span>
+    <button type="button" class="btn btn-icon" id="soRefresh" title="Refresh" aria-label="Refresh">
+      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12a9 9 0 1 1-2.64-6.36L21 8"/><path d="M21 3v5h-5"/></svg>
+    </button>
+    <div class="counter toolbar-row-counter" id="soCount">— SOs</div>
+    <div class="search-wrap toolbar-search-wrap">
+      <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+      <input type="search" id="soSearch" placeholder="Search" />
+    </div>
+  </div>
 </div>
 
 <!-- ── Complete toolbar: Photoshoot / CG, search (js/complete.js) ── -->
@@ -904,6 +939,49 @@
       </thead>
       <tbody id="completeTableBody">
         <tr class="state-row"><td colspan="9">Loading…</td></tr>
+      </tbody>
+    </table>
+    </div>
+  </div>
+
+  <!-- ── N41 Orders: a row per SO; one with several styles opens to list them (js/n41-orders.js) ── -->
+  <div id="soTableWrap" class="table-scroll-y" hidden>
+    <div class="table-scroll-x">
+    <table id="soTable" class="record-table so-orders-table">
+      <colgroup>
+        <col class="col-so-no" />
+        <col class="col-so-customer" />
+        <col class="col-so-date" />
+        <col class="col-so-type" />
+        <col class="col-so-po" />
+        <col class="col-so-status" />
+        <col class="col-so-qty" />
+        <col class="col-so-styles" />
+        <col class="col-so-style" />
+        <col class="col-so-n" />
+        <col class="col-so-n" />
+        <col class="col-so-n" />
+        <col class="col-so-comments" />
+      </colgroup>
+      <thead>
+        <tr>
+          <th data-col="orderNo">SO #</th>
+          <th data-col="customer">Customer</th>
+          <th data-col="orderDate">Order Date</th>
+          <th data-col="type">Type</th>
+          <th data-col="customerPo">Customer PO</th>
+          <th data-col="status">Status</th>
+          <th data-col="qty" title="Units on the SO">Total Qty</th>
+          <th data-col="styles" title="How many styles (Style # + Color) are on the SO">Styles</th>
+          <th data-col="style" class="th-no-sort">Style # / Color</th>
+          <th data-col="oh" class="th-no-sort" title="On hand (N41's ATS report)">OH</th>
+          <th data-col="wip" class="th-no-sort" title="Work in progress (N41's ATS report)">WIP</th>
+          <th data-col="ats" class="th-no-sort" title="Available to sell (N41's ATS report)">ATS</th>
+          <th data-col="comments" class="th-no-sort" aria-label="Comments"></th>
+        </tr>
+      </thead>
+      <tbody id="soTableBody">
+        <tr class="state-row"><td colspan="13">Loading…</td></tr>
       </tbody>
     </table>
     </div>
@@ -1463,6 +1541,38 @@
   </aside>
 
   <!-- ── Calendar ────────────────────────────────────────────── -->
+  <!-- N41 Orders: an SO's full page with comments; the SO table is #soTableWrap
+       (js/n41-orders.js). soListView is the earlier by-customer list, kept to
+       bring back (SO_LIST_LAYOUT). -->
+  <div id="n41OrdersWrap" class="so-page" hidden>
+    <div id="soListView" class="so-list-view" hidden>
+      <select id="soTypeFilter" aria-label="Order type" hidden></select>
+      <div class="so-scroll" id="soList"></div>
+    </div>
+    <section id="soDetail" class="so-detail" aria-labelledby="soDetailTitle" hidden>
+      <div class="po-detail-header">
+        <div class="po-detail-heading">
+          <div class="po-detail-title-row">
+            <h2 id="soDetailTitle"></h2>
+            <span class="po-detail-tags" id="soDetailTags"></span>
+          </div>
+          <div class="po-detail-meta" id="soDetailMeta"></div>
+        </div>
+      </div>
+      <div class="so-detail-body">
+        <div class="so-detail-main" id="soDetailMain"></div>
+        <aside class="so-comments" aria-label="Comments">
+          <div class="so-comments-head"><h3>Comments</h3><span class="po-detail-count" id="soCommentCount"></span></div>
+          <div class="so-comment-list" id="soCommentList"></div>
+          <div class="so-comment-compose">
+            <textarea id="soCommentInput" class="so-comment-input" rows="3" placeholder="Add a comment… (Enter to post, Shift+Enter for a new line)"></textarea>
+            <button type="button" class="btn btn-primary" id="soCommentSend">Comment</button>
+          </div>
+        </aside>
+      </div>
+    </section>
+  </div>
+
   <!-- Activity: every change in the team's data, newest first (js/activity.js). -->
   <div id="activityWrap" class="act-page" hidden>
     <div class="act-toolbar">
@@ -1498,6 +1608,63 @@
       <div class="chat-list" id="chatList"></div>
     </aside>
     <section class="chat-main" id="chatMain" aria-live="polite"></section>
+  </div>
+
+  <!-- ── Home: a mini calendar, tasks and the inbox (js/home.js) ── -->
+  <div id="homeWrap" class="home-wrap" hidden>
+    <div class="home-head">
+      <h2 class="home-greeting" id="homeGreeting">Welcome</h2>
+      <span class="home-date" id="homeDate"></span>
+    </div>
+    <div class="home-grid">
+      <section class="home-card home-tasks" aria-labelledby="homeTasksTitle">
+        <div class="home-card-head">
+          <h3 class="home-card-title" id="homeTasksTitle">Tasks</h3>
+          <div class="task-tabs" id="homeDashTaskTabs" role="tablist" aria-label="Task status"></div>
+        </div>
+        <div class="home-card-body dash-scroll" id="homeTasksList"></div>
+      </section>
+      <div class="home-col">
+        <section class="home-card home-cal" aria-labelledby="homeCalTitle">
+          <div class="home-card-head">
+            <h3 class="home-card-title" id="homeCalTitle">—</h3>
+            <div class="home-cal-nav">
+              <button type="button" class="btn btn-page" id="homeCalPrev" aria-label="Previous month">‹</button>
+              <button type="button" class="btn cal-today-btn" id="homeCalToday">Today</button>
+              <button type="button" class="btn btn-page" id="homeCalNext" aria-label="Next month">›</button>
+            </div>
+            <button type="button" class="home-card-link" id="homeCalOpen">Calendar ›</button>
+          </div>
+          <div class="home-cal-grid" id="homeCalGrid"></div>
+          <div class="home-cal-agenda" id="homeCalAgenda"></div>
+        </section>
+        <section class="home-card home-inbox" aria-labelledby="homeInboxTitle">
+          <div class="home-card-head">
+            <h3 class="home-card-title" id="homeInboxTitle">Inbox</h3>
+            <span class="home-badge" id="homeInboxUnread" hidden></span>
+            <button type="button" class="home-card-link" id="homeInboxAll">Messages ›</button>
+          </div>
+          <div class="home-card-body home-inbox-list" id="homeInboxList"></div>
+        </section>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Sales Dashboard: open orders, a list per order type (js/sales.js) ── -->
+  <!-- Open orders, a list per type (FAIRE / FG / MAGENTO / INHOUSE / SHOW /
+       OTHER), then the customer panel: pick one → its open lines → allocated
+       → pick tickets. -->
+  <div id="salesWrap" class="sales-wrap" hidden>
+    <div class="sales-board" id="salesBoard"></div>
+    <div id="custWrap" class="cust-wrap">
+      <aside class="cust-list-pane">
+        <div class="cust-list-search">
+          <input type="search" class="form-input" id="custSearch" placeholder="Search customers" aria-label="Search customers" autocomplete="off" />
+        </div>
+        <div class="cust-list" id="custList"></div>
+      </aside>
+      <section class="cust-main" id="custMain" aria-live="polite"></section>
+    </div>
   </div>
 
   <div id="calendarWrap" class="dashboard-wrap" hidden>
@@ -1548,7 +1715,6 @@
        and footer, the menu beside it (js/po-detail.js) ── -->
   <section id="poDetail" class="po-detail" aria-labelledby="poDetailTitle" hidden>
     <div class="po-detail-header">
-      <button type="button" class="btn po-detail-back" id="poDetailClose" title="Back (Esc)">‹ Back</button>
       <div class="po-detail-heading">
         <div class="po-detail-title-row">
           <h2 id="poDetailTitle"></h2>
@@ -1572,6 +1738,7 @@
   <div class="app-footer-end mg-pager" id="stylesPager" hidden></div>
   <div class="app-footer-end mg-pager" id="needPager" hidden></div>
   <div class="app-footer-end mg-pager" id="completePager" hidden></div>
+  <div class="app-footer-end mg-pager" id="soPager" hidden></div>
 </footer>
 
 <!-- Messages: bottom right, above the footer (js/notifications.js). -->
@@ -2350,58 +2517,61 @@
   </div>
 </div>
 
-<script src="js/config.js?v=20261117-1447"></script>
+<script src="js/config.js?v=20261117-1650"></script>
 <!-- Needs SUPABASE_URL/KEY from config.js and the CDN client above. -->
-<script src="js/auth.js?v=20261117-1447"></script>
-<script src="js/util.js?v=20261117-1447"></script>
-<script src="js/notifications.js?v=20261117-1447"></script>
-<script src="js/dates.js?v=20261117-1447"></script>
-<script src="js/store.js?v=20261117-1447"></script>
-<script src="js/tasks.js?v=20261117-1447"></script>
-<script src="js/app-shell.js?v=20261117-1447"></script>
-<script src="js/table-pager.js?v=20261117-1447"></script>
-<script src="js/record-list.js?v=20261117-1447"></script>
-<script src="js/item-pane.js?v=20261117-1447"></script>
-<script src="js/campaign-form.js?v=20261117-1447"></script>
-<script src="js/trade-show-form.js?v=20261117-1447"></script>
-<script src="js/banners.js?v=20261117-1447"></script>
-<script src="js/banner-form.js?v=20261117-1447"></script>
-<script src="js/mailchimp.js?v=20261117-1447"></script>
-<script src="js/style-import.js?v=20261117-1447"></script>
-<script src="js/column-filter.js?v=20261117-1447"></script>
-<script src="js/styles.js?v=20261117-1447"></script>
-<script src="js/style-images.js?v=20261117-1447"></script>
-<script src="js/sample-photos.js?v=20261117-1447"></script>
-<script src="js/photoshoots.js?v=20261117-1447"></script>
-<script src="js/complete.js?v=20261117-1447"></script>
-<script src="js/photoshoot-form.js?v=20261117-1447"></script>
-<script src="js/purchase-orders.js?v=20261117-1447"></script>
-<script src="js/production-import.js?v=20261117-1447"></script>
-<script src="js/ats-import.js?v=20261117-1447"></script>
-<script src="js/n41-import.js?v=20261117-1447"></script>
-<script src="js/style-pane.js?v=20261117-1447"></script>
-<script src="js/magento.js?v=20261117-1447"></script>
-<script src="js/magento-availability.js?v=20261117-1447"></script>
-<script src="js/magento-photos.js?v=20261117-1447"></script>
-<script src="js/magento-group-order.js?v=20261117-1447"></script>
-<script src="js/magento-sales.js?v=20261117-1447"></script>
-<script src="js/magento-n41.js?v=20261117-1447"></script>
-<script src="js/magento-events.js?v=20261117-1447"></script>
-<script src="js/trade-show-import.js?v=20261117-1447"></script>
-<script src="js/magento-groups.js?v=20261117-1447"></script>
-<script src="js/table-view.js?v=20261117-1447"></script>
-<script src="js/exports.js?v=20261117-1447"></script>
-<script src="js/copy-menu.js?v=20261117-1447"></script>
-<script src="js/row-quick-select.js?v=20261117-1447"></script>
-<script src="js/pane-dismiss.js?v=20261117-1447"></script>
-<script src="js/shortcuts.js?v=20261117-1447"></script>
-<script src="js/header-search.js?v=20261117-1447"></script>
-<script src="js/calendar.js?v=20261117-1447"></script>
-<script src="js/holidays.js?v=20261117-1447"></script>
-<script src="js/email.js?v=20261117-1447"></script>
-<script src="js/po-detail.js?v=20261117-1447"></script>
-<script src="js/chat.js?v=20261117-1447"></script>
-<script src="js/activity.js?v=20261117-1447"></script>
-<script src="js/main.js?v=20261117-1447"></script>
+<script src="js/auth.js?v=20261117-1650"></script>
+<script src="js/util.js?v=20261117-1650"></script>
+<script src="js/notifications.js?v=20261117-1650"></script>
+<script src="js/dates.js?v=20261117-1650"></script>
+<script src="js/store.js?v=20261117-1650"></script>
+<script src="js/tasks.js?v=20261117-1650"></script>
+<script src="js/app-shell.js?v=20261117-1650"></script>
+<script src="js/table-pager.js?v=20261117-1650"></script>
+<script src="js/record-list.js?v=20261117-1650"></script>
+<script src="js/item-pane.js?v=20261117-1650"></script>
+<script src="js/campaign-form.js?v=20261117-1650"></script>
+<script src="js/trade-show-form.js?v=20261117-1650"></script>
+<script src="js/banners.js?v=20261117-1650"></script>
+<script src="js/banner-form.js?v=20261117-1650"></script>
+<script src="js/mailchimp.js?v=20261117-1650"></script>
+<script src="js/style-import.js?v=20261117-1650"></script>
+<script src="js/column-filter.js?v=20261117-1650"></script>
+<script src="js/styles.js?v=20261117-1650"></script>
+<script src="js/style-images.js?v=20261117-1650"></script>
+<script src="js/sample-photos.js?v=20261117-1650"></script>
+<script src="js/photoshoots.js?v=20261117-1650"></script>
+<script src="js/complete.js?v=20261117-1650"></script>
+<script src="js/photoshoot-form.js?v=20261117-1650"></script>
+<script src="js/purchase-orders.js?v=20261117-1650"></script>
+<script src="js/production-import.js?v=20261117-1650"></script>
+<script src="js/ats-import.js?v=20261117-1650"></script>
+<script src="js/n41-import.js?v=20261117-1650"></script>
+<script src="js/style-pane.js?v=20261117-1650"></script>
+<script src="js/magento.js?v=20261117-1650"></script>
+<script src="js/magento-availability.js?v=20261117-1650"></script>
+<script src="js/magento-photos.js?v=20261117-1650"></script>
+<script src="js/magento-group-order.js?v=20261117-1650"></script>
+<script src="js/magento-sales.js?v=20261117-1650"></script>
+<script src="js/magento-n41.js?v=20261117-1650"></script>
+<script src="js/magento-events.js?v=20261117-1650"></script>
+<script src="js/trade-show-import.js?v=20261117-1650"></script>
+<script src="js/magento-groups.js?v=20261117-1650"></script>
+<script src="js/table-view.js?v=20261117-1650"></script>
+<script src="js/exports.js?v=20261117-1650"></script>
+<script src="js/copy-menu.js?v=20261117-1650"></script>
+<script src="js/row-quick-select.js?v=20261117-1650"></script>
+<script src="js/pane-dismiss.js?v=20261117-1650"></script>
+<script src="js/shortcuts.js?v=20261117-1650"></script>
+<script src="js/header-search.js?v=20261117-1650"></script>
+<script src="js/calendar.js?v=20261117-1650"></script>
+<script src="js/holidays.js?v=20261117-1650"></script>
+<script src="js/email.js?v=20261117-1650"></script>
+<script src="js/po-detail.js?v=20261117-1650"></script>
+<script src="js/chat.js?v=20261117-1650"></script>
+<script src="js/activity.js?v=20261117-1650"></script>
+<script src="js/n41-orders.js?v=20261117-1650"></script>
+<script src="js/home.js?v=20261117-1650"></script>
+<script src="js/sales.js?v=20261117-1650"></script>
+<script src="js/main.js?v=20261117-1650"></script>
 </body>
 </html>

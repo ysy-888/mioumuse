@@ -902,6 +902,7 @@ function renderChatChrome() {
   if (!document.getElementById("chatDropdown")?.hidden) renderChatDropdown();
   // Unread counts on the page and the windows.
   if (getCurrentAppView() === "messages") renderChatList();
+  if (getCurrentAppView() === "home" && typeof renderHomeInbox === "function") renderHomeInbox();
   chat.mini.forEach(w => {
     const conv = chat.convs.get(w.id);
     const count = document.querySelector(`.chat-mini[data-mini="${w.id}"] .chat-mini-count`);

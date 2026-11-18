@@ -1,7 +1,9 @@
 /**
  * View switching and the header menu.
  *
- * Views: "home" (calendar + upcoming tasks), "campaigns" and "tradeShows"
+ * Views: "home" (a mini calendar, tasks, the inbox), "calendar" (the calendar
+ * + upcoming tasks), "sales" (open orders by type, then a customer's allocation and pick
+ * tickets, one page), "campaigns" and "tradeShows"
  * (lists), "platforms" (banners), "styles" (the style database),
  * "photoshoots" (the shoots), "needToShoot" (styles waiting for one), "complete"
  * (styles shot or made in CG), "pos"
@@ -11,7 +13,7 @@
  * js/photoshoots.js, js/magento.js), not as a view of its own.
  */
 
-const APP_VIEWS = ["home", "messages", "activity","campaigns", "tradeShows", "platforms", "styles", "photoshoots", "needToShoot", "complete", "pos", "magento", "email"];
+const APP_VIEWS = ["home", "calendar", "messages", "sales", "activity", "n41Orders", "campaigns", "tradeShows", "platforms", "styles", "photoshoots", "needToShoot", "complete", "pos", "magento", "email"];
 
 let currentAppView = "home";
 
@@ -23,9 +25,28 @@ function getCurrentAppView() {
   return currentAppView;
 }
 
+/** A PO's or an SO's page, open over its list — the back button closes it first. */
+function isAppDetailOpen() {
+  return (typeof isPoDetailOpen === "function" && isPoDetailOpen())
+    || (typeof so !== "undefined" && Boolean(so.open) && currentAppView === "n41Orders");
+}
+
 function updateAppBackButton() {
   const btn = document.getElementById("appBackBtn");
-  if (btn) btn.disabled = appViewHistory.length === 0;
+  if (btn) btn.disabled = appViewHistory.length === 0 && !isAppDetailOpen();
+}
+
+/** The header's back: out of a PO / SO page to its list, else the page before. */
+function appBack() {
+  if (typeof isPoDetailOpen === "function" && isPoDetailOpen()) return closePoDetail();
+  if (typeof so !== "undefined" && so.open && currentAppView === "n41Orders") {
+    // Opened from another page (Sales, Customers, Activity): back to it.
+    const from = so.openedFrom;
+    closeSoDetail();
+    if (from) goBackAppView(from);
+    return;
+  }
+  goBackAppView("home");
 }
 
 /** Step back one view. `fallback` covers arriving with nothing behind you. */
@@ -85,9 +106,19 @@ function switchAppView(view) {
     magentoToolbar: view === "magento",
     emailToolbar: view === "email",
     emailWrap: view === "email",
-    calendarWrap: view === "home",
+    homeWrap: view === "home", // js/home.js
+    calendarWrap: view === "calendar",
+    salesWrap: view === "sales", // js/sales.js
+    salesHeaderStats: view === "sales",
+    // Home, Calendar and the Sales Dashboard fill the page — no footer.
+    appFooter: !["home", "calendar", "sales"].includes(view),
     messagesWrap: view === "messages", // js/chat.js
     activityWrap: view === "activity", // js/activity.js
+    // js/n41-orders.js — the SO table, or an SO's page (renderN41OrdersPage picks).
+    n41OrdersWrap: view === "n41Orders",
+    soToolbar: view === "n41Orders",
+    soTableWrap: view === "n41Orders",
+    soPager: view === "n41Orders", // in the app footer
   };
   Object.entries(panes).forEach(([id, visible]) => {
     const el = document.getElementById(id);
@@ -97,7 +128,9 @@ function switchAppView(view) {
   syncAppNav();
 
   // The grid needs real layout to size its rows, so render on entry.
-  if (view === "home") renderCalendar();
+  if (view === "calendar") renderCalendar();
+  if (view === "home") renderHome();
+  if (view === "sales") renderSalesPage();
   RECORD_LISTS[view]?.apply();
   if (view === "platforms") applyBannerFilters();
   if (view === "styles") {
@@ -111,6 +144,7 @@ function switchAppView(view) {
   if (view === "email") renderEmailView();
   if (view === "messages") renderMessagesPage();
   if (view === "activity") renderActivityPage();
+  if (view === "n41Orders") renderN41OrdersPage();
   // The photoshoot and Magento tables show and hide with their page, but
   // none of them belongs anywhere else.
   if (view !== "photoshoots") leaveShootsPage();
@@ -417,7 +451,7 @@ function exportScheduleCsv(type) {
 
 function initAppNav() {
   initNavMenus();
-  document.getElementById("appBackBtn")?.addEventListener("click", () => goBackAppView("home"));
+  document.getElementById("appBackBtn")?.addEventListener("click", appBack);
 
   document.getElementById("refreshBtn")?.addEventListener("click", async () => {
     setAppLoading(true, "Refreshing…");

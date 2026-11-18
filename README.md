@@ -73,6 +73,7 @@ reference in index.html so the URLs change on every deploy.
 | `js/po-detail.js` | The PO detail page (whole window) — a PO's colours with their samples (Show, PP1–PP3, TOP), and fit comments by round (PP 1… TOP 1…) with pictures |
 | `js/photoshoot-form.js` | Create / edit photoshoot modal |
 | `js/magento-sales.js` | Magento → Orders and Customers (read-only): lists with Status / Group filters, date quick filters, search, sort, paging; the order / customer pane |
+| `js/n41-orders.js` | N41 Orders — reads N41's Sales Orders export (a row per line), a table of SOs (the by-customer list kept behind SO_LIST_LAYOUT), an SO's full page with comments |
 | `js/magento-n41.js` | Magento → Orders against N41: Import N41 Sales Orders, N41 Status, the Closed on N41 filter, tick orders and cancel them on Magento |
 | `js/magento-groups.js` | ⋮ menu on Magento Products → Import Groups: reads a Magento product export's `associated_skus` and saves the exact group links; the "Not in group" flag |
 | `js/magento.js` | Magento tab — live products (filters, sort, paging, status switch, bulk changes, edit pane) and categories (rename, active, jump to products) |
@@ -87,7 +88,9 @@ reference in index.html so the URLs change on every deploy.
 | `js/table-view.js` | Header menu → Table view: show / hide and reorder any table's columns, saved as that table's default to your account (`table_views`) |
 | `js/table-pager.js` | Paging for Styles and Need to Shoot: the footer's First / Prev / Next / Last and rows per page (remembered per table) |
 | `js/exports.js` | CSV downloads and printable (Save as PDF) reports — each photoshoot, Need to Shoot, the banners, and the header menu's Export CSV / PDF |
-| `js/calendar.js` | Home calendar of every campaign, show, and task, with the upcoming rail |
+| `js/calendar.js` | The Calendar page: every campaign, show, shoot and task, with the upcoming rail |
+| `js/home.js` | Home dashboard: greeting, Tasks (upcoming / overdue / completed), a mini calendar with a day's agenda, and the Inbox (latest chats) |
+| `js/sales.js` | Sales Dashboard: open orders in six lists (FAIRE / FG / MAGENTO / INHOUSE / SHOW / OTHER), then the customers and the SO Manager (a table on Open / Allocated / Pick Tickets tabs, with OH / OO / WIP / ATS / AA and Available) |
 | `js/main.js` | Boot |
 
 ## Keyboard shortcuts
@@ -144,9 +147,9 @@ the top of `supabase/migrations/20261117170000_activity_log.sql`).
 
 ## Header menus
 
-**Home**, then three menus that open on hover: **Marketing** (Campaigns, Trade
+**Home**, **Calendar**, then menus that open on hover: **Marketing** (Campaigns, Trade
 Shows, Platforms), **Photoshoots** (Styles, POs, Need to Shoot, Photoshoots, Complete) and **Magento**
-(Products, Categories). The page you're on is ticked and its menu
+(Products, Categories); **Sales** (Sales Dashboard) and **N41** (N41 Orders) sit between. The page you're on is ticked and its menu
 underlined.
 
 **Right-click → Copy**: a style number in the Styles and Need to Shoot
@@ -201,7 +204,59 @@ Tasks are stored on the campaign (`campaigns.tasks`), each with its own id,
 so a task's checkmark (`cp|<campaign id>|<task id>`) survives date changes.
 Removing a task in the edit form deletes its checkmark too.
 
-## Home calendar and task rail
+## Home
+
+The dashboard (`js/home.js`): a greeting with today's date; **Tasks** — the
+calendar's task cards with Upcoming / Overdue / Completed tabs (tick tasks off
+right there; a card opens its pane); a **mini calendar** — a month with a
+coloured dot per thing on each day (‹ Today ›; pick a day for its agenda
+underneath, a row opens its pane; **Calendar ›** opens the full calendar);
+and the **Inbox** — the latest chats with unread counts (a chat opens in a
+mini window; **Messages ›** for the page).
+
+## Sales
+
+Built on the N41 Sales Orders import (`js/sales.js`).
+
+**Sales Dashboard** — one page. The app header shows Open SOs, Allocated
+(units not on a ticket yet) and open Pick Tickets. At the top, the open SOs
+in six lists side by side — FAIRE, FG, MAGENTO, INHOUSE, SHOW (every type
+starting with a year, e.g. "2026 NY 09", each row tagged with its show) and
+OTHER (Phone, Email and anything else, each row tagged) — each with its open
+count on the right: SO #, customer, date, open units (no amount for now).
+When the six don't fit, the row scrolls sideways. An SO opens its page; a
+customer opens them in the panel below.
+
+**Customers and the SO Manager** (below the lists; the page fits the window,
+no footer — the tables scroll inside). On the left, the customers with open
+lines, allocated lines or open pick tickets — one row each, SO count on the
+right (search above; newest order first). Pick one for the **SO Manager**:
+three tables side by side — Open, Allocated, Pick Tickets — each scrolling inside its panel (sideways too), with its count, what's selected and its buttons in the panel's header (no footer). Columns —
+
+| Column | |
+|---|---|
+| Order Date, Type, SO #, Customer PO # (no "FR:" prefix) | from the SO |
+| Style # / Color | opens the style pane |
+| Order Qty | the line's open units (allocated units on the other tabs); sizes on hover |
+| OH / OO / WIP / ATS | the style's figures |
+| AA | available to allocate: OH less everything allocated or on a pick ticket, any customer |
+| Available | N41's Available month, with the IHD beside it once confirmed |
+
+- **Open** — every open line on their SOs. Select (tick box, or click a row;
+  the header box selects all) → **Allocate →**.
+- **Allocated** — lines allocated, not on a ticket yet. Select → **Create pick
+  ticket →**, or **← Unallocate** back to Open.
+- **Pick Tickets** — adds the **Pick Ticket #** first; Open / Picked filter.
+  Selecting a row selects its ticket → **Mark picked** / **Reopen** / **Void**
+  (its lines go back to Allocated).
+
+A line is allocated whole — all its open units by size at the time. This is
+kept in the app (`so_allocations`, `pick_tickets`), shared with the team and
+live; N41 isn't written to. A style opens its style pane; an SO opens its page,
+and the header's back arrow returns to the Sales Dashboard. Allocating and pick tickets
+show in Activity.
+
+## Calendar and task rail
 
 Campaigns and trade shows share one pipeline (`js/tasks.js` turns each into
 a "schedule item"). Each appears on every day it runs, in its own colour —
@@ -373,13 +428,36 @@ if it has none of its own); click it to open the product in Products.
 
 **Orders against N41.** Canceling on N41 doesn't reach Magento, so those
 orders stay Pending or Processing there. **Import N41 Sales Orders** (⋮ menu
-on Orders) reads N41's Sales Orders report in the browser (.xlsx, .xls or
-.csv): column C Cust. Name, column H Order # (the SO #), column I Status,
-column P Cust. PO #. Only
-`Web:00000061`-style POs count; each is matched to the Magento order number,
+on Orders or N41 Orders) reads N41's Sales Orders export in the browser — the
+.csv with a row per order line (division, orderdate, … customer, customerPo,
+status, style, color, … orderno, sod_id, unit1–15, Bal_unit1–15, Size1–15 …;
+Windows or UTF-8 text). Every line is saved for the **N41 Orders** page
+(`n41_so_lines`, one row per `sod_id`). For this page, only
+`Web:00000061`-style Customer POs count; each is matched to the Magento order number,
 leading zeros aside. An order on several rows is Closed only if every row
 is. A preview shows the counts before **Update N41 Status** saves them
-(`n41_orders`); orders not on the report keep the status they have.
+(`n41_orders`). An export covers a date range: lines and orders not in it
+stay as they are.
+
+**N41 Orders** (left menu, N41) is a table of SOs, newest first: SO #,
+Customer, Order Date, Type (a colour per type — each channel, and each trade
+show whatever its year), Customer PO (without N41's "FR:" / "FG:" prefix; the
+full PO on hover), Status (Open, in green, while any line is open, then Hold,
+else Closed), Total Qty, Styles, then Style # /
+Color with that style's OH / WIP / ATS. An SO with several styles shows ▸ —
+it opens a row per style with its qty on the SO and its OH / WIP / ATS
+(Picked / Allocated / AA to come). A style opens its style pane. Filter by
+status (toolbar) and Type (header), sort by any column, search customer,
+SO #, PO, email or style; paged like the other tables, filling the page edge to edge, with Table View (⋮) to pick and order its columns. The earlier list by
+customer is still in `js/n41-orders.js` — set `SO_LIST_LAYOUT = "customers"`
+to bring it back. Click an SO for its full page: the customer (contact, email, phone, address,
+terms, payment, ship via, their other SOs), every line (photo, style and
+colour, description, sizes with quantities, units, price, amount, invoiced,
+canceled, open, status) with totals, and the memo. A line opens its style
+pane. **Comments** are on the right: Enter posts (Shift+Enter for a new
+line); teammates' comments appear as they're posted; you can edit or delete
+your own (`n41_so_comments`, in the Activity log). Back or Esc returns to the
+list.
 
 Orders then shows **N41 Status**, **N41 Customer** and **N41 Order #**, and
 an order that's Closed on N41 but

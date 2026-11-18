@@ -31,6 +31,9 @@ const ACT_TABLES = {
   holidays: { area: "Holidays", plural: "holidays", add: "added holiday {x}", del: "deleted holiday {x}", upd: "changed holiday {x}" },
   email_settings: { area: "E-Mail", plural: "emails", add: "started email {x}", del: "deleted email {x}", upd: "changed email {x}" },
   completed_tasks: { area: "Tasks", plural: "tasks", add: "checked off {x}", del: "unchecked {x}" },
+  n41_so_comments: { area: "N41 Orders", plural: "comments", add: "commented on {x}", del: "deleted a comment on {x}", upd: "edited a comment on {x}" },
+  so_allocations: { area: "Allocation", plural: "lines", add: "allocated {x}", del: "unallocated {x}", upd: "changed the allocation of {x}" },
+  pick_tickets: { area: "Pick tickets", plural: "pick tickets", add: "created {x}", del: "voided {x}", upd: "changed {x}" },
 };
 
 /** Column → the name people know it by (anything else: its name, tidied). */
@@ -369,6 +372,11 @@ function openActivityThing(e) {
   }
   if (e.table_name === "campaigns" && getCampaignById(e.row_key)) return openItemPane(ITEM_TYPE_CAMPAIGN, e.row_key);
   if (e.table_name === "trade_shows" && getTradeShowById(e.row_key)) return openItemPane(ITEM_TYPE_TRADE_SHOW, e.row_key);
+  if (e.table_name === "n41_so_comments" && /^SO /.test(e.label ?? "")) return openSoDetail(e.label.slice(3));
+  if (e.table_name === "pick_tickets" && typeof sales !== "undefined") {
+    const t = sales.tickets.get(e.row_key);
+    if (t) return openSalesCustomer(t.customer);
+  }
   if (e.table_name === "completed_tasks") {
     const [kind, id] = e.row_key.split("|");
     if (kind === "cp" && getCampaignById(id)) return openItemPane(ITEM_TYPE_CAMPAIGN, id);
