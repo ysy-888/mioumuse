@@ -32,6 +32,7 @@
 
 /** The templates that start from a file in the repo. */
 const EMAIL_TEMPLATES = [
+  { id: "sample-sale-final-day-20261121", name: "Sample Sale · Final Day (Nov 21)", file: "email-templates/sample-sale-week-2/template.html" },
   { id: "end-of-year-sale", name: "End of Year Sale", file: "email-templates/end-of-year-sale/template.html" },
   { id: "sample-sale-week-2", name: "Sample Sale · Week 2", file: "email-templates/sample-sale-week-2/template.html" },
 ];

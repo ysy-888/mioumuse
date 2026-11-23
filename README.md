@@ -86,7 +86,15 @@ reference in index.html so the URLs change on every deploy.
 | `js/pane-dismiss.js` | Side panes app-wide: a click outside closes the open one; closing slides it out |
 | `js/copy-menu.js` | Right-click → Copy: style numbers (Styles, Need to Shoot, the shoot pane) and Magento product names |
 | `js/table-view.js` | Header menu → Table view: show / hide and reorder any table's columns, saved as that table's default to your account (`table_views`) |
-| `js/table-pager.js` | Paging for Styles and Need to Shoot: the footer's First / Prev / Next / Last and rows per page (remembered per table) |
+| `js/table-pager.js` | Paging for tables drawn in the browser (Styles, Need to Shoot, Photoshoots, Complete, N41 Orders): "1–100 of 2,345", First / Prev / Next / Last and rows per page (remembered per table) |
+| `js/header-search.js` | Moves each page's search box into the app header and shows the one for the page you're on |
+| `js/notifications.js` | The corner messages (`showIndicator`) and the notifications bell |
+| `js/chat.js` | Messages: direct and group chats with the team, unread counts |
+| `js/email.js` | Marketing → E-Mail: the email templates (`email-templates/`), a live preview and an edit panel for links and products |
+| `js/holidays.js` | Holidays (a name and a run of days) on the calendars, added from the ⋮ menu |
+| `js/trade-show-import.js` | Trade Shows → Import CSV: trade shows from the Magento events export |
+| `js/magento-events.js` | Magento → Events: the store's events, each one a trade show (hidden for now) |
+| `js/magento-availability.js` | Whether a product actually shows on the webstore (the Available column) |
 | `js/exports.js` | CSV downloads and printable (Save as PDF) reports — each photoshoot, Need to Shoot, the banners, and the header menu's Export CSV / PDF |
 | `js/calendar.js` | The Calendar page: every campaign, show, shoot and task, with the upcoming rail |
 | `js/home.js` | Home dashboard: greeting, Tasks (upcoming / overdue / completed), a mini calendar with a day's agenda, and the Inbox (latest chats) |
@@ -145,12 +153,17 @@ lines, orders, PO sheets, Magento groups — imports keep their own record),
 chat, and column layouts. A new table gets logged by adding its trigger (see
 the top of `supabase/migrations/20261117170000_activity_log.sql`).
 
-## Header menus
+## Left menu
 
-**Home**, **Calendar**, then menus that open on hover: **Marketing** (Campaigns, Trade
-Shows, Platforms), **Photoshoots** (Styles, POs, Need to Shoot, Photoshoots, Complete) and **Magento**
-(Products, Categories); **Sales** (Sales Dashboard) and **N41** (N41 Orders) sit between. The page you're on is ticked and its menu
-underlined.
+The pages are in a menu down the left: **Home**, **Calendar**, **Messages**
+(with its unread count) and **Activity**, then grouped under headings —
+**Marketing** (Campaigns, Trade Shows, Platforms, E-Mail), **Photoshoots**
+(Styles, POs, Need to Shoot, Photoshoots, Complete), **Sales** (Sales
+Dashboard), **N41** (N41 Orders) and **Magento** (Products, Categories,
+Orders, Customers; Events is hidden). The page you're on is highlighted. The
+menu collapses to icons and opens on hover when collapsed. The header's back
+arrow leaves a full-page detail (a PO, an SO) and goes back to the page it was
+opened from.
 
 **Right-click → Copy**: a style number in the Styles and Need to Shoot
 tables (the Style # cell) or in a shoot's pane copies that number; a
@@ -256,6 +269,218 @@ live; N41 isn't written to. A style opens its style pane; an SO opens its page,
 and the header's back arrow returns to the Sales Dashboard. Allocating and pick tickets
 show in Activity.
 
+## Replacing N41 — the roadmap
+
+Where the app stands (audit, Nov 17 2026) and what's left before N41 can be
+switched off. N41 has no API, so until the cutover everything from it arrives
+as CSV imports and nothing goes back.
+
+### Today
+
+| Area | Owned by the app | Imported from N41 (read-only) |
+|---|---|---|
+| Styles | photos, samples (Show / PP / TOP), notes, shoots, Magento links | style, colour, description, category, season, prices, Available month, OH / WIP / OO / ATS / Received / Invoiced (`styles`, `style_imports`) |
+| POs | fit comments, PP samples, archive, IHD rules | PO lines, ETAs (`po_lines`, `po_colors`) |
+| Sales orders | comments, allocation, pick tickets (`n41_so_comments`, `so_allocations`, `pick_tickets`) | SO lines with sizes, open / shipped / invoiced / canceled (`n41_so_lines`) |
+| Magento | live products, categories, photos, groups; orders and customers read; cancel | N41 status of web orders (`n41_orders`) |
+| Marketing | campaigns, trade shows, banners, emails / Mailchimp, photoshoots, calendar, tasks | — |
+| Team | workspace, chat, notifications, activity log, table views | — |
+
+Nothing in the app moves stock or money yet. OH and ATS are N41's numbers as
+of the last import.
+
+### What's left, in build order
+
+**1. Foundations**
+- [ ] **Customers** — a customer table of its own: bill-to, several ship-to
+      locations, contacts and emails, terms (Net 30, CC, Prepaid…), price
+      level, credit limit and hold, default ship method, sales rep, notes,
+      saved cards (gateway tokens only). Import N41's customer list once.
+- [ ] **Product master owned here** — create and edit styles, colours, size
+      scales (S-M-L, 1X-3X…), prices per level, cost, SKU per size and UPC;
+      prepacks if used.
+- [ ] **Roles and permissions** — who can enter orders, allocate, ship,
+      invoice, take payments, refund, edit prices. Today everyone on the team
+      can do everything (`team_members` only gates access).
+- [ ] **Numbering** — SO, pick ticket, invoice and credit memo numbers that
+      carry on from N41's last numbers. Pick tickets already number from 1
+      (`pick_tickets.ticket_no`); restart it at N41's next number before going live.
+
+**2. Inventory ledger** (everything below depends on it)
+- [ ] Stock by style / colour / size as a log of movements: receipts, shipments,
+      adjustments, returns, transfers and counts. On hand is added up from the
+      log, not imported.
+- [ ] Allocated, picked, AA and ATS worked out from the ledger and open
+      orders, the same numbers on every page.
+- [ ] WIP / OO from open POs.
+- [ ] Physical count / cycle count screen and an adjustment reason list.
+- [ ] Inventory valuation (cost × on hand) for the accountant.
+
+**3. Purchasing**
+- [ ] Vendors (factories) with contacts and terms.
+- [ ] Create and edit POs by size, cost, ETA; cost sheets.
+- [ ] Receive POs (partial, by size, by scan), which adds stock to the
+      ledger and moves WIP / OO.
+
+**4. Order entry**
+- [ ] Create and edit SOs: customer, ship-to, a size grid per style, price
+      from the customer's price level, start / cancel dates, PO #, terms,
+      ship via, notes; hold / approve; cancel lines.
+- [ ] Order types as today (FAIRE, FG, MAGENTO, INHOUSE, shows, PHONE,
+      EMAIL…); trade show order entry on a tablet.
+- [ ] Order confirmation email / PDF.
+
+**5. Allocation and pick tickets** (started — Sales Dashboard)
+- [ ] Allocate by size and partial quantities (today a whole line at a time).
+- [ ] Auto-allocate by priority (start date, customer, type) when stock arrives.
+- [ ] Printable pick ticket with barcodes, bin / location, and picked
+      quantities entered or scanned.
+- [ ] Make allocating and ticketing single database transactions (a
+      Postgres function); today creating a ticket is two writes from the
+      browser.
+
+**6. Shipping — UPS**
+- [ ] Saved box sizes; on a pick ticket choose boxes, enter weights.
+- [ ] UPS API (Edge Function holds the keys): rate, buy label, tracking
+      number, void; multi-box shipments; 4×6 thermal or paper labels.
+- [ ] Packing slip; ship-confirmation email with tracking.
+- [ ] Shipping deducts stock (ledger) and creates the invoice.
+- **Needs:** UPS account number and a developer app (client ID / secret);
+  label printer type.
+
+**7. Invoices**
+- [ ] Invoice from a shipment: shipped qty × price, freight, discounts, due
+      date from terms; PDF and email; void / reissue.
+- [ ] Customer statements.
+
+**8. Payments and AR — payment gateway**
+- [ ] Gateway hosted card fields (no card numbers in the app or database);
+      saved cards as gateway tokens; charge on invoice for CC customers;
+      refunds.
+- [ ] Record checks / wires / ACH; apply payments to invoices; open balance,
+      AR aging, credit hold when over limit or past due.
+- **Needs:** which gateway (Stripe, Authorize.net, Square…), and whether
+  existing saved cards can be carried over.
+
+**9. Credit memos and returns**
+- [ ] Return authorizations; returned stock back into the ledger (or to a
+      damaged location); allowances / markdowns; apply to an invoice or refund
+      through the gateway.
+
+**10. Barcodes and scanning**
+- [ ] Code 128 (or UPC) per SKU-size; item / carton labels.
+- [ ] Scan to pick, scan to verify before shipping, scan to receive — a USB
+      or Bluetooth scanner works as a keyboard, no special hardware.
+- **Needs:** UPCs or style-colour-size only; label printer.
+
+**11. QuickBooks**
+- [ ] QuickBooks Online API: customers, invoices, payments, credit memos
+      synced daily (or as they happen), mapped to the right accounts.
+- **Needs:** QuickBooks Online or Desktop (Desktop has no web API — only
+  Intuit's Web Connector on a PC).
+
+**12. Sales channels**
+- [ ] **Magento** — web orders come in as SOs automatically (today they're
+      read and matched to N41); stock pushed to Magento from the ledger.
+- [ ] **Faire** — Faire's External API (v2) lets a brand pull orders and push
+      products, prices and inventory; access has to be requested from Faire
+      and approved, then a token goes in an Edge Function. Orders accepted /
+      shipped / tracking sent back to Faire.
+- [ ] **FashionGo** — no public vendor API found. Some apparel ERPs
+      (e.g. AIMS360) advertise a FashionGo connection, so ask FashionGo vendor
+      support whether a partner API or a file feed exists. Fallback: import
+      FashionGo's order export (CSV) as SOs, and export an inventory /
+      product sheet for its bulk upload — a manual step each day.
+
+**13. Reports**
+- [ ] Sales by customer / style / type / rep / period; open orders; shipped;
+      bookings vs shipments; AR aging; inventory and valuation; sell-through.
+- [ ] CSV / PDF export of each.
+
+**14. Cutover from N41**
+- [ ] Import customers, products / SKUs, open POs, open SOs (with
+      allocations), on-hand by size, open invoices and balances.
+- [ ] Pick the date; run a week in parallel and check stock and AR against
+      N41; then stop entering in N41.
+
+### Engineering items (from the audit)
+- [ ] **Transactions in the database.** Anything that moves stock or money
+      (allocate, ticket, ship, invoice, pay, credit) goes through Postgres
+      functions so it can't half-save.
+- [ ] **Tests** for those functions: partial ship, invoice, credit, refund —
+      stock and balances must tie out. There are no automated tests today.
+- [ ] **Permissions in the database** (RLS by role), not just hidden buttons.
+- [ ] **Backups** — Supabase point-in-time recovery on the plan before money
+      lives here.
+- [ ] **Integration safety** — UPS / gateway / QuickBooks / Faire calls
+      retried safely (no double labels or charges), and failures shown in the
+      app.
+- [ ] **Imports during the transition** — allocations point at N41 line ids
+      (`sod_id`); when a re-import closes or drops a line, its allocation is
+      left behind. Flag or clear those. AA ignores N41's own picks (`pick_qty`
+      in the export, not saved yet).
+
+### Audit — Nov 17, 2026
+
+What was checked: the database (tables, RLS, triggers, sizes), the Edge
+Functions, the JS and CSS, this README, and every page loaded signed in.
+
+**Healthy**
+- RLS is on for all 33 tables; every policy goes through
+  `current_workspace()` / `team_members`. One auth user, nobody outside the
+  team.
+- The database is 29 MB — far from any limit.
+- Every page (Home, Calendar, Messages, Sales, Activity, N41 Orders,
+  Campaigns, Trade Shows, Platforms, Styles, Photoshoots, Need to Shoot,
+  Complete, POs, Magento, E-Mail) loads with no script errors and no page
+  scroll. (Only the harmless browser notice "ResizeObserver loop completed"
+  shows.)
+- Data shown in HTML goes through the escape helpers; no user text is put in
+  the page raw.
+
+**To fix before go-live**
+- [ ] **Edge Functions trust any signed-in user.** `magento` and `mailchimp`
+      check only that the caller is signed in, not that they're in
+      `team_members`, and allow any origin (CORS `*`). Add the team check and
+      limit the origin to the app's site. Also confirm **public sign-ups are
+      off** in Supabase → Authentication → Sign In / Providers. While they
+      are on, anyone can make an account and use those functions, which hold
+      the Magento and Mailchimp keys. RLS still blocks the data.
+- [ ] **SO re-import leaves old lines behind.** `saveN41SoLines` only
+      upserts. A line removed or closed in N41 stays open here, which inflates
+      the Sales Dashboard and the SO Manager. Delete lines of the re-imported
+      SOs that aren't in the new export, or mark them closed.
+- [ ] **Pick tickets aren't atomic.** `createPickTicket` inserts the ticket,
+      then updates the allocations, and deletes the ticket if that fails. Two
+      people ticketing the same lines at once, or a dropped connection, can
+      leave it half-done. Move allocate / unallocate / ticket / void into
+      Postgres functions (see Transactions above).
+- [ ] **Reset test numbering.** Pick tickets 1–3 were used in testing (since
+      deleted) and the Activity log still lists them. Restart the
+      `ticket_no` sequence and clear those log rows before real use.
+- [ ] **Legacy tables.** `po_lines` and `po_colors` (~1.5 MB) aren't read or
+      written by the app any more. Export them once, then drop them in a
+      migration.
+- [ ] **Dead CSS.** About 40 classes in `crm.css` are no longer used: the old
+      customer column UI (`cust-*`), `som-card` / `som-foot` / `som-tabs` /
+      `som-title` from the SO Manager's earlier designs, `so-toolbar`,
+      `so-type-pill`. Remove them. The old by-customer SO list in
+      `n41-orders.js` stays (kept behind `SO_LIST_LAYOUT`).
+- [ ] **No automated tests.** Start with the stock and money functions as
+      they're built (see Tests above).
+- [ ] **Backups.** Turn on point-in-time recovery before invoices and
+      payments live here; check which backups the current plan includes.
+- [ ] **Tooling.** The Supabase CLI in `~/bin` is behind the latest release;
+      update it.
+
+**Fixed in this pass (README only)**
+- The "Header menus" section described hover menus; it's now "Left menu".
+- The file table was missing eight files (`chat.js`, `email.js`,
+  `header-search.js`, `holidays.js`, `magento-availability.js`,
+  `magento-events.js`, `notifications.js`, `trade-show-import.js`).
+- "Home calendar" wording now says Calendar (the calendar has its own page).
+- The `table-pager.js` row lists every table that uses it.
+
 ## Calendar and task rail
 
 Campaigns and trade shows share one pipeline (`js/tasks.js` turns each into
@@ -295,7 +520,7 @@ Only completion is stored (`completed_tasks`). Task ids are
 moves its emails and keeps their checkmarks. Deleting a show deletes its
 checkmarks with it.
 
-On the Home calendar each show appears on every day it runs (Day 1, Day 2,
+On the Calendar each show appears on every day it runs (Day 1, Day 2,
 …) and each email on its due date, both in the show's own colour. Clicking
 a show or its card highlights the whole thing — show days and all three
 emails. Once every email for a show is done, its email chips are hidden
@@ -562,8 +787,8 @@ Until then the tab shows "Not connected" with the reason.
 
 ## Not built yet
 
-
 - Social Media
+- Everything under **Replacing N41 — the roadmap** above
 
 
 ## Mailchimp
@@ -1058,7 +1283,7 @@ you open the page. Its date, type, model (and when it was completed) are on
 the line under its name. Beside them, on the same row: its Planned / Complete
 status and ⋮ menu, then one shaded strip with how many Styles and Outfits it
 has (a set's pieces in one colour are one outfit) and how many are TOP / SHOW
-/ PP / None — wrapping under when the pane is narrow (Home). Its notes
+/ PP / None — wrapping under when the pane is narrow (Calendar). Its notes
 are below. Its styles
 are numbered, in columns: photo, Style # (its Color beside it), Available
 (its IHD under the pill when it has one, read-only), Sample (the sample
@@ -1083,7 +1308,7 @@ the shoot's ⋮ menu), which records every style left in it as shot. **Reopen
 shoot** (same menu) undoes that and
 puts them back on the list; deleting a completed shoot does the same. Adding
 a shot style to the list again flags it to be shot again. Opened from the
-Home calendar, a shoot still shows in a side pane.
+Calendar page, a shoot still shows in a side pane.
 
 On Need to Shoot, Styles, POs, a shoot's style list and its PDF, the IHD
 shows under the Available pill, read-only — on Need to Shoot and Styles only

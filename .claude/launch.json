@@ -18,6 +18,12 @@
       "runtimeExecutable": "powershell",
       "runtimeArgs": ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", ".claude/serve.ps1", "-Port", "8789"],
       "port": 8789
+    },
+    {
+      "name": "erp-web",
+      "runtimeExecutable": "C:\\Program Files\\nodejs\\node.exe",
+      "runtimeArgs": ["C:/Users/Adrian-PC/Desktop/mioumuse-erp/apps/erp-web/node_modules/vite/bin/vite.js", "C:/Users/Adrian-PC/Desktop/mioumuse-erp/apps/erp-web"],
+      "port": 5180
     }
   ]
 }
