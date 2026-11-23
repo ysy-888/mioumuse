@@ -1474,6 +1474,12 @@ function groupBySet(items) {
     if (key) bySet.set(key, block);
     blocks.push(block);
   });
+  // A top is listed before its matching pants/skirt, regardless of the
+  // table sort or the shoot's saved piece order. Keep other sets as saved.
+  const rank = item => /^T/i.test(item.styleNo) ? 0 : /^[PS]/i.test(item.styleNo) ? 1 : 2;
+  bySet.forEach(block => {
+    if (block.some(item => /^T/i.test(item.styleNo))) block.sort((a, b) => rank(a) - rank(b));
+  });
   return blocks;
 }
 
