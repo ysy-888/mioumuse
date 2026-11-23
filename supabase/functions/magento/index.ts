@@ -91,7 +91,7 @@ import { AsyncLocalStorage } from "node:async_hooks";
  * copy running in Supabase is older than the app expects. Bump it (and
  * MG_HELPER_VERSION in js/magento.js) whenever this file changes.
  */
-const HELPER_VERSION = "2026-11-16.4";
+const HELPER_VERSION = "2026-11-23.2";
 
 /**
  * Where a request's time went: each Magento call is counted and timed, per
@@ -409,6 +409,13 @@ function customAttr(p: any, code: string) {
   return (p.custom_attributes ?? []).find((a: any) => a.attribute_code === code)?.value ?? null;
 }
 
+/** Ignore Magento's no_selection sentinel before trying the next image role. */
+// deno-lint-ignore no-explicit-any
+function productImage(p: any): string {
+  return ["thumbnail", "small_image", "image"].map(code => customAttr(p, code))
+    .find(value => typeof value === "string" && value.trim() && value !== "no_selection") ?? "";
+}
+
 /** The shape the app works with. `colors` turns Color option ids into names. */
 // deno-lint-ignore no-explicit-any
 function summarize(p: any, colors: Map<string, string>) {
@@ -438,9 +445,11 @@ function summarize(p: any, colors: Map<string, string>) {
     categoryIds: (p.extension_attributes?.category_links ?? []).map((l: any) => String(l.category_id)),
     qty: stock ? Number(stock.qty ?? 0) : null,
     inStock: stock ? Boolean(stock.is_in_stock) : null,
-    image: customAttr(p, "thumbnail") || customAttr(p, "small_image") || customAttr(p, "image") || "",
+    image: productImage(p),
     urlKey: customAttr(p, "url_key") ?? "",
     preOrderDate: preOrderDate(p),
+    prepack: customAttr(p, "prepack"),
+    prepackCode: customAttr(p, "prepack_code"),
     createdAt: p.created_at ?? "",
     updatedAt: p.updated_at ?? "",
   };
@@ -1764,7 +1773,7 @@ const actions: Record<string, (p: any) => Promise<unknown>> = {
 
   /**
    * The whole catalog in brief: each product's
-   *   [sku, type, status, visibility, qty, inStock, name, price, updatedAt, categoryIds, preOrderDate, groupItems]
+   *   [sku, type, status, visibility, qty, inStock, name, price, updatedAt, categoryIds, preOrderDate, groupItems, id, prepack, prepackCode, image]
    * — enough for the app to work out availability, and to filter, search and
    * sort by itself when a filter Magento can't apply (Available, Flagged) is
    * on, so it only asks Magento for the page shown. Stock comes in bulk — the
@@ -1779,7 +1788,7 @@ const actions: Record<string, (p: any) => Promise<unknown>> = {
       allProductPages(page => new URLSearchParams({
         "searchCriteria[pageSize]": "1000",
         "searchCriteria[currentPage]": String(page),
-        fields: "items[id,sku,type_id,status,visibility,name,price,updated_at,extension_attributes[category_links[category_id]],product_links[link_type,linked_product_sku,position]],total_count",
+        fields: "items[id,sku,type_id,status,visibility,name,price,updated_at,custom_attributes[attribute_code,value],extension_attributes[category_links[category_id]],product_links[link_type,linked_product_sku,position]],total_count",
       }), 1000, 2),
       catalogStock(),
       catalogPreOrderDates(),
@@ -1817,6 +1826,9 @@ const actions: Record<string, (p: any) => Promise<unknown>> = {
               .join(",")
             : null,
           String(p.id), // Keep duplicate-SKU group records distinct in the app.
+          customAttr(p, "prepack"),
+          customAttr(p, "prepack_code"),
+          productImage(p),
         ];
       }),
     };
@@ -1828,7 +1840,7 @@ const actions: Record<string, (p: any) => Promise<unknown>> = {
     const { page, pageSize } = pageParams(params);
     const companyIds = await searchCompanyCustomers(String(params.search ?? "").trim());
     const body = await mg(`/orders?${orderCriteria(params, page, pageSize, ORDER_LIST_FIELDS, companyIds)}`);
-    const items = await addFirstOrders(await addOrderCompanies((body?.items ?? []).map(summarizeOrder)));
+    const items = await addFirstOrders(await addOrderCompanies<ReturnType<typeof summarizeOrder>>((body?.items ?? []).map(summarizeOrder)));
     return { items, total: Number(body?.total_count ?? 0), page, pageSize };
   },
 

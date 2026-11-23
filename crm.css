@@ -9236,6 +9236,7 @@ tr:hover .shoot-picker.is-unpicked,
 }
 .mg-ats.is-pos { background: #e1f5ee; color: #0f6e56; }
 .mg-ats.is-neg { background: #fde7ea; color: #a3233a; }
+.mg-ats.is-mismatch { background: transparent; color: #c81e1e; font-weight: 700; }
 .mg-stock-select option { background: var(--surface); color: var(--text); }
 /* Qty in the table: reads as a number until hovered or clicked. */
 .mg-qty-input {
@@ -9291,6 +9292,7 @@ tr:hover .shoot-picker.is-unpicked,
 }
 .mg-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .mg-thumb.is-empty { border-style: dashed; background: transparent; }
+.mg-thumb.is-available-missing { display: flex; align-items: center; justify-content: center; color: #a3233a; font-size: 23px; font-weight: 700; }
 
 .mg-cat-chips { display: flex; flex-wrap: wrap; gap: 4px; }
 .mg-cat-chips.is-empty { color: var(--empty-display); }

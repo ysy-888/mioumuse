@@ -40,6 +40,10 @@ const mgApiChildren = new Map();
 /** "" (all) | "available" | "unavailable" */
 let mgAvailFilter = "";
 let mgFlaggedOnly = false;
+let mgAtsMismatchOnly = false;
+let mgAvailableNoPictureOnly = false;
+let mgN41AvailabilityMismatchOnly = false;
+const mgImageFailures = new Map();
 /** The last skuList, by query — so paging a filtered list doesn't ask again. */
 let mgSkuListCache = { key: "", skus: null };
 
@@ -55,6 +59,7 @@ let mgCatalogSalableRun = 0;
  * and categories — then the app can filter and sort by itself (mgLocalSkus).
  */
 function mgIndexFromRows(rows) {
+  mgPackRevision++;
   mgGroupCatalogRecords = new Map();
   for (const row of rows ?? []) {
     if (row[1] !== "grouped" || typeof row[11] !== "string") continue;
@@ -73,7 +78,7 @@ function mgIndexFromRows(rows) {
     .filter(row => row[1] === "grouped" && typeof row[11] === "string")
     .map(row => [String(row[0]), row[11] ? row[11].split(",") : [], row[12]]);
   if (live.length) setMgLiveGroups(live, new Set((rows ?? []).filter(row => Number(row[2]) === 1).map(row => String(row[0]))));
-  return new Map((rows ?? []).map(([sku, type, status, visibility, qty, inStock, name, price, updatedAt, categoryIds, preOrderDate]) =>
+  return new Map((rows ?? []).map(([sku, type, status, visibility, qty, inStock, name, price, updatedAt, categoryIds, preOrderDate, _groupItems, _id, prepack, prepackCode, image]) =>
     [sku, {
       type, status, visibility, qty, inStock,
       name: name ?? null,
@@ -81,7 +86,7 @@ function mgIndexFromRows(rows) {
       updatedAt: updatedAt ?? "",
       categoryIds: categoryIds ? String(categoryIds).split(",") : [],
       // undefined from a helper older than Pre-Order Date in the index.
-      preOrderDate,
+      preOrderDate, prepack, prepackCode, image,
     }]));
 }
 
@@ -153,10 +158,10 @@ async function loadMgIndex({ force = false } = {}) {
   return mgIndexLoading;
 }
 
-/** Salable Qty for every item that could be available, a batch at a time. */
+/** Salable Qty for every unique Simple SKU, including disabled/zero-stock items, for ATS comparison. */
 async function loadMgCatalogSalable() {
   const run = ++mgCatalogSalableRun;
-  const skus = [...mgIndex].filter(([, r]) => r.type !== "grouped" && r.status === 1 && r.inStock !== false && r.qty > 0).map(([sku]) => sku);
+  const skus = [...mgIndex].filter(([sku, r]) => r.type !== "grouped" && !mgDuplicateSkus.has(sku)).map(([sku]) => sku);
   const batches = [];
   for (let i = 0; i < skus.length; i += MG_SALABLE_BATCH) batches.push(skus.slice(i, i + MG_SALABLE_BATCH));
   let stopped = false;
@@ -197,6 +202,7 @@ function refreshMgAvailability() {
 
 /** A product just loaded from Magento — the freshest word on it. */
 function absorbMgProduct(p) {
+  mgPackRevision++;
   if (p.type === "grouped" && p.childSkus) mgApiChildren.set(p.sku, p.childSkus);
   if (!mgIndex) return;
   const now = mgIndex.get(p.sku) ?? {};
@@ -211,6 +217,9 @@ function absorbMgProduct(p) {
     updatedAt: p.updatedAt ?? now.updatedAt ?? "",
     categoryIds: p.categoryIds ?? now.categoryIds ?? [],
     preOrderDate: p.preOrderDate ?? now.preOrderDate,
+    prepack: "prepack" in p ? p.prepack : now.prepack,
+    prepackCode: "prepackCode" in p ? p.prepackCode : now.prepackCode,
+    image: "image" in p ? p.image : now.image,
   });
 }
 
@@ -316,6 +325,64 @@ function mgAvailability(sku) {
   return { available: true, reasons: [] };
 }
 
+// ── ATS: N41 garment units versus Magento prepack quantities ───────────────
+
+/** Magento's prepack is a ratio such as "3,2,1", not an option ID. */
+function mgPrepackSize(value) {
+  if (typeof value !== "string" && typeof value !== "number") return null;
+  const text = String(value).trim();
+  if (!/^\d+(?:\s*,\s*\d+)*$/.test(text)) return null;
+  const quantities = text.split(",").map(Number);
+  const total = quantities.reduce((sum, qty) => sum + qty, 0);
+  return quantities.every(Number.isSafeInteger) && Number.isSafeInteger(total) && total > 0 ? total : null;
+}
+
+let mgPackRevision = 0;
+let mgPackParentCache = null;
+function mgPackParents() {
+  if (mgPackParentCache?.index === mgIndex && mgPackParentCache?.groups === mgGroups && mgPackParentCache?.revision === mgPackRevision) return mgPackParentCache.parents;
+  const parents = new Map();
+  const add = (children, group) => children.forEach(sku => {
+    if (!parents.has(sku)) parents.set(sku, new Set());
+    parents.get(sku).add(group);
+  });
+  (mgGroups ?? mgLiveGroups).forEach(add);
+  mgApiChildren.forEach(add);
+  mgPackParentCache = { index: mgIndex, groups: mgGroups, revision: mgPackRevision, parents };
+  return parents;
+}
+
+function mgProductPack(product) {
+  const own = mgPrepackSize(product.prepack ?? mgIndex?.get(product.sku)?.prepack);
+  if (own !== null) return { size: own, source: product.sku };
+  const parents = [...(mgPackParents().get(product.sku) ?? [])];
+  const sizes = parents.map(sku => ({ sku, size: mgPrepackSize(mgIndex?.get(sku)?.prepack) }));
+  if (sizes.some(p => mgDuplicateSkus.has(p.sku)) || new Set(sizes.map(p => p.size)).size > 1) {
+    return { size: null, ambiguous: true, source: parents.join(", ") };
+  }
+  return { size: sizes[0]?.size ?? null, source: parents.join(", ") };
+}
+
+/** Missing data stays unknown; stock Qty never stands in for Magento ATS. */
+function mgAtsComparison(product) {
+  if (product.type === "grouped") return { state: "not-applicable", message: "Grouped products have no ATS of their own." };
+  if (mgDuplicateSkus.has(product.sku)) return { state: "unknown", message: "Duplicate SKU: compare the individual records in Magento." };
+  const units = numOrNull(mgProductStyles(product)[0]?.ats);
+  if (units === null) return { state: "unknown", message: "Import N41 ATS for this style/color to compare quantities." };
+  const pack = mgProductPack(product);
+  if (!pack.size) return { state: pack.ambiguous ? "pack-ambiguous" : "pack-missing", message: pack.ambiguous
+    ? "Linked parents have conflicting or incomplete Prepack ratios. Check the Magento parent products."
+    : "Prepack ratio is missing. Refresh the catalog; check Prepack on the Magento grouped parent. No six-pack default is assumed." };
+  const ats = mgSalable.get(product.sku);
+  if (typeof ats !== "number" || !Number.isFinite(ats)) return { state: "pending", message: "Waiting for Magento ATS (Salable Quantity)." };
+  const expected = Math.max(0, Math.floor(units / pack.size));
+  return {
+    state: Math.abs(ats - expected) < 0.000001 ? "match" : "mismatch",
+    units, packSize: pack.size, expected, actual: ats,
+    message: `N41 ATS: ${units} units ÷ ${pack.size} per pack = ${expected} whole packs; Magento ATS: ${ats} packs. Prepack from ${pack.source}. Based on total units; size-level availability may further limit complete packs.`,
+  };
+}
+
 /** A Simple item whose SKU matches a group it isn't in (needs the import). */
 function isMgFlagged(sku) {
   if (!mgGroups) return false;
@@ -359,6 +426,17 @@ function createMgAvailCell(product) {
     : `${available === false ? "Not showing on the webstore" : "Can't tell yet"}: ${reasons.join("; ")}`;
   wrap.appendChild(pill);
   return wrap;
+}
+
+/** The same Available condition as the table, on products with their own images. */
+function mgAvailableNoPicture(sku, product = null) {
+  const record = product ?? mgIndex?.get(sku);
+  if (!record || record.type === "grouped" || mgDuplicateSkus.has(sku)) return false;
+  const image = record.image ?? mgIndex?.get(sku)?.image;
+  // An older catalog didn't include images: wait rather than flag unknowns.
+  if (image === undefined || image === null) return false;
+  const missing = !String(image).trim() || image === "no_selection" || mgImageFailures.get(sku) === image;
+  return missing && mgAvailability(sku).available === true;
 }
 
 // ── Filters ──────────────────────────────────────────────────────────────────
@@ -446,13 +524,26 @@ function sortMgSkusLocally(skus) {
   });
 }
 
+/** Exact N41-unit thresholds requested, independent of the product's pack size. */
+function mgN41AvailabilityMismatch(sku) {
+  const product = mgIndex?.get(sku);
+  if (!product || product.type === "grouped" || mgDuplicateSkus.has(sku)) return false;
+  const ats = numOrNull(mgProductStyles({ ...product, sku })[0]?.ats);
+  if (ats === null) return false;
+  const { available } = mgAvailability(sku);
+  return (ats <= 0 && available === true) || (ats >= 6 && available === false);
+}
+
 function hasMgClientFilter() {
-  return Boolean(mgAvailFilter || mgFlaggedOnly || isMgLocalSort() || mgLocalFilters().length);
+  return Boolean(mgAvailFilter || mgFlaggedOnly || mgAtsMismatchOnly || mgAvailableNoPictureOnly || mgN41AvailabilityMismatchOnly || isMgLocalSort() || mgLocalFilters().length);
 }
 
 function passesMgClientFilter(sku) {
   if (!passesMgLocalFilters(sku)) return false;
   if (mgFlaggedOnly && !isMgFlagged(sku)) return false;
+  if (mgAtsMismatchOnly && mgAtsComparison({ ...mgIndex?.get(sku), sku }).state !== "mismatch") return false;
+  if (mgAvailableNoPictureOnly && !mgAvailableNoPicture(sku)) return false;
+  if (mgN41AvailabilityMismatchOnly && !mgN41AvailabilityMismatch(sku)) return false;
   if (mgAvailFilter) {
     const { available } = mgAvailability(sku);
     if (mgAvailFilter === "available" && available !== true) return false;
@@ -574,6 +665,27 @@ function renderMgAvailControls() {
       ? "Simple items whose SKU matches a group they aren't in on Magento"
       : "Import groups first — flags come from the imported groups";
   }
+  const atsButton = document.getElementById("mgAtsMismatchBtn");
+  if (atsButton) {
+    const count = mgIndex ? [...mgIndex].filter(([sku, p]) => mgAtsComparison({ ...p, sku }).state === "mismatch").length : null;
+    atsButton.classList.toggle("active", mgAtsMismatchOnly);
+    atsButton.textContent = count === null ? "ATS mismatches" : `ATS mismatches (${count.toLocaleString()})`;
+    atsButton.title = "Compare N41 units with Magento ATS packs using the product or parent Prepack ratio. Counts update as ATS loads; missing pack data is marked Check pack.";
+  }
+  const noPictureButton = document.getElementById("mgAvailableNoPictureBtn");
+  if (noPictureButton) {
+    const count = mgIndex ? [...mgIndex.keys()].filter(sku => mgAvailableNoPicture(sku)).length : null;
+    noPictureButton.classList.toggle("active", mgAvailableNoPictureOnly);
+    noPictureButton.textContent = count === null ? "Available, no picture" : `Available, no picture (${count.toLocaleString()})`;
+    noPictureButton.title = "Available Simple products with no assigned product image or a failed image. Unknown availability is excluded.";
+  }
+  const n41AvailabilityButton = document.getElementById("mgN41AvailabilityMismatchBtn");
+  if (n41AvailabilityButton) {
+    const count = mgIndex ? [...mgIndex.keys()].filter(mgN41AvailabilityMismatch).length : null;
+    n41AvailabilityButton.classList.toggle("active", mgN41AvailabilityMismatchOnly);
+    n41AvailabilityButton.textContent = count === null ? "N41 availability mismatch" : `N41 availability mismatch (${count.toLocaleString()})`;
+    n41AvailabilityButton.title = "N41 ATS ≤ 0 and Available, OR N41 ATS ≥ 6 units and Not available. Unknown ATS/availability and grouped parents are excluded.";
+  }
   // Catalog-wide counts on hover.
   if (mgIndex) {
     let yes = 0;
@@ -595,6 +707,9 @@ function renderMgAvailControls() {
 function setMgClientFilter(changes) {
   if ("avail" in changes) mgAvailFilter = changes.avail;
   if ("flagged" in changes) mgFlaggedOnly = changes.flagged;
+  if ("atsMismatch" in changes) mgAtsMismatchOnly = changes.atsMismatch;
+  if ("availableNoPicture" in changes) mgAvailableNoPictureOnly = changes.availableNoPicture;
+  if ("n41AvailabilityMismatch" in changes) mgN41AvailabilityMismatchOnly = changes.n41AvailabilityMismatch;
   renderMgAvailControls();
   setMgQuery({});
 }
@@ -604,6 +719,9 @@ function initMagentoAvailability() {
     btn.addEventListener("click", () => setMgClientFilter({ avail: btn.dataset.avail }));
   });
   document.getElementById("mgFlaggedBtn")?.addEventListener("click", () => setMgClientFilter({ flagged: !mgFlaggedOnly }));
+  document.getElementById("mgAvailableNoPictureBtn")?.addEventListener("click", () => setMgClientFilter({ availableNoPicture: !mgAvailableNoPictureOnly }));
+  document.getElementById("mgN41AvailabilityMismatchBtn")?.addEventListener("click", () => setMgClientFilter({ n41AvailabilityMismatch: !mgN41AvailabilityMismatchOnly }));
+  document.getElementById("mgAtsMismatchBtn")?.addEventListener("click", () => setMgClientFilter({ atsMismatch: !mgAtsMismatchOnly }));
   renderMgAvailControls();
 }
 

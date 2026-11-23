@@ -101,7 +101,7 @@ let mgSalableWarned = false;
 let mgTableRenderWaiting = false;
 
 /** The helper version this app expects (HELPER_VERSION in supabase/functions/magento). */
-const MG_HELPER_VERSION = "2026-11-16.4";
+const MG_HELPER_VERSION = "2026-11-23.2";
 
 /** Per action, the last call's timing: { roundTripMs, totalMs, authMs, magentoCalls, magentoMs, slowest… }. */
 const mgTimings = {};
@@ -408,8 +408,11 @@ function createMgAtsCell(product) {
   // A Grouped item: blank. 0: a dash.
   if (product.type === "grouped") return el;
   const value = mgSalable.get(product.sku);
-  el.textContent = value === 0 ? EMPTY_DISPLAY : formatMgSalable(product);
-  if (typeof value === "number" && value !== 0) el.className = `mg-ats ${value > 0 ? "is-pos" : "is-neg"}`;
+  const comparison = mgAtsComparison(product);
+  el.title = comparison.message;
+  el.textContent = comparison.state === "mismatch" && typeof value === "number" ? value.toLocaleString() : value === 0 ? EMPTY_DISPLAY : formatMgSalable(product);
+  if (comparison.state === "mismatch") el.className = "mg-ats is-mismatch";
+  else if (typeof value === "number" && value !== 0) el.className = `mg-ats ${value > 0 ? "is-pos" : "is-neg"}`;
   return el;
 }
 
@@ -646,7 +649,7 @@ function createMgStatusSwitch(product) {
     btn.classList.toggle("is-on", on);
     btn.setAttribute("aria-pressed", on ? "true" : "false");
     btn.innerHTML = `<span class="mg-switch-track" aria-hidden="true"><span class="mg-switch-knob"></span></span><span class="mg-switch-label">${on ? "Enabled" : "Disabled"}</span>`;
-    btn.title = on ? "Enabled — click to disable" : "Disabled — click to enable";
+    btn.title = on ? "Disable and mark Out of Stock" + (product.type === "grouped" ? "" : "; set Qty to 0") : "Enable and mark In Stock" + (product.type === "grouped" ? "" : "; set Qty to 99");
   };
   paint();
   btn.disabled = mgDuplicateSkus.has(product.sku);
@@ -656,7 +659,7 @@ function createMgStatusSwitch(product) {
     btn.disabled = true;
     btn.classList.add("is-saving");
     try {
-      const saved = await callMagento("update", { sku: product.sku, changes: { status: next } });
+      const saved = await callMagento("update", { sku: product.sku, changes: { status: next, inStock: next === 1, ...(product.type === "grouped" ? {} : { qty: next === 1 ? 99 : 0 }) } });
       Object.assign(product, pickMgSummary(applyMgGroups(saved)));
       mgSalable.set(product.sku, saved.salableQty ?? null);
       // Enabling or disabling can change what's available — this row's
@@ -666,8 +669,10 @@ function createMgStatusSwitch(product) {
       renderMgProducts();
       renderMgAvailControls();
       if (mgPane?.saved.sku === product.sku) {
-        mgPane.saved.status = saved.status;
-        mgPane.draft.status = saved.status;
+        for (const field of ["status", "inStock", ...(product.type === "grouped" ? [] : ["qty"])]) {
+          mgPane.saved[field] = saved[field];
+          mgPane.draft[field] = saved[field];
+        }
         renderMagentoPane();
       }
       showIndicator(`${product.sku} ${next === 1 ? "enabled" : "disabled"}`, "success");
@@ -683,8 +688,8 @@ function createMgStatusSwitch(product) {
 
 /** The list's fields out of a full product, to update a row in place. */
 function pickMgSummary(p) {
-  const { id, sku, name, type, color, colorId, childSkus, groupSource, groupSku, unlinkedGroup, price, specialPrice, status, visibility, categoryIds, qty, inStock, image, urlKey, preOrderDate, createdAt, updatedAt } = p;
-  return { id, sku, name, type, color, colorId, childSkus, groupSource, groupSku, unlinkedGroup, price, specialPrice, status, visibility, categoryIds, qty, inStock, image, urlKey, preOrderDate, createdAt, updatedAt };
+  const { id, sku, name, type, color, colorId, childSkus, groupSource, groupSku, unlinkedGroup, price, specialPrice, status, visibility, categoryIds, qty, inStock, image, urlKey, preOrderDate, prepack, prepackCode, createdAt, updatedAt } = p;
+  return { id, sku, name, type, color, colorId, childSkus, groupSource, groupSku, unlinkedGroup, price, specialPrice, status, visibility, categoryIds, qty, inStock, image, urlKey, preOrderDate, prepack, prepackCode, createdAt, updatedAt };
 }
 
 /**
@@ -755,6 +760,14 @@ function createMgNameCell(product, role) {
     warning.textContent = "Duplicate SKU";
     wrap.appendChild(warning);
   }
+  const atsCheck = mgAtsComparison(product);
+  if (["pack-missing", "pack-ambiguous"].includes(atsCheck.state)) {
+    const flag = document.createElement("span");
+    flag.className = "mg-unlinked-flag";
+    flag.textContent = "Check pack";
+    flag.title = atsCheck.message;
+    wrap.appendChild(flag);
+  }
   if (product.type === "grouped") wrap.appendChild(createMgChildCount(product));
   if (product.unlinkedGroup) wrap.appendChild(createMgUnlinkedFlag(product));
   const admin = createMgAdminIcon("products", product.id, "Open in Magento");
@@ -803,9 +816,18 @@ function createMgTypePill(type) {
 function createMgThumb(product) {
   const wrap = document.createElement("span");
   wrap.className = "mg-thumb";
+  const markMissing = () => {
+    wrap.classList.add("is-empty");
+    if (mgAvailableNoPicture(product.sku, product)) {
+      wrap.classList.add("is-available-missing");
+      wrap.textContent = "?";
+      wrap.title = "Available on the webstore, but no picture";
+      wrap.setAttribute("aria-label", wrap.title);
+    }
+  };
   const url = getMgImageUrl(product);
   if (!url) {
-    wrap.classList.add("is-empty");
+    markMissing();
     return wrap;
   }
   const img = document.createElement("img");
@@ -813,8 +835,10 @@ function createMgThumb(product) {
   img.alt = "";
   img.loading = "lazy";
   img.addEventListener("error", () => {
-    wrap.classList.add("is-empty");
+    mgImageFailures.set(product.sku, product.image);
     img.remove();
+    markMissing();
+    renderMgAvailControls();
   });
   wrap.appendChild(img);
   return wrap;

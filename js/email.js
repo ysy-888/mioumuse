@@ -25,7 +25,8 @@
  * This is the template editor: Save updates the template. What you change
  * (text/HTML, links, images, products, its name) is saved per template in
  * Supabase (email_settings, js/store.js) and from then on is the template —
- * the file in the repo is only where it started. Save copy makes a new
+ * saved HTML applies only to the current file revision. Updating the file
+ * automatically loads the new design. Save copy makes a new
  * template (a row of its own, "copy-…") from what's on screen; its relative
  * images still come from the folder of the file it was copied from.
  */
@@ -310,6 +311,26 @@ function cloneEmailSettings(s) {
   };
 }
 
+/** Bind saved HTML edits to the file they were edited from. File updates win. */
+function emailFileRevision(html) {
+  let hash = 2166136261;
+  for (const ch of html.replace(/\r\n/g, "\n")) {
+    hash = Math.imul(hash ^ ch.charCodeAt(0), 16777619);
+  }
+  return (hash >>> 0).toString(16);
+}
+
+function emailHtmlForCurrentFile(savedHtml, fileHtml) {
+  const match = /^<!-- mm-source:([a-f0-9]+) -->\r?\n/.exec(savedHtml || "");
+  return match && match[1] === emailFileRevision(fileHtml)
+    ? savedHtml.slice(match[0].length) : "";
+}
+
+function emailSettingsForStorage(id, settings) {
+  if (!settings.html || getEmailTemplate(id)?.isCopy) return settings;
+  return { ...settings, html: `<!-- mm-source:${emailFileRevision(emailSources.get(id) || "")} -->\n${settings.html}` };
+}
+
 /** The HTML in use: edited in the HTML window, else the template file's. */
 function emailSourceFor(id, settings) {
   return settings?.html || emailSources.get(id) || "";
@@ -391,6 +412,10 @@ async function loadEmailTemplateSource(template) {
     const res = await fetch(`${template.file}?t=${Date.now()}`, { cache: "no-store" });
     if (!res.ok) throw new Error(`Couldn't load ${template.name} (${res.status}).`);
     html = await res.text();
+    const saved = emailSaved.get(template.id);
+    if (saved?.html) {
+      emailSaved.set(template.id, { ...saved, html: emailHtmlForCurrentFile(saved.html, html) });
+    }
   }
   emailSources.set(template.id, html);
   emailInfo.set(template.id, readEmailInfo(html));
@@ -1452,7 +1477,7 @@ async function saveEmailDraft() {
   const settings = compactEmailSettingsFor(emailTemplateId, emailDraft);
   setAppLoading(true, "Saving…");
   try {
-    await saveEmailSettings(emailTemplateId, settings);
+    await saveEmailSettings(emailTemplateId, emailSettingsForStorage(emailTemplateId, settings));
     // Its name, folder and date stay as they were.
     emailSaved.set(emailTemplateId, { ...emailSaved.get(emailTemplateId), ...settings });
     showIndicator("Template saved", "success");

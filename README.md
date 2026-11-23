@@ -84,7 +84,7 @@ reference in index.html so the URLs change on every deploy.
 | `js/shortcuts.js` | Keyboard shortcuts on table pages: ← / → turn pages, Space jumps to search |
 | `js/row-quick-select.js` | Quick select: click / Ctrl / Shift / drag to pick rows on tables with tick boxes, Space ticks them |
 | `js/pane-dismiss.js` | Side panes app-wide: a click outside closes the open one; closing slides it out |
-| `js/copy-menu.js` | Right-click → Copy: style numbers (Styles, Need to Shoot, the shoot pane) and Magento product names |
+| `js/copy-menu.js` | Right-click copies immediately: style numbers (Styles, Need to Shoot, the shoot pane) and Magento product names |
 | `js/table-view.js` | Header menu → Table view: show / hide and reorder any table's columns, saved as that table's default to your account (`table_views`) |
 | `js/table-pager.js` | Paging for tables drawn in the browser (Styles, Need to Shoot, Photoshoots, Complete, N41 Orders): "1–100 of 2,345", First / Prev / Next / Last and rows per page (remembered per table) |
 | `js/header-search.js` | Moves each page's search box into the app header and shows the one for the page you're on |
@@ -165,10 +165,14 @@ menu collapses to icons and opens on hover when collapsed. The header's back
 arrow leaves a full-page detail (a PO, an SO) and goes back to the page it was
 opened from.
 
-**Right-click → Copy**: a style number in the Styles and Need to Shoot
+**Right-click to copy immediately**: a style number in the Styles and Need to Shoot
 tables (the Style # cell) or in a shoot's pane copies that number; a
 Magento product name copies the style number (a Simple item's colour suffix
 dropped — `ET6157-BLACK` copies `ET6157`).
+
+Right-click a **SET** pill to copy all its style numbers, top first, joined
+with ` & ` (for example `T2488 & P2438`). No menu opens. This also works on
+Style # cells in the POs and Complete tables and the style pane title.
 
 ## Table view
 
@@ -551,6 +555,31 @@ filtering and sorting, so it stays quick on a big catalog.
   Magento's inventory for each page's SKUs in one call — a SKU's qty is the
   total across its sources, in stock if any source is — falling back to
   each product's stock record. Grouped items hold no stock and show "–".
+- **Enabled / Disabled switch** also saves stock: Simple items become In Stock
+  with Qty 99 when enabled, or Out of Stock with Qty 0 when disabled. Grouped
+  parents only change status and Stock Status; their children are unchanged.
+- **ATS mismatches** compares N41 ATS in garment units with Magento ATS in
+  prepacks: expected packs = max(0, floor(N41 ATS / pack size)). The pack size
+  is the sum of Magento's `prepack` ratio (for example `3,2,1` = 6); the
+  corresponding sizes are in `prepack_code` (`S,M,L`). These usually live on
+  the **grouped parent**. Direct ratios on Simple items take precedence;
+  otherwise the app uses its linked parent's ratio. No default of six is
+  assumed. Mismatches make the **ATS value red** (including a literal 0);
+  there is no mismatch badge beside the product name. Missing or conflicting
+  ratios show **Check pack**; unknown ATS is
+  not treated as zero. Hover over ATS or its flag for the calculation.
+  The comparison uses total units, so size-level availability can further
+  limit complete packs. N41 live/nightly inventory sync may overwrite manual
+  Magento quantities. Refresh the catalog after deploying the updated helper.
+- **N41 availability mismatch** selects Simple products with N41 ATS ≤ 0
+  but Available, OR N41 ATS ≥ 6 garment units but Not available. The threshold
+  is exactly six units, independent of prepack size. Unknown data is excluded.
+- **Available, no picture** filters available Simple items without an assigned
+  image (or with an image that failed to load). Their Image cell shows **?**.
+  Unknown image/availability data and Grouped parents are excluded. The catalog
+  carries assigned image paths so the filter covers the whole catalog, not
+  only the current page. Thumbnail `no_selection` falls back to Small Image
+  or Base Image when present.
 - **Stock Status** (In Stock / Out of Stock) is Magento's own setting, kept
   apart from the qty — so an item can have stock and still be Out of Stock.
   Simple items' comes with the qty; Grouped items have their own, read from

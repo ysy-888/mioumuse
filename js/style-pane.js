@@ -224,6 +224,8 @@ function renderStylePaneHeader(style) {
   const title = document.getElementById("stylePaneTitle");
   const name = document.createElement("span");
   name.className = "style-pane-name";
+  name.dataset.copyStyleNo = style.styleNo;
+  name.title = "Right-click to copy the style number";
   const colors = getStyleColors(style.styleNo);
   if (colors.length < 2) {
     name.textContent = `${style.styleNo} · ${style.color}`;

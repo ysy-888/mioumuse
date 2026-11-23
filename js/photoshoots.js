@@ -819,8 +819,9 @@ function createSetTag(styleNo, color) {
   const tag = document.createElement("span");
   tag.className = "set-tag";
   tag.textContent = "SET";
+  tag.dataset.copySet = getSetCopyText(styleNo);
   const mates = getSetMates(styleNo, color).map(s => s.styleNo);
-  tag.title = mates.length ? `A set with ${mates.join(", ")} — kept together` : "A set — kept together";
+  tag.title = (mates.length ? `A set with ${mates.join(", ")} — kept together` : "A set — kept together") + ` · Right-click to copy ${tag.dataset.copySet}`;
   return tag;
 }
 
