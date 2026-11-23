@@ -17,7 +17,6 @@
  * table's Shoot column.
  */
 
-let needFilter = "all";         // "all" | "undecided" | "photoshoot" | "cg"
 let needReasonFilter = "all";   // "all" | a type (SHOOT_REASONS key)
 let shootFilter = "planned";    // "planned" | "complete" | "all"
 let needSelectedKeys = new Set();
@@ -651,8 +650,7 @@ function renderNeedTable() {
   setActiveSearchQuery(q);
 
   const preMonthRows = buildNeedRows().filter(r => {
-    if (needFilter === "undecided" && r.method) return false;
-    if ((needFilter === "photoshoot" || needFilter === "cg") && r.method !== needFilter) return false;
+    if (!columnFilterPasses("needTable", "shoot", r.method || "undecided")) return false;
     if (needReasonFilter !== "all" && r.type !== needReasonFilter) return false;
     if (!columnFilterPasses("needTable", "n41", statusFilterKey(r.n41))) return false;
     if (!columnFilterPasses("needTable", "type", r.type || BLANK_FILTER_LABEL)) return false;
@@ -673,11 +671,17 @@ function renderNeedTable() {
   // One level up: neighbouring blocks of the same Style # (or set) in the same
   // Available month — J2644 BLUE, GREEN, YELLOW; a set in two colours.
   const familyOf = familyRuns(needBlocks, r => `${/^\d{4}-\d{2}/.exec(r.availableDate ?? "")?.[0] ?? ""}\u0000${styleFamilyKey(r.styleNo)}`);
-  const pagedFor = [needFilter, needReasonFilter, needIhdMonth, q].join("|");
+  const shootSelection = getColumnFilterSelection("needTable", "shoot");
+  const pagedFor = [JSON.stringify(shootSelection?.slice().sort() ?? null), needReasonFilter, needIhdMonth, q].join("|");
   needPage = pagedFor === needPagedFor ? clampTablePage(needPage, filteredNeedRows.length, needPageSize) : 1;
   needPagedFor = pagedFor;
 
-  document.querySelectorAll("#needFilters .filter-btn").forEach(btn => btn.classList.toggle("active", btn.dataset.filter === needFilter));
+  document.querySelectorAll("#needFilters .filter-btn").forEach(btn => {
+    const active = btn.dataset.filter === "all" ? shootSelection === null
+      : shootSelection?.length === 1 && shootSelection[0] === btn.dataset.filter;
+    btn.classList.toggle("active", Boolean(active));
+    btn.setAttribute("aria-pressed", String(Boolean(active)));
+  });
   document.querySelectorAll("#needReasonFilters .filter-btn").forEach(btn => btn.classList.toggle("active", btn.dataset.reason === needReasonFilter));
   const counter = document.getElementById("needRowCounter");
   if (counter) counter.textContent = filteredNeedRows.length === 1 ? "1 style" : `${filteredNeedRows.length.toLocaleString()} styles`;
@@ -1676,6 +1680,21 @@ function initPhotoshoots() {
   document.addEventListener("scroll", e => { if (!e.target.closest?.("#shootMenu")) closeShootMenu(); }, true);
   initColumnSort("needTable", needSort, NEED_SORT_COLUMNS, renderNeedTable);
   initColumnSort("shootsTable", shootSort, SHOOT_SORT_COLUMNS, renderShootsTable);
+  initColumnFilter("needTable", "shoot", {
+    options: () => {
+      const counts = new Map();
+      buildNeedRows().forEach(r => {
+        const key = r.method || "undecided";
+        counts.set(key, (counts.get(key) || 0) + 1);
+      });
+      return [
+        { key: "undecided", label: "To decide" },
+        { key: "photoshoot", label: "Photoshoot" },
+        { key: "cg", label: "CG" },
+      ].map(option => ({ ...option, count: counts.get(option.key) || 0 }));
+    },
+    onChange: renderNeedTable,
+  });
   initColumnFilter("needTable", "type", {
     options: () => needTypeFilterOptions(buildNeedRows()),
     onChange: renderNeedTable,
@@ -1693,7 +1712,10 @@ function initPhotoshoots() {
 
   // Need to Shoot controls.
   document.querySelectorAll("#needFilters .filter-btn").forEach(btn => {
-    btn.addEventListener("click", () => { needFilter = btn.dataset.filter; renderNeedTable(); });
+    btn.addEventListener("click", () => {
+      setColumnFilterSelection("needTable", "shoot", btn.dataset.filter === "all" ? null : [btn.dataset.filter]);
+      renderNeedTable();
+    });
   });
   document.querySelectorAll("#needReasonFilters .filter-btn").forEach(btn => {
     // The same T-shirt / paint bucket / scissors as the type pills.

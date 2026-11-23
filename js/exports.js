@@ -89,6 +89,19 @@ const REPORT_CSS = `
   td.photo { width: 54px; padding: 3px 6px; }
   td.photo img { display: block; width: 46px; height: 46px; object-fit: cover; border-radius: 4px; border: 1px solid #e5e7eb; }
   td.photo .none { width: 46px; height: 46px; border: 1px dashed #d4d9df; border-radius: 4px; }
+  /* Eight-style shooting lists: tall portrait photos, cropped to 2:3. */
+  table.shooting-list tbody:not(.gap) tr { height: var(--report-row-height, 72px); }
+  table.shooting-list { table-layout: fixed; }
+  table.shooting-list th, table.shooting-list td { width: auto; min-width: 0; overflow-wrap: anywhere; white-space: normal; }
+  table.shooting-list .method-sub { white-space: normal; }
+  table.shooting-list td.desc { color: #9aa0a8; }
+  table.shooting-list td.style-no { font-size: 12px; }
+  table.shooting-list .po-line { max-width: 100%; }
+  table.shooting-list td.photo { padding: 3px 6px; }
+  table.shooting-list td.photo img,
+  table.shooting-list td.photo .none { width: calc(var(--report-photo-size, 64px) * 2 / 3); max-width: 100%; height: var(--report-photo-size, 64px); }
+  table.shooting-list td.photo img { object-fit: cover; object-position: center; }
+  table.shooting-list tbody.gap td { height: 4px; }
   td.banner { width: 190px; padding: 4px 6px; }
   td.banner img { display: block; width: 178px; max-height: 90px; object-fit: contain; border-radius: 4px; border: 1px solid #e5e7eb; }
   td.strong { font-weight: 700; white-space: nowrap; }
@@ -120,10 +133,13 @@ const REPORT_CSS = `
   th.center, td.center { text-align: center; }
   td.note-col { width: 24%; min-width: 150px; white-space: pre-wrap; overflow-wrap: anywhere; }
   th.note-col { width: 24%; }
+  table.shooting-list :is(th, td).note-col { width: auto; min-width: 0; }
+  table.shooting-list td.desc { min-width: 0; }
   /* Photoshoot / CG. A scheduled Photoshoot carries its date and shoot under it. */
   .method { display: inline-block; padding: 1px 8px; border-radius: 9px; font-size: 9.5px; font-weight: 700; white-space: nowrap; }
-  .method.photoshoot { background: #ece6fb; color: #5a3aa8; }
-  .method.cg { background: #d9f0f3; color: #0e687a; }
+  .method.photoshoot { background: none; color: #4b5563; padding-inline: 0; }
+  .report-camera { display: inline-block; vertical-align: middle; }
+  .method.cg { background: none; color: #4b5563; padding-inline: 0; }
   .method.none { background: none; padding-left: 0; color: #8b929c; font-weight: 500; }
   .method-sub { margin-top: 2px; color: #4b5563; font-size: 9px; white-space: nowrap; }
   /* A style group (a Style # in several colours, or a set): in one grey box, kept on one page. */
@@ -201,7 +217,7 @@ async function loadReportThumbs(rows) {
  *          in front of the Style # — the column marked `bracket: true`.
  * extraHtml / extraCss: more pages after the list (a shoot's photo pages).
  */
-async function printReport({ fileTitle, title, titleLabel = "", subtitle = "", meta = [], notes = "", columns, rows, photos, footnote = "", noun = "style", metaInHeader = false, landscape = false, groupKey = null, setKey = null, extraHtml = "", extraCss = "" }) {
+async function printReport({ fileTitle, title, titleLabel = "", subtitle = "", meta = [], notes = "", columns, rows, photos, footnote = "", noun = "style", metaInHeader = false, landscape = false, groupKey = null, setKey = null, extraHtml = "", extraCss = "", rowsPerPage = 0 }) {
   if (!rows.length) {
     showIndicator("Nothing to export", "error");
     return;
@@ -246,9 +262,37 @@ async function printReport({ fileTitle, title, titleLabel = "", subtitle = "", m
   });
   const columnCount = columns.length + (photos ? 1 : 0);
   const gap = `<tbody class="gap"><tr><td colspan="${columnCount}"></td></tr></tbody>`;
-  const body = runs.map((run, r) =>
-    (r > 0 && (run.grouped || runs[r - 1].grouped) ? gap : "") +
-    `<tbody${run.grouped ? ' class="group"' : ""}>${run.html.join("")}</tbody>`).join("");
+  // Explicit pages for the shooting lists. Keep groups together where they
+  // fit; a group larger than a page must be split to respect the row limit.
+  const pages = [[]];
+  let pageRows = 0;
+  runs.forEach(run => {
+    const chunks = rowsPerPage
+      ? (run.grouped
+        ? Array.from({ length: Math.ceil(run.html.length / rowsPerPage) }, (_, i) => run.html.slice(i * rowsPerPage, (i + 1) * rowsPerPage))
+        : run.html.map(html => [html]))
+      : [run.html];
+    chunks.forEach(html => {
+      if (rowsPerPage && pageRows && pageRows + html.length > rowsPerPage) {
+        pages.push([]);
+        pageRows = 0;
+      }
+      pages[pages.length - 1].push({ grouped: run.grouped, html });
+      pageRows += html.length;
+    });
+  });
+  // One column plan shared by every printed page, independent of its text
+  // and of the larger photo heights on pages without the report header.
+  const columnWidths = { "Style #": 96, "Color": 140, "Type": 100, "Available": 104, "Shoot": 88, "Notes": 128, "Description": 208, "Sample": 64, "Shot": 34, "#": 32 };
+  const widths = [...(photos ? [72] : []), ...columns.map(c => columnWidths[c.label] || 80)];
+  const totalWidth = widths.reduce((sum, width) => sum + width, 0);
+  const colgroup = rowsPerPage ? `<colgroup>${widths.map(width => `<col style="width:${(width / totalWidth * 100).toFixed(6)}%">`).join("")}</colgroup>` : "";
+  const tables = pages.map((page, p) => {
+    const body = page.map((run, r) =>
+      (r > 0 && (run.grouped || page[r - 1].grouped) ? gap : "") +
+      `<tbody${run.grouped ? ' class="group"' : ""}>${run.html.join("")}</tbody>`).join("");
+    return `<table${rowsPerPage ? ' class="shooting-list"' : ""}${p ? ' style="break-before:page;page-break-before:always"' : ""}>${colgroup}<thead><tr>${head}</tr></thead>${body}</table>`;
+  }).join("");
 
   const generated = `${formatReportDate(todayYmd())} ${new Date().toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}`;
   // [label, value, { qty, total }]: a run of qty items shares one shaded box,
@@ -258,11 +302,14 @@ async function printReport({ fileTitle, title, titleLabel = "", subtitle = "", m
   const metaParts = [];
   meta.forEach(item => {
     const qty = Boolean(item[2]?.qty);
+    const group = item[2]?.group || "";
     const last = metaParts[metaParts.length - 1];
-    if (qty && last?.qty) last.items.push(item);
-    else metaParts.push({ qty, items: [item] });
+    if (last && (group ? last.group === group : qty && last.qty && !last.group)) last.items.push(item);
+    else metaParts.push({ qty, group, items: [item] });
   });
-  const metaHtml = meta.length ? `<div class="meta">${metaParts.map(part => part.qty
+  const metaHtml = meta.length ? `<div class="meta">${metaParts.map(part => part.group
+    ? `<div class="meta-group"><b class="meta-group-label">${escapeReportHtml(part.group)}</b><div class="meta-group-items">${part.items.map(metaItem).join("")}</div></div>`
+    : part.qty
     ? `<div class="meta-qty">${part.items.map(metaItem).join("")}</div>`
     : part.items.map(metaItem).join("")).join("")}</div>` : "";
   const html = `<!doctype html><html><head><meta charset="utf-8"><title>${escapeReportHtml(fileTitle)}</title><style>${REPORT_CSS}${landscape ? "@page { size: letter landscape; }" : ""}${extraCss}</style></head><body>
@@ -272,18 +319,46 @@ async function printReport({ fileTitle, title, titleLabel = "", subtitle = "", m
     </header>
     ${metaInHeader ? "" : metaHtml}
     ${notes ? `<div class="notes">${escapeReportHtml(notes)}</div>` : ""}
-    <table><thead><tr>${head}</tr></thead>${body}</table>
+    ${tables}
     ${footnote ? `<footer>${escapeReportHtml(footnote)}</footer>` : ""}
     ${extraHtml}
   </body></html>`;
-  await printHtml(html, fileTitle);
+  await printHtml(html, fileTitle, rowsPerPage ? {
+    pageWidth: landscape ? 960 : 720,
+    pageHeight: landscape ? 720 : 960,
+    rowsPerPage,
+  } : null);
+}
+
+/** Fill the Letter print area (0.5in margins) with eight larger photo rows.
+ * Measure at print width after images/fonts load: the first page also has
+ * the report header, month totals and notes; later pages have the table head.
+ */
+function fitShootingReportPages(doc, { pageHeight, rowsPerPage }) {
+  const tables = [...doc.querySelectorAll("table.shooting-list")];
+  tables.forEach((table, page) => {
+    const rows = [...table.querySelectorAll("tbody:not(.gap) > tr")];
+    // Re-measure after photo height changes; column widths stay fixed.
+    for (let pass = 0; pass < 4; pass++) {
+      const top = page ? 0 : table.getBoundingClientRect().top - doc.body.getBoundingClientRect().top;
+      const available = pageHeight - top - 2; // rounding allowance at the page edge
+      const overhead = table.getBoundingClientRect().height - rows.reduce((sum, row) => sum + row.getBoundingClientRect().height, 0);
+      const height = Math.max(1, Math.floor((available - overhead) / rowsPerPage));
+      table.style.setProperty("--report-row-height", height + "px");
+      table.style.setProperty("--report-photo-size", Math.max(1, height - 8) + "px");
+    }
+  });
 }
 
 /** Write a page into a hidden frame and open the print window for it (Save as PDF). */
-async function printHtml(html, fileTitle) {
+async function printHtml(html, fileTitle, layout = null) {
   const frame = document.createElement("iframe");
   frame.setAttribute("aria-hidden", "true");
   frame.style.cssText = "position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden;";
+  if (layout) {
+    frame.style.width = layout.pageWidth + "px";
+    frame.style.height = layout.pageHeight + "px";
+  }
   document.body.appendChild(frame);
   const doc = frame.contentDocument;
   doc.open();
@@ -292,6 +367,11 @@ async function printHtml(html, fileTitle) {
 
   // Every photo has to be in before the page is printed.
   await Promise.all([...doc.images].map(img => img.complete ? null : new Promise(res => { img.onload = img.onerror = res; })));
+
+  if (layout) {
+    await doc.fonts.ready;
+    fitShootingReportPages(doc, layout);
+  }
 
   // Chrome names the saved PDF after the page title.
   const pageTitle = document.title;
@@ -392,14 +472,15 @@ function reportStyleColumns(rows) {
     sample: { label: "Sample", className: "center", cell: r => ({ text: getSampleStatusLabel(r.sampleStatus) || "–", className: "nowrap center" }) },
     description: { label: "Description", cell: r => ({ text: r.description, className: "desc" }) },
     type: { label: "Type", cell: r => ({ html: shootTypePillHtml(r.type) || "–", className: "nowrap" }) },
-    available: { label: "Available", cell: r => ({ html: reportAvailableHtml(r), className: "nowrap" }) },
+    available: { label: "Available", className: "center", cell: r => ({ html: reportAvailableHtml(r), className: "nowrap center" }) },
     // The same, with the IHD (when there is one) under the pill.
     availableIhd: {
       label: "Available",
+      className: "center",
       cell: r => {
         const ihd = r.style ? ihdSortValue(r.style) : "";
         // The pill and the date centred on each other.
-        return { html: `<span class="avail-stack">${reportAvailableHtml(r)}${ihd ? `<span class="ihd-under">${escapeReportHtml(formatReportDate(ihd))}</span>` : ""}</span>`, className: "nowrap" };
+        return { html: `<span class="avail-stack">${reportAvailableHtml(r)}${ihd ? `<span class="ihd-under">${escapeReportHtml(formatReportDate(ihd))}</span>` : ""}</span>`, className: "nowrap center" };
       },
     },
     shoot: { label: "Shoot", cell: r => ({ html: reportMethodHtml(r) }) },
@@ -419,13 +500,14 @@ function reportAvailableHtml(r) {
  * name underneath, a finished one says Shot / Done (CG) and when.
  */
 function reportMethodHtml(r) {
-  const pill = (key, text) => `<span class="method ${key}">${escapeReportHtml(text)}</span>`;
+  const camera = '<svg class="report-camera" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="Photoshoot"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3z"/><circle cx="12" cy="13" r="4"/></svg>';
+  const pill = (key, text) => `<span class="method ${key}"${key === "photoshoot" ? ' title="Photoshoot"' : ""}>${key === "photoshoot" ? camera : escapeReportHtml(text)}</span>`;
   const sub = text => `<div class="method-sub">${escapeReportHtml(text)}</div>`;
   const status = r.status;
   if (status?.tone === "shot") return pill(status.shoots.length ? "photoshoot" : "cg", status.shoots.length ? "Photoshoot" : "CG") + sub(status.label);
   if (r.method === "cg") return pill("cg", "CG");
   if (r.method === "photoshoot") {
-    if (!r.shoot) return pill("photoshoot", "Photoshoot") + sub("Not scheduled");
+    if (!r.shoot) return pill("photoshoot", "Photoshoot");
     const more = status.shoots.length > 1 ? ` +${status.shoots.length - 1}` : "";
     return pill("photoshoot", "Photoshoot") + sub(`${r.shoot.date ? formatReportDate(r.shoot.date) : "No date"} · ${getPhotoshootTitle(r.shoot)}${more}`);
   }
@@ -470,22 +552,42 @@ function exportNeedPdf() {
   const rows = getNeedExportRows();
   const count = test => String(rows.filter(test).length);
   const cols = reportStyleColumns(rows);
+  // Count the exported style/color rows, using the same Available date as
+  // the list; include undated rows so the monthly totals reconcile.
+  const monthCounts = new Map();
+  rows.forEach(r => {
+    const month = /^\d{4}-\d{2}/.exec(r.availableDate ?? "")?.[0] ?? "";
+    monthCounts.set(month, (monthCounts.get(month) || 0) + 1);
+  });
+  const monthTotals = [...monthCounts].sort(([a], [b]) =>
+    a && b ? a.localeCompare(b) : a ? -1 : b ? 1 : 0
+  ).map(([month, qty]) => [month ? formatMonYY(month + "-01") : "No date", String(qty), { group: "Available" }]);
   printReport({
     fileTitle: `Need to Shoot ${todayYmd()}`,
+    rowsPerPage: 8,
     title: "Need to Shoot",
     meta: [
       ["Styles", String(rows.length)],
-      ["Photoshoot", count(r => r.method === "photoshoot")],
+      ["Shoot", count(r => r.method === "photoshoot")],
       ["CG", count(r => r.method === "cg")],
       ["To decide", count(r => !r.method)],
+      ...monthTotals,
     ],
     metaInHeader: true,
+    extraCss: `
+      .meta { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px 16px; max-width: 6.8in; }
+      .meta > div { align-items: center; text-align: center; }
+      .meta .meta-group { gap: 4px; padding: 5px 12px; border: 1px solid #cbd0d6; border-radius: 6px; }
+      .meta .meta-group-items { flex-direction: row; flex-wrap: wrap; justify-content: center; gap: 6px 16px; }
+      .meta-group-items > div { align-items: center; text-align: center; }
+      .meta-group-label { color: #4b5563; }
+    `,
     landscape: true,
     photos: reportHasPhotos(),
     rows,
     groupKey: reportNeedGroupKey,
     setKey: reportSetKey,
-    columns: [cols.styleNo, cols.color, cols.description, cols.type, cols.available, cols.shoot, cols.notes],
+    columns: [cols.styleNo, cols.color, cols.availableIhd, cols.type, cols.shoot, cols.notes, cols.description],
   });
 }
 
@@ -583,6 +685,7 @@ async function exportShootPdf(id, order = "") {
   await printReport({
     fileTitle: orderLabel ? `${shootFileBase(shoot)} ${orderLabel}` : shootFileBase(shoot),
     titleLabel: "Photoshoot",
+    rowsPerPage: 8,
     title: getPhotoshootTitle(shoot),
     subtitle: orderLabel ? `Sorted ${orderLabel.replace(/^By /, "by ")}` : "",
     meta: [
