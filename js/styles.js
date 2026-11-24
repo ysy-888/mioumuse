@@ -230,6 +230,7 @@ function applyStyleFilters({ keepShown = false } = {}) {
     if (!columnFilterPasses("stylesTable", "category", statusFilterKey(s.category))) return false;
     if (!columnFilterPasses("stylesTable", "season", statusFilterKey(s.season))) return false;
     if (!columnFilterPasses("stylesTable", "show", statusFilterKey(s.show))) return false;
+    if (!columnFilterPasses("stylesTable", "available", monthFilterKey(s.availableDate))) return false;
     if (noPhotos && (NO_PHOTOS_SKIP_STATUSES.some(st => statusFilterKey(s.status).toUpperCase().startsWith(st)) || hasStyleImages(s.styleNo, s.color))) return false;
     if (!STYLE_QTY_COLS.every(col => columnFilterPasses("stylesTable", col, styleQtyFilterKey(STYLE_COLUMNS[col].value(s))))) return false;
     if (!q) return true;
@@ -959,6 +960,14 @@ function initStylesView() {
   });
   initColumnFilter("stylesTable", "season", {
     options: () => statusFilterOptions(getAllStyles().map(s => s.season)),
+    onChange: () => applyStyleFilters(),
+    sortable: true,
+  });
+  initColumnFilter("stylesTable", "available", {
+    options: () => monthFilterOptions(getAllStyles().map(s => s.availableDate)).map(option => ({
+      ...option,
+      label: option.key === BLANK_FILTER_LABEL ? "No Available date" : formatMonYY(option.key),
+    })),
     onChange: () => applyStyleFilters(),
     sortable: true,
   });
