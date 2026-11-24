@@ -9276,7 +9276,6 @@ tr:hover .shoot-picker.is-unpicked,
 }
 .mg-avail-pill.is-yes { background: #dff3e6; color: #13703a; }
 .mg-avail-pill.is-no { background: #eef0f3; color: #6b7280; }
-.style-mg-status .mg-avail-pill.is-no,
 .style-mg-status .mg-avail-pill.is-ats-mismatch { background: #fee2e2; color: #b91c1c; }
 .mg-avail-pill.is-none { background: transparent; color: var(--text-muted); font-weight: 600; }
 .mg-avail-pill.is-none::before { display: none; }
