@@ -45,8 +45,8 @@ const STYLE_COLUMNS = {
   status: { value: s => s.status },
   // Showing on the webstore (js/magento-availability.js).
   magento: { value: s => styleMgStatusText(s) },
-  // "YYYY-MM" sorts as a date; shown as a JUL 26 pill.
-  available: { value: s => s.availableDate ?? "", display: s => formatMonYY(s.availableDate) },
+  // Sort by the confirmed IHD displayed beneath the Available month; unconfirmed dates stay blank.
+  available: { value: s => ihdSortValue(s), display: s => formatMonYY(s.availableDate) },
   // "YYYY-MM-DD" sorts as a date; blanks on top soonest first, at the bottom latest first.
   ihd: { value: s => ihdSortValue(s) }, // as it shows: a PO's 1/1 placeholder as blank, an old 0026-… as 2026
   notes: { value: s => s.notes ?? "" },

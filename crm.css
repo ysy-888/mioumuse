@@ -7601,6 +7601,9 @@ span.dash-event { cursor: pointer; /* clicking selects the day */ }
 .styles-table td[data-col="show"] { text-align: center; }
 .styles-table .col-status      { width: 110px; min-width: 100px; }
 .styles-table .col-available   { width: 84px;  min-width: 76px; }
+#stylesTable .col-available { width: 120px; min-width: 120px; }
+#stylesTable thead th[data-col="available"],
+#stylesTable thead th[data-col="available"] .th-label { white-space: nowrap; }
 .styles-table td.cell-num { font-variant-numeric: tabular-nums; white-space: nowrap; padding-left: 6px; padding-right: 6px; }
 /* Qty: OH / WIP / OO / ATS / Received / Invoiced in one column, as in the
    style pane — a sub-header per figure (each sorts and filters), the row's
