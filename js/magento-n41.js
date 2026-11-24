@@ -34,6 +34,7 @@ let mgOpenOrders = null;
 let mgOpenOrdersError = "";
 /** Ticked orders, across pages: id → { id, number, status }. */
 let mgOrderSelected = new Map();
+let mgCancelAllBusy = false;
 
 const MG_N41_CLOSED = "closed";
 const MG_CANCELABLE_STATUSES = ["pending", "processing"];
@@ -201,6 +202,13 @@ function syncMgN41FlaggedButton() {
   const n = mgOpenOrders?.filter(isMgOrderFlagged).length;
   btn.textContent = n === undefined ? "Closed on N41" : `Closed on N41 (${n.toLocaleString()})`;
   btn.title = `Closed on N41 but Pending or Processing on Magento. N41 report imported ${mgN41ImportedAt ? new Date(mgN41ImportedAt).toLocaleString() : ""}.`;
+  const cancelAll = document.getElementById("mgCancelAllN41ClosedBtn");
+  if (cancelAll) {
+    cancelAll.hidden = !show;
+    cancelAll.disabled = mgCancelAllBusy || !n;
+    cancelAll.textContent = n === undefined ? "Cancel all Closed on N41" : `Cancel all Closed on N41 (${n.toLocaleString()})`;
+    cancelAll.title = "Across all pages, regardless of search or date/status filters. Cancels all uninvoiced quantities. Closed can also mean transferred to a consolidated SO.";
+  }
 }
 
 // ── Cancel ───────────────────────────────────────────────────────────────────
@@ -213,6 +221,7 @@ function describeMgCancelConfirm(orders) {
     `Cancel ${n === 1 ? "this order" : `these ${n.toLocaleString()} orders`} on Magento?`,
     numbers,
     "Everything not invoiced yet is canceled. This can't be undone.",
+    "Closed on N41 can also mean transferred to a consolidated SO, rather than canceled. Those orders are included too.",
     notClosed ? `${notClosed === 1 ? "1 of them isn't" : `${notClosed.toLocaleString()} of them aren't`} Closed on N41.` : "",
   ].filter(Boolean).join("\n\n");
 }
@@ -232,7 +241,36 @@ function describeMgCancelResults(results) {
 }
 
 async function cancelMgSelectedOrders() {
-  const orders = [...mgOrderSelected.values()];
+  return cancelMgOrders([...mgOrderSelected.values()]);
+}
+
+/** All flagged orders across pages, refreshed before asking for confirmation. */
+async function cancelMgAllN41ClosedOrders() {
+  if (mgCancelAllBusy) return;
+  mgCancelAllBusy = true;
+  syncMgN41FlaggedButton();
+  try {
+    const loaded = await loadN41OrderRows();
+    if (!loaded) throw new Error("Couldn't load the imported N41 report.");
+    mgN41 = loaded.orders;
+    mgN41ImportedAt = loaded.importedAt;
+    await loadMgOpenOrders();
+    if (mgOpenOrdersError || !mgOpenOrders) throw new Error(mgOpenOrdersError || "Couldn't read the open Magento orders.");
+    const orders = mgOpenOrders.filter(isMgOrderFlagged);
+    if (!orders.length) {
+      showIndicator("No open Magento orders are Closed on N41.", "success");
+      return;
+    }
+    await cancelMgOrders(orders);
+  } catch (err) {
+    showIndicator(err.message || "Couldn't cancel the orders.", "error");
+  } finally {
+    mgCancelAllBusy = false;
+    syncMgN41FlaggedButton();
+  }
+}
+
+async function cancelMgOrders(orders) {
   if (!orders.length || !confirm(describeMgCancelConfirm(orders))) return;
   const results = [];
   let stopped = "";
@@ -383,6 +421,7 @@ function initMagentoN41() {
     setMgSalesQuery("orders", { flagged: !MG_SALES.orders.query.flagged });
   });
   document.getElementById("mgCancelOrdersBtn")?.addEventListener("click", cancelMgSelectedOrders);
+  document.getElementById("mgCancelAllN41ClosedBtn")?.addEventListener("click", cancelMgAllN41ClosedOrders);
   document.getElementById("mgClearOrderSelectionBtn")?.addEventListener("click", clearMgOrderSelection);
   document.getElementById("mgOrderSelectAll")?.addEventListener("change", e => {
     MG_SALES.orders.page.items.filter(isMgOrderCancelable).forEach(o => setMgOrderSelected(o, e.target.checked));

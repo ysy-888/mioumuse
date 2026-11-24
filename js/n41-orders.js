@@ -42,19 +42,57 @@ function soNum(value) {
   return Number.isFinite(n) ? n : 0;
 }
 
+/** Read CSV one row at a time, without a worksheet object containing millions of cell properties. */
+function* n41SoCsvRows(text) {
+  let headers = null;
+  let row = [];
+  let cell = "";
+  let quoted = false;
+  const record = cells => {
+    if (cells.every(value => value === "")) return null;
+    if (!headers) {
+      headers = cells.map(value => value.trim());
+      return null;
+    }
+    return Object.fromEntries(headers.map((name, i) => [name, cells[i] ?? ""]));
+  };
+  for (let i = text.charCodeAt(0) === 0xfeff ? 1 : 0; i < text.length; i++) {
+    const c = text[i];
+    if (quoted) {
+      if (c === '"') {
+        if (text[i + 1] === '"') { cell += '"'; i++; }
+        else quoted = false;
+      } else cell += c;
+    } else if (c === '"' && cell === "") quoted = true;
+    else if (c === ",") { row.push(cell); cell = ""; }
+    else if (c === "\n" || c === "\r") {
+      if (c === "\r" && text[i + 1] === "\n") i++;
+      row.push(cell);
+      const value = record(row);
+      if (value) yield value;
+      row = [];
+      cell = "";
+    } else cell += c;
+  }
+  if (quoted) throw new Error("The CSV has an unclosed quoted field. Export it again from N41.");
+  if (cell !== "" || row.length) {
+    row.push(cell);
+    const value = record(row);
+    if (value) yield value;
+  }
+}
+
 /** The export's rows as objects by header (the .csv is read as text, Windows or UTF-8). */
 async function readN41SoFile(file) {
-  await loadSheetJs();
-  let book;
   if (/\.csv$/i.test(file.name)) {
     const bytes = new Uint8Array(await file.arrayBuffer());
     let text;
     try { text = new TextDecoder("utf-8", { fatal: true }).decode(bytes); }
     catch { text = new TextDecoder("windows-1252").decode(bytes); }
-    book = XLSX.read(text.replace(/^﻿/, ""), { type: "string", raw: true });
-  } else {
-    book = XLSX.read(await file.arrayBuffer(), { type: "array" });
+    return n41SoCsvRows(text);
   }
+  await loadSheetJs();
+  const book = XLSX.read(await file.arrayBuffer(), { type: "array", dense: true });
   const sheet = book.Sheets[book.SheetNames[0]];
   if (!sheet) throw new Error("That file has no sheets.");
   return XLSX.utils.sheet_to_json(sheet, { defval: "", raw: false });
@@ -67,7 +105,9 @@ async function readN41SoFile(file) {
  */
 function parseN41SoRows(rows) {
   const need = ["orderno", "sod_id", "status", "customer", "style", "color"];
-  const first = rows[0] ?? {};
+  const iterator = rows[Symbol.iterator]();
+  const firstRow = iterator.next();
+  const first = firstRow.value ?? {};
   const missing = need.filter(k => !(k in first));
   if (missing.length) {
     throw new Error(`That isn't N41's Sales Orders export — it's missing ${missing.join(", ")}. Export the order lines (.csv with orderno, sod_id …).`);
@@ -78,7 +118,8 @@ function parseN41SoRows(rows) {
   const seen = new Set();
   let otherRows = 0;
   let repeated = 0;
-  for (const r of rows) {
+  for (let entry = firstRow; !entry.done; entry = iterator.next()) {
+    const r = entry.value;
     const sodId = parseInt(s(r.sod_id), 10);
     const orderNo = s(r.orderno).replace(/\.0+$/, "");
     if (!Number.isFinite(sodId) || !orderNo) continue; // blank or total rows

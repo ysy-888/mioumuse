@@ -763,10 +763,11 @@ function styleAtsAvailableMismatch(style, availability = styleMgAvailability(sty
   return ats !== null && ats <= 0 && Boolean(availability.sku) && availability.available === true;
 }
 
-/** Known ATS of at least six, while the Magento colour is not available. */
+/** Known ATS and OH of at least six, while the Magento colour is not available. */
 function styleAtsUnavailableMismatch(style, availability = styleMgAvailability(style)) {
   const ats = numOrNull(style.ats);
-  return ats !== null && ats >= 6 && Boolean(availability.sku) && availability.available === false;
+  const oh = numOrNull(style.oh);
+  return ats !== null && ats >= 6 && oh !== null && oh >= 6 && Boolean(availability.sku) && availability.available === false;
 }
 
 /** Linked Magento products with no assigned photo, regardless of availability. */
@@ -802,7 +803,7 @@ function createStyleMgStatusCell(style) {
   }
   if (styleAtsUnavailableMismatch(style, { sku, available })) {
     pill.classList.add("is-ats-mismatch");
-    wrap.title += ` — ATS ${numOrNull(style.ats)}: should be available`;
+    wrap.title += ` — ATS ${numOrNull(style.ats)}, OH ${numOrNull(style.oh)}: should be available`;
   }
   wrap.appendChild(pill);
   return wrap;
