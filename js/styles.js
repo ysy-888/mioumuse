@@ -222,6 +222,33 @@ function compareStyles(a, b) {
   return a.styleNo.localeCompare(b.styleNo, undefined, { numeric: true }) || a.color.localeCompare(b.color);
 }
 
+/** Group only complete sets in the current result, preserving the first piece's sort position. */
+function completeStyleSetBlocks(rows) {
+  const candidates = new Map();
+  rows.forEach(row => {
+    const key = styleSetKey(row.styleNo, row.color);
+    if (!key) return;
+    if (!candidates.has(key)) candidates.set(key, []);
+    candidates.get(key).push(row);
+  });
+  const complete = new Map();
+  candidates.forEach((members, key) => {
+    const pieces = getStyleSetPieces(members[0].styleNo);
+    const present = new Set(members.map(row => baseStyleNo(row.styleNo)));
+    if (pieces && pieces.size > 1 && [...pieces].every(no => present.has(no))) {
+      complete.set(key, groupBySet(members)[0]);
+    }
+  });
+  const emitted = new Set();
+  return rows.flatMap(row => {
+    const key = styleSetKey(row.styleNo, row.color);
+    if (!complete.has(key)) return [[row]];
+    if (emitted.has(key)) return [];
+    emitted.add(key);
+    return [complete.get(key)];
+  });
+}
+
 function applyStyleFilters({ keepShown = false } = {}) {
   const q = (document.getElementById("styleSearchInput")?.value ?? "").trim().toLowerCase();
   setActiveSearchQuery(q);
@@ -243,6 +270,7 @@ function applyStyleFilters({ keepShown = false } = {}) {
     return styleSearchText(s).includes(q);
   });
   filteredStyles.sort(compareStyles);
+  filteredStyles = completeStyleSetBlocks(filteredStyles).flat();
   // A new search or filter starts at page 1; a redraw (a save, a photo scan) stays put.
   stylePage = keepShown ? clampTablePage(stylePage, filteredStyles.length, stylePageSize) : 1;
 
@@ -572,12 +600,22 @@ function renderStylesTable() {
     return;
   }
 
-  const rows = filteredStyles.slice((stylePage - 1) * stylePageSize, stylePage * stylePageSize).map(style => {
+  const pageRows = filteredStyles.slice((stylePage - 1) * stylePageSize, stylePage * stylePageSize);
+  const setOf = new Map();
+  completeStyleSetBlocks(pageRows).forEach((block, i) => {
+    if (block.length > 1) block.forEach(row => setOf.set(row, i));
+  });
+  const setPlace = groupPlaces(pageRows, setOf);
+  const rows = pageRows.map(style => {
     const tr = document.createElement("tr");
     // Click a row for all of its photos.
     tr.className = "clickable-row";
     tr.dataset.styleNo = style.styleNo;
     tr.dataset.color = style.color;
+    if (setPlace.has(style)) {
+      tr.classList.add("set-row");
+      tr.dataset.setPlace = setPlace.get(style);
+    }
     cols.forEach(col => {
       const td = document.createElement("td");
       td.dataset.col = col;
@@ -591,6 +629,7 @@ function renderStylesTable() {
       else if (col === "qtys") td.appendChild(createStyleQtyStrip(style));
       else {
         mountSearchHighlightedText(td, (STYLE_COLUMNS[col].display ?? STYLE_COLUMNS[col].value)(style));
+        if (col === "styleNo" && setPlace.has(style)) td.appendChild(createSetTag(style.styleNo, style.color));
         if (STYLE_COLUMNS[col].numeric) td.classList.add("cell-num");
       }
       if (col === "description" && style.description) td.title = style.description;

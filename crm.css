@@ -12220,10 +12220,10 @@ td > .style-shoot-cell {
    pill's colour). Each row draws its part; the cell lets it reach over its
    bottom line (overflow visible — a Style # never needs the ellipsis) so it
    runs unbroken. Every Style # leaves room for it, so they all line up. */
-.need-table th[data-col="styleNo"],
-.need-table td[data-col="styleNo"] { padding-left: 20px; }
-.need-table tbody > tr.set-row > td[data-col="styleNo"] { position: relative; overflow: visible; }
-.need-table tbody > tr.set-row:is([data-set-place="first"], [data-set-place="mid"], [data-set-place="last"]) > td[data-col="styleNo"]::before {
+:is(.need-table, #stylesTable) th[data-col="styleNo"],
+:is(.need-table, #stylesTable) td[data-col="styleNo"] { padding-left: 20px; }
+:is(.need-table, #stylesTable) tbody > tr.set-row > td[data-col="styleNo"] { position: relative; overflow: visible; }
+:is(.need-table, #stylesTable) tbody > tr.set-row:is([data-set-place="first"], [data-set-place="mid"], [data-set-place="last"]) > td[data-col="styleNo"]::before {
   content: "";
   position: absolute;
   left: 8px;
@@ -12232,9 +12232,9 @@ td > .style-shoot-cell {
   z-index: 1;
   pointer-events: none;
 }
-.need-table tbody > tr.set-row[data-set-place="first"] > td[data-col="styleNo"]::before { top: 50%; bottom: -1px; border-top: 1.5px solid #b3b9c2; border-top-left-radius: 6px; }
-.need-table tbody > tr.set-row[data-set-place="mid"] > td[data-col="styleNo"]::before { top: -1px; bottom: -1px; }
-.need-table tbody > tr.set-row[data-set-place="last"] > td[data-col="styleNo"]::before { top: -1px; bottom: 50%; border-bottom: 1.5px solid #b3b9c2; border-bottom-left-radius: 6px; }
+:is(.need-table, #stylesTable) tbody > tr.set-row[data-set-place="first"] > td[data-col="styleNo"]::before { top: 50%; bottom: -1px; border-top: 1.5px solid #b3b9c2; border-top-left-radius: 6px; }
+:is(.need-table, #stylesTable) tbody > tr.set-row[data-set-place="mid"] > td[data-col="styleNo"]::before { top: -1px; bottom: -1px; }
+:is(.need-table, #stylesTable) tbody > tr.set-row[data-set-place="last"] > td[data-col="styleNo"]::before { top: -1px; bottom: 50%; border-bottom: 1.5px solid #b3b9c2; border-bottom-left-radius: 6px; }
 
 /* In a shoot: a style group (a Style # in several colours, or a set in all
    its colours) in one neutral grey box, as on Need to Shoot. It's one block:
