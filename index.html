@@ -8,7 +8,7 @@
 <link rel="apple-touch-icon" href="favicon.png?v=2" />
 <!-- CodeMirror's own styles (before crm.css, which recolours it); its scripts load when Edit HTML is first opened (js/email.js). -->
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.css" />
-<link rel="stylesheet" href="crm.css?v=20261124-1721" />
+<link rel="stylesheet" href="crm.css?v=20261124-1724" />
 </head>
 <body>
 
@@ -296,6 +296,7 @@
         <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true"><path d="M2 2l20 20"/><path d="M10.4 3H19a2 2 0 0 1 2 2v8.6M21 19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2"/><path d="m21 15-3.1-3.1M14 14 5 21"/></svg>
       </button>
       <!-- Deleted styles instead of the rest; only there once something's deleted. -->
+      <button type="button" class="filter-btn" id="styleAtsAvailableBtn" aria-pressed="false" title="ATS 0 or below but Available on Magento; unknown ATS or Magento status is excluded">ATS ≤ 0, Magento Available</button>
       <button type="button" class="filter-btn filter-btn-icon" id="styleDeletedBtn" aria-label="Show deleted styles" aria-pressed="false" hidden>
         <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>
       </button>
@@ -2520,61 +2521,61 @@
   </div>
 </div>
 
-<script src="js/config.js?v=20261124-1721"></script>
+<script src="js/config.js?v=20261124-1724"></script>
 <!-- Needs SUPABASE_URL/KEY from config.js and the CDN client above. -->
-<script src="js/auth.js?v=20261124-1721"></script>
-<script src="js/util.js?v=20261124-1721"></script>
-<script src="js/notifications.js?v=20261124-1721"></script>
-<script src="js/dates.js?v=20261124-1721"></script>
-<script src="js/store.js?v=20261124-1721"></script>
-<script src="js/tasks.js?v=20261124-1721"></script>
-<script src="js/app-shell.js?v=20261124-1721"></script>
-<script src="js/table-pager.js?v=20261124-1721"></script>
-<script src="js/record-list.js?v=20261124-1721"></script>
-<script src="js/item-pane.js?v=20261124-1721"></script>
-<script src="js/campaign-form.js?v=20261124-1721"></script>
-<script src="js/trade-show-form.js?v=20261124-1721"></script>
-<script src="js/banners.js?v=20261124-1721"></script>
-<script src="js/banner-form.js?v=20261124-1721"></script>
-<script src="js/mailchimp.js?v=20261124-1721"></script>
-<script src="js/style-import.js?v=20261124-1721"></script>
-<script src="js/column-filter.js?v=20261124-1721"></script>
-<script src="js/styles.js?v=20261124-1721"></script>
-<script src="js/style-images.js?v=20261124-1721"></script>
-<script src="js/sample-photos.js?v=20261124-1721"></script>
-<script src="js/photoshoots.js?v=20261124-1721"></script>
-<script src="js/complete.js?v=20261124-1721"></script>
-<script src="js/photoshoot-form.js?v=20261124-1721"></script>
-<script src="js/purchase-orders.js?v=20261124-1721"></script>
-<script src="js/production-import.js?v=20261124-1721"></script>
-<script src="js/ats-import.js?v=20261124-1721"></script>
-<script src="js/n41-import.js?v=20261124-1721"></script>
-<script src="js/style-pane.js?v=20261124-1721"></script>
-<script src="js/magento.js?v=20261124-1721"></script>
-<script src="js/magento-availability.js?v=20261124-1721"></script>
-<script src="js/magento-photos.js?v=20261124-1721"></script>
-<script src="js/magento-group-order.js?v=20261124-1721"></script>
-<script src="js/magento-sales.js?v=20261124-1721"></script>
-<script src="js/magento-n41.js?v=20261124-1721"></script>
-<script src="js/magento-events.js?v=20261124-1721"></script>
-<script src="js/trade-show-import.js?v=20261124-1721"></script>
-<script src="js/magento-groups.js?v=20261124-1721"></script>
-<script src="js/table-view.js?v=20261124-1721"></script>
-<script src="js/exports.js?v=20261124-1721"></script>
-<script src="js/copy-menu.js?v=20261124-1721"></script>
-<script src="js/row-quick-select.js?v=20261124-1721"></script>
-<script src="js/pane-dismiss.js?v=20261124-1721"></script>
-<script src="js/shortcuts.js?v=20261124-1721"></script>
-<script src="js/header-search.js?v=20261124-1721"></script>
-<script src="js/calendar.js?v=20261124-1721"></script>
-<script src="js/holidays.js?v=20261124-1721"></script>
-<script src="js/email.js?v=20261124-1721"></script>
-<script src="js/po-detail.js?v=20261124-1721"></script>
-<script src="js/chat.js?v=20261124-1721"></script>
-<script src="js/activity.js?v=20261124-1721"></script>
-<script src="js/n41-orders.js?v=20261124-1721"></script>
-<script src="js/home.js?v=20261124-1721"></script>
-<script src="js/sales.js?v=20261124-1721"></script>
-<script src="js/main.js?v=20261124-1721"></script>
+<script src="js/auth.js?v=20261124-1724"></script>
+<script src="js/util.js?v=20261124-1724"></script>
+<script src="js/notifications.js?v=20261124-1724"></script>
+<script src="js/dates.js?v=20261124-1724"></script>
+<script src="js/store.js?v=20261124-1724"></script>
+<script src="js/tasks.js?v=20261124-1724"></script>
+<script src="js/app-shell.js?v=20261124-1724"></script>
+<script src="js/table-pager.js?v=20261124-1724"></script>
+<script src="js/record-list.js?v=20261124-1724"></script>
+<script src="js/item-pane.js?v=20261124-1724"></script>
+<script src="js/campaign-form.js?v=20261124-1724"></script>
+<script src="js/trade-show-form.js?v=20261124-1724"></script>
+<script src="js/banners.js?v=20261124-1724"></script>
+<script src="js/banner-form.js?v=20261124-1724"></script>
+<script src="js/mailchimp.js?v=20261124-1724"></script>
+<script src="js/style-import.js?v=20261124-1724"></script>
+<script src="js/column-filter.js?v=20261124-1724"></script>
+<script src="js/styles.js?v=20261124-1724"></script>
+<script src="js/style-images.js?v=20261124-1724"></script>
+<script src="js/sample-photos.js?v=20261124-1724"></script>
+<script src="js/photoshoots.js?v=20261124-1724"></script>
+<script src="js/complete.js?v=20261124-1724"></script>
+<script src="js/photoshoot-form.js?v=20261124-1724"></script>
+<script src="js/purchase-orders.js?v=20261124-1724"></script>
+<script src="js/production-import.js?v=20261124-1724"></script>
+<script src="js/ats-import.js?v=20261124-1724"></script>
+<script src="js/n41-import.js?v=20261124-1724"></script>
+<script src="js/style-pane.js?v=20261124-1724"></script>
+<script src="js/magento.js?v=20261124-1724"></script>
+<script src="js/magento-availability.js?v=20261124-1724"></script>
+<script src="js/magento-photos.js?v=20261124-1724"></script>
+<script src="js/magento-group-order.js?v=20261124-1724"></script>
+<script src="js/magento-sales.js?v=20261124-1724"></script>
+<script src="js/magento-n41.js?v=20261124-1724"></script>
+<script src="js/magento-events.js?v=20261124-1724"></script>
+<script src="js/trade-show-import.js?v=20261124-1724"></script>
+<script src="js/magento-groups.js?v=20261124-1724"></script>
+<script src="js/table-view.js?v=20261124-1724"></script>
+<script src="js/exports.js?v=20261124-1724"></script>
+<script src="js/copy-menu.js?v=20261124-1724"></script>
+<script src="js/row-quick-select.js?v=20261124-1724"></script>
+<script src="js/pane-dismiss.js?v=20261124-1724"></script>
+<script src="js/shortcuts.js?v=20261124-1724"></script>
+<script src="js/header-search.js?v=20261124-1724"></script>
+<script src="js/calendar.js?v=20261124-1724"></script>
+<script src="js/holidays.js?v=20261124-1724"></script>
+<script src="js/email.js?v=20261124-1724"></script>
+<script src="js/po-detail.js?v=20261124-1724"></script>
+<script src="js/chat.js?v=20261124-1724"></script>
+<script src="js/activity.js?v=20261124-1724"></script>
+<script src="js/n41-orders.js?v=20261124-1724"></script>
+<script src="js/home.js?v=20261124-1724"></script>
+<script src="js/sales.js?v=20261124-1724"></script>
+<script src="js/main.js?v=20261124-1724"></script>
 </body>
 </html>

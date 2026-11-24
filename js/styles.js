@@ -14,6 +14,7 @@
 
 let filteredStyles = [];
 let styleNoPhotosOnly = false; // needs the image folder
+let styleAtsAvailableOnly = false;
 /** The deleted styles instead of the rest, to restore some. Search only. */
 let styleShowDeleted = false;
 let styleSortCol = null;
@@ -231,6 +232,7 @@ function applyStyleFilters({ keepShown = false } = {}) {
     if (!columnFilterPasses("stylesTable", "season", statusFilterKey(s.season))) return false;
     if (!columnFilterPasses("stylesTable", "show", statusFilterKey(s.show))) return false;
     if (!columnFilterPasses("stylesTable", "available", monthFilterKey(s.availableDate))) return false;
+    if (styleAtsAvailableOnly && !styleAtsAvailableMismatch(s)) return false;
     if (noPhotos && (NO_PHOTOS_SKIP_STATUSES.some(st => statusFilterKey(s.status).toUpperCase().startsWith(st)) || hasStyleImages(s.styleNo, s.color))) return false;
     if (!STYLE_QTY_COLS.every(col => columnFilterPasses("stylesTable", col, styleQtyFilterKey(STYLE_COLUMNS[col].value(s))))) return false;
     if (!q) return true;
@@ -258,6 +260,12 @@ function applyStyleFilters({ keepShown = false } = {}) {
  * styles turns the rest of the filters off.
  */
 function renderStyleFilters() {
+  const mismatch = document.getElementById("styleAtsAvailableBtn");
+  if (mismatch) {
+    mismatch.disabled = styleShowDeleted;
+    mismatch.classList.toggle("active", !styleShowDeleted && styleAtsAvailableOnly);
+    mismatch.setAttribute("aria-pressed", String(!styleShowDeleted && styleAtsAvailableOnly));
+  }
   const btn = document.getElementById("styleNoPhotosBtn");
   if (btn) {
     const known = arePhotosKnown() && !styleShowDeleted;
@@ -1011,6 +1019,10 @@ function initStylesView() {
     applyStyleFilters();
   });
   document.getElementById("styleDeletedBtn")?.addEventListener("click", () => setStyleShowDeleted(!styleShowDeleted));
+  document.getElementById("styleAtsAvailableBtn")?.addEventListener("click", () => {
+    styleAtsAvailableOnly = !styleAtsAvailableOnly;
+    applyStyleFilters();
+  });
   document.getElementById("styleDeleteBtn")?.addEventListener("click", deleteSelectedStyles);
   document.getElementById("styleRestoreBtn")?.addEventListener("click", restoreSelectedStyles);
   initStyleImport();

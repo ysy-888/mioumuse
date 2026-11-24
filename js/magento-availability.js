@@ -757,11 +757,17 @@ function styleMgStatusText(style) {
   return available === true ? "Available" : available === false ? "Not available" : "";
 }
 
+/** Known ATS at or below zero, while Magento still shows the colour as available. */
+function styleAtsAvailableMismatch(style, availability = styleMgAvailability(style)) {
+  const ats = numOrNull(style.ats);
+  return ats !== null && ats <= 0 && Boolean(availability.sku) && availability.available === true;
+}
+
 /** The Magento Status pill — why not, and the SKU, in its tooltip. */
 function createStyleMgStatusCell(style) {
   const { sku, available, reasons } = styleMgAvailability(style);
   const wrap = document.createElement("span");
-  wrap.className = "mg-avail-cell";
+  wrap.className = "mg-avail-cell style-mg-status";
   const pill = document.createElement("span");
   if (sku === "") {
     // Not on Magento: just a dash (the tooltip says so).
@@ -773,6 +779,10 @@ function createStyleMgStatusCell(style) {
     pill.textContent = available === true ? "Available" : available === false ? "Not available" : "?";
     const head = available === true ? "Showing on the webstore" : available === false ? "Not showing on the webstore" : "Can't tell yet";
     wrap.title = (sku ? `${sku} — ` : "") + head + (reasons.length && available !== true ? `: ${reasons.join("; ")}` : "");
+  }
+  if (styleAtsAvailableMismatch(style, { sku, available })) {
+    pill.classList.add("is-ats-mismatch");
+    wrap.title += ` — ATS ${numOrNull(style.ats)}: should not be available`;
   }
   wrap.appendChild(pill);
   return wrap;
@@ -795,7 +805,7 @@ function ensureStyleMgAvailability() {
 function refreshStyleMgViews({ pane = false } = {}) {
   if (!styleMgStarted) return;
   if (getCurrentAppView() === "styles") {
-    if (styleSortCol === "magento") applyStyleFilters({ keepShown: true });
+    if (styleSortCol === "magento" || styleAtsAvailableOnly) applyStyleFilters({ keepShown: true });
     else renderStylesTable();
   }
   const paneEl = document.getElementById("stylePane");
