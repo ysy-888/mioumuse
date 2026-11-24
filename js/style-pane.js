@@ -255,9 +255,22 @@ function renderStylePaneHeader(style) {
     wrap.append(l, el);
     return wrap;
   };
+  const magento = status("Magento", createStyleMgStatusCell(style));
+  const sku = styleMgSku(style);
+  const indexed = sku ? mgIndex?.get(sku) : null;
+  if (indexed && (indexed.status === 1 || indexed.status === 2)) {
+    const product = mgPage.items.find(p => p.sku === sku) ?? { ...indexed, sku };
+    magento.appendChild(createMgStatusSwitch(product, {
+      onSaved: () => {
+        if (paneStyle?.styleNo === style.styleNo && paneStyle?.color === style.color) {
+          renderStylePaneHeader(findStyle(style.styleNo, style.color) ?? style);
+        }
+      },
+    }));
+  }
   document.getElementById("stylePaneStatuses").replaceChildren(
     status("N41", createStyleStatusPill(style.status)),
-    status("Magento", createStyleMgStatusCell(style)), // js/magento-availability.js
+    magento,
   );
 }
 

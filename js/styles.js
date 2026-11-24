@@ -15,6 +15,8 @@
 let filteredStyles = [];
 let styleNoPhotosOnly = false; // needs the image folder
 let styleAtsAvailableOnly = false;
+let styleAtsUnavailableOnly = false;
+let styleMagentoNoPhotoOnly = false;
 /** The deleted styles instead of the rest, to restore some. Search only. */
 let styleShowDeleted = false;
 let styleSortCol = null;
@@ -233,6 +235,8 @@ function applyStyleFilters({ keepShown = false } = {}) {
     if (!columnFilterPasses("stylesTable", "show", statusFilterKey(s.show))) return false;
     if (!columnFilterPasses("stylesTable", "available", monthFilterKey(s.availableDate))) return false;
     if (styleAtsAvailableOnly && !styleAtsAvailableMismatch(s)) return false;
+    if (styleAtsUnavailableOnly && !styleAtsUnavailableMismatch(s)) return false;
+    if (styleMagentoNoPhotoOnly && !styleMagentoMissingPhoto(s)) return false;
     if (noPhotos && (NO_PHOTOS_SKIP_STATUSES.some(st => statusFilterKey(s.status).toUpperCase().startsWith(st)) || hasStyleImages(s.styleNo, s.color))) return false;
     if (!STYLE_QTY_COLS.every(col => columnFilterPasses("stylesTable", col, styleQtyFilterKey(STYLE_COLUMNS[col].value(s))))) return false;
     if (!q) return true;
@@ -260,6 +264,18 @@ function applyStyleFilters({ keepShown = false } = {}) {
  * styles turns the rest of the filters off.
  */
 function renderStyleFilters() {
+  const noMagentoPhoto = document.getElementById("styleMagentoNoPhotoBtn");
+  if (noMagentoPhoto) {
+    noMagentoPhoto.disabled = styleShowDeleted;
+    noMagentoPhoto.classList.toggle("active", !styleShowDeleted && styleMagentoNoPhotoOnly);
+    noMagentoPhoto.setAttribute("aria-pressed", String(!styleShowDeleted && styleMagentoNoPhotoOnly));
+  }
+  const unavailable = document.getElementById("styleAtsUnavailableBtn");
+  if (unavailable) {
+    unavailable.disabled = styleShowDeleted;
+    unavailable.classList.toggle("active", !styleShowDeleted && styleAtsUnavailableOnly);
+    unavailable.setAttribute("aria-pressed", String(!styleShowDeleted && styleAtsUnavailableOnly));
+  }
   const mismatch = document.getElementById("styleAtsAvailableBtn");
   if (mismatch) {
     mismatch.disabled = styleShowDeleted;
@@ -1019,8 +1035,18 @@ function initStylesView() {
     applyStyleFilters();
   });
   document.getElementById("styleDeletedBtn")?.addEventListener("click", () => setStyleShowDeleted(!styleShowDeleted));
+  document.getElementById("styleMagentoNoPhotoBtn")?.addEventListener("click", () => {
+    styleMagentoNoPhotoOnly = !styleMagentoNoPhotoOnly;
+    applyStyleFilters();
+  });
   document.getElementById("styleAtsAvailableBtn")?.addEventListener("click", () => {
     styleAtsAvailableOnly = !styleAtsAvailableOnly;
+    styleAtsUnavailableOnly = false;
+    applyStyleFilters();
+  });
+  document.getElementById("styleAtsUnavailableBtn")?.addEventListener("click", () => {
+    styleAtsUnavailableOnly = !styleAtsUnavailableOnly;
+    styleAtsAvailableOnly = false;
     applyStyleFilters();
   });
   document.getElementById("styleDeleteBtn")?.addEventListener("click", deleteSelectedStyles);

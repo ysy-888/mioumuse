@@ -763,6 +763,22 @@ function styleAtsAvailableMismatch(style, availability = styleMgAvailability(sty
   return ats !== null && ats <= 0 && Boolean(availability.sku) && availability.available === true;
 }
 
+/** Known ATS of at least six, while the Magento colour is not available. */
+function styleAtsUnavailableMismatch(style, availability = styleMgAvailability(style)) {
+  const ats = numOrNull(style.ats);
+  return ats !== null && ats >= 6 && Boolean(availability.sku) && availability.available === false;
+}
+
+/** Linked Magento products with no assigned photo, regardless of availability. */
+function styleMagentoMissingPhoto(style) {
+  const sku = styleMgSku(style);
+  if (!sku || mgDuplicateSkus.has(sku)) return false;
+  const image = mgIndex?.get(sku)?.image;
+  // Older catalogs omit image information; don't treat unknowns as missing.
+  if (image === undefined || image === null) return false;
+  return !String(image).trim() || String(image).trim() === "no_selection";
+}
+
 /** The Magento Status pill — why not, and the SKU, in its tooltip. */
 function createStyleMgStatusCell(style) {
   const { sku, available, reasons } = styleMgAvailability(style);
@@ -783,6 +799,10 @@ function createStyleMgStatusCell(style) {
   if (styleAtsAvailableMismatch(style, { sku, available })) {
     pill.classList.add("is-ats-mismatch");
     wrap.title += ` — ATS ${numOrNull(style.ats)}: should not be available`;
+  }
+  if (styleAtsUnavailableMismatch(style, { sku, available })) {
+    pill.classList.add("is-ats-mismatch");
+    wrap.title += ` — ATS ${numOrNull(style.ats)}: should be available`;
   }
   wrap.appendChild(pill);
   return wrap;
@@ -805,7 +825,7 @@ function ensureStyleMgAvailability() {
 function refreshStyleMgViews({ pane = false } = {}) {
   if (!styleMgStarted) return;
   if (getCurrentAppView() === "styles") {
-    if (styleSortCol === "magento" || styleAtsAvailableOnly) applyStyleFilters({ keepShown: true });
+    if (styleSortCol === "magento" || styleAtsAvailableOnly || styleAtsUnavailableOnly || styleMagentoNoPhotoOnly) applyStyleFilters({ keepShown: true });
     else renderStylesTable();
   }
   const paneEl = document.getElementById("stylePane");

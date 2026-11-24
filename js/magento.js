@@ -640,7 +640,7 @@ function mgHeaderFilterOptions(col) {
 
 // ── Products table ───────────────────────────────────────────────────────────
 
-function createMgStatusSwitch(product) {
+function createMgStatusSwitch(product, { onSaved = null } = {}) {
   const btn = document.createElement("button");
   btn.type = "button";
   btn.className = "mg-status-switch";
@@ -676,6 +676,9 @@ function createMgStatusSwitch(product) {
         renderMagentoPane();
       }
       showIndicator(`${product.sku} ${next === 1 ? "enabled" : "disabled"}`, "success");
+      paint();
+      refreshStyleMgViews();
+      onSaved?.();
     } catch (err) {
       showIndicator(err.message || "Couldn't change the status.", "error");
     } finally {
