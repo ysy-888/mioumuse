@@ -15,6 +15,7 @@ const SO_STATUS_ORDER = ["Open", "Hold", "Closed"];
 
 const so = {
   lines: null, // [SoLine] once loaded
+  headers: new Map(), // SO Summary's authoritative header status, by SO number
   orders: new Map(), // order_no → SoOrder
   customers: [], // [{ key, name, orders: [SoOrder] }], newest first
   commentCounts: new Map(),
@@ -103,11 +104,54 @@ async function readN41SoFile(file) {
  * Magento → Orders: a web order's Customer PO reads "Web:00000061"; it's
  * Closed only if every line is.
  */
+function parseN41SoSummaryRows(rows) {
+  const headers = new Map();
+  for (const original of rows) {
+    const r = Object.fromEntries(Object.entries(original).map(([k, v]) => [k.trim().toLowerCase(), String(v ?? "").trim()]));
+    if (!["orderno", "status", "customerpo"].every(k => k in r)) throw new Error("SO Summary needs Orderno, Status and CustomerPo columns.");
+    const orderNo = r.orderno.replace(/\.0+$/, "");
+    if (!orderNo) continue;
+    if (headers.has(orderNo) && headers.get(orderNo).status !== r.status) throw new Error(`SO ${orderNo} has conflicting summary statuses. Export the SO Summary again.`);
+    headers.set(orderNo, {
+      order_no: orderNo, status: r.status, customer_po: r.customerpo,
+      web_order_key: /^web\s*:/i.test(r.customerpo) ? mgOrderKey(r.customerpo) : "",
+      customer: r.customer ?? "", cust_name: r.cust_name ?? "", order_type: r.so_type ?? "",
+      order_date: soYmd(r.orderdate) || null, ship_date: soYmd(r.shipdate) || null, cancel_date: soYmd(r.canceldate) || null,
+      total_units: soNum(r.so_qty), amount: soNum(r.so_amt), inv_qty: soNum(r.inv_qty), inv_amt: soNum(r.inv_amt),
+      cancel_qty: soNum(r.cancel_qty), open_qty: soNum(r.balance_qty), open_amt: soNum(r.balance_amt), memo: r.memo ?? "",
+    });
+  }
+  if (!headers.size) throw new Error("No SO headers found in this summary export.");
+  return { kind: "summary", headers, lines: [], webOrders: n41HeaderWebOrders(headers.values()), repeated: 0 };
+}
+
+/** Group authoritative SO headers by web order; one open/unknown header prevents Closed. */
+function n41HeaderWebOrders(headers) {
+  const orders = new Map();
+  for (const h of headers) {
+    if (!h.web_order_key) continue;
+    const current = orders.get(h.web_order_key);
+    if (!current) orders.set(h.web_order_key, { poNo: h.customer_po, soNo: h.order_no, customer: h.cust_name || h.customer, status: h.status || "Unknown" });
+    else {
+      current.soNo = [...new Set([...current.soNo.split(", "), h.order_no])].join(", ");
+      if (isMgN41Closed(current) && !isMgN41Closed(h)) current.status = h.status || "Unknown";
+    }
+  }
+  return orders;
+}
+
 function parseN41SoRows(rows) {
   const need = ["orderno", "sod_id", "status", "customer", "style", "color"];
   const iterator = rows[Symbol.iterator]();
   const firstRow = iterator.next();
   const first = firstRow.value ?? {};
+  const columns = Object.keys(first).map(k => k.trim().toLowerCase());
+  if (columns.includes("orderno") && columns.includes("customerpo") && !columns.includes("sod_id")) {
+    return parseN41SoSummaryRows((function* () {
+      if (!firstRow.done) yield first;
+      yield* { [Symbol.iterator]: () => iterator };
+    })());
+  }
   const missing = need.filter(k => !(k in first));
   if (missing.length) {
     throw new Error(`That isn't N41's Sales Orders export — it's missing ${missing.join(", ")}. Export the order lines (.csv with orderno, sod_id …).`);
@@ -179,19 +223,18 @@ function parseN41SoRows(rows) {
       open_amt: Math.round(openQty * price * 100) / 100,
       memo: s(r.memo),
     });
-    // Web orders, for Magento → Orders (n41_orders).
+    // References for the detail import preview only; master status comes from SO Summary.
     const po = s(r.customerPo);
     const key = /^web\s*:/i.test(po) ? mgOrderKey(po) : "";
     if (!key) { otherRows += 1; continue; }
     const web = webOrders.get(key);
-    if (!web) webOrders.set(key, { poNo: po, soNo: orderNo, customer: s(r.cust_name) || s(r.customer), status: s(r.status) });
+    if (!web) webOrders.set(key, { poNo: po, soNo: orderNo, customer: s(r.cust_name) || s(r.customer), status: "Unknown" });
     else {
       web.soNo = [...new Set([...web.soNo.split(", "), orderNo])].filter(Boolean).join(", ");
-      if (isMgN41Closed(web) && !isMgN41Closed({ status: s(r.status) })) web.status = s(r.status);
     }
   }
   if (!lines.length) throw new Error("No order lines found in that file.");
-  return { lines, webOrders, otherRows, repeated };
+  return { kind: "detail", lines, webOrders, otherRows, repeated };
 }
 
 // ── Loading and saving ───────────────────────────────────────────────────────
@@ -226,6 +269,7 @@ async function loadN41SoData() {
     if (res.data.length < 1000) break;
   }
   so.lines = rows.map(r => ({ ...r, sizes: Array.isArray(r.sizes) ? r.sizes : [] }));
+  so.headers = (await loadN41SoHeaders()).headers;
   so.commentCounts = counts;
   so.importedAt = rows.reduce((m, r) => (r.imported_at > m ? r.imported_at : m), "");
   buildSoOrders();
@@ -242,9 +286,13 @@ function buildSoOrders() {
     }
     o.lines.push(l);
   }
+  so.headers.forEach((h, orderNo) => {
+    if (!so.orders.has(orderNo)) so.orders.set(orderNo, { orderNo, lines: [], head: h });
+  });
   for (const o of so.orders.values()) {
     o.lines.sort((a, b) => (a.line ?? 0) - (b.line ?? 0) || a.sod_id - b.sod_id);
-    o.head = o.lines[0];
+    const header = so.headers.get(o.orderNo);
+    o.head = { ...(o.lines[0] ?? o.head), ...(header ?? {}) };
     const sum = k => o.lines.reduce((t, l) => t + (Number(l[k]) || 0), 0);
     o.units = sum("total_units");
     o.amount = sum("ext_price");
@@ -264,9 +312,18 @@ function buildSoOrders() {
       s.open += Number(l.open_qty) || 0;
     }
     o.styleList = [...styleMap.values()];
-    // The SO's status: Open while any line is, then Hold, else Closed.
+    if (!o.lines.length && header) {
+      o.units = Number(header.total_units) || 0;
+      o.amount = Number(header.amount) || 0;
+      o.openQty = Number(header.open_qty) || 0;
+      o.openAmt = Number(header.open_amt) || 0;
+      o.invQty = Number(header.inv_qty) || 0;
+      o.invAmt = Number(header.inv_amt) || 0;
+      o.cancelQty = Number(header.cancel_qty) || 0;
+    }
+    // Master status is authoritative; mixed detail statuses never override it.
     const statuses = new Set(o.lines.map(l => l.status));
-    o.status = SO_STATUS_ORDER.find(st => statuses.has(st)) ?? o.head.status;
+    o.status = so.headers.get(o.orderNo)?.status || "Unknown";
     o.mixed = statuses.size > 1;
   }
   const byCustomer = new Map();

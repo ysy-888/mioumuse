@@ -5,11 +5,12 @@
  * canceling on N41 doesn't, so those orders sit Pending or Processing on
  * Magento forever. Import N41 Sales Orders reads N41's Sales Orders export
  * (.csv, a row per order line — js/n41-orders.js parseN41SoRows) and saves
- * every line for the N41 Orders page, and each web order's status here
- * (n41_orders): customerPo "Web:00000061" is Magento order 61, with its SO #
+ * every line for the N41 Orders page. SO Summary is imported separately
+ * into n41_so_headers and is the only source of order status:
+ * customerPo "Web:00000061" is Magento order 61, with its SO #
  * (orderno), customer and status. Any other PO isn't from the web store.
  *
- * An order fills several rows; it's Closed only if every row is. Exports
+ * A web order is Closed only if every matching SO Summary header is Closed. Exports
  * cover a date range, so an import adds and updates, and never clears.
  *
  * The Orders table then shows N41 Status, and flags an order that's Closed on
@@ -35,6 +36,7 @@ let mgOpenOrdersError = "";
 /** Ticked orders, across pages: id → { id, number, status }. */
 let mgOrderSelected = new Map();
 let mgCancelAllBusy = false;
+let mgReconcileProgress = "";
 
 const MG_N41_CLOSED = "closed";
 const MG_CANCELABLE_STATUSES = ["pending", "processing"];
@@ -77,6 +79,8 @@ async function loadMgN41() {
     mgN41 = loaded?.orders ?? new Map();
     mgN41ImportedAt = loaded?.importedAt ?? "";
   } catch (err) {
+    mgN41 = new Map();
+    mgN41ImportedAt = "";
     showIndicator(err.message || "Couldn't load the N41 report.", "error");
   }
 }
@@ -132,7 +136,7 @@ function createMgN41StatusCell(row) {
   if (!n41) {
     const none = document.createElement("span");
     none.textContent = EMPTY_DISPLAY;
-    none.title = "Not on an imported N41 report";
+    none.title = "No SO Summary header imported for this web order; excluded from Closed on N41 processing";
     return none;
   }
   const pill = document.createElement("span");
@@ -206,8 +210,9 @@ function syncMgN41FlaggedButton() {
   if (cancelAll) {
     cancelAll.hidden = !show;
     cancelAll.disabled = mgCancelAllBusy || !n;
-    cancelAll.textContent = n === undefined ? "Cancel all Closed on N41" : `Cancel all Closed on N41 (${n.toLocaleString()})`;
-    cancelAll.title = "Across all pages, regardless of search or date/status filters. Cancels all uninvoiced quantities. Closed can also mean transferred to a consolidated SO.";
+    cancelAll.textContent = n === undefined ? "Cancel & ship Closed on N41" : `Cancel & ship Closed on N41 (${n.toLocaleString()})`;
+    if (mgReconcileProgress) cancelAll.textContent = mgReconcileProgress;
+    cancelAll.title = "Across all pages: cancel uninvoiced quantities and record shipments for invoiced quantities not yet shipped in Magento. No customer emails. Uses the imported N41 status, including consolidated orders.";
   }
 }
 
@@ -261,12 +266,61 @@ async function cancelMgAllN41ClosedOrders() {
       showIndicator("No open Magento orders are Closed on N41.", "success");
       return;
     }
-    await cancelMgOrders(orders);
+    await reconcileMgClosedOrders(orders);
   } catch (err) {
-    showIndicator(err.message || "Couldn't cancel the orders.", "error");
+    showIndicator(err.message || "Couldn't cancel and ship the orders.", "error");
   } finally {
     mgCancelAllBusy = false;
     syncMgN41FlaggedButton();
+  }
+}
+
+function describeMgReconcileResults(results) {
+  const done = results.filter(r => r.ok);
+  const failed = results.filter(r => !r.ok);
+  const statuses = new Map();
+  done.forEach(r => statuses.set(r.status, (statuses.get(r.status) ?? 0) + 1));
+  const canceled = results.reduce((sum, r) => sum + (Number(r.canceled) || 0), 0);
+  const shipments = results.filter(r => r.shipmentId != null).length;
+  const parts = [`Canceled ${canceled.toLocaleString()} units; created ${shipments.toLocaleString()} shipments.`];
+  if (done.length) parts.push(`Processed ${done.length.toLocaleString()} orders: ${[...statuses].map(([s, n]) => `${n.toLocaleString()} ${mgOrderStatusLabel(s)}`).join(", ")}.`);
+  if (statuses.has("processing")) parts.push("Some orders remain Processing; review their item quantities and payment status.");
+  if (failed.length) parts.push(`${failed.length.toLocaleString()} need review — ${failed.map(r => `#${r.number || r.id}: ${r.error}`).join("; ")}`);
+  return parts.join(" ");
+}
+
+async function reconcileMgClosedOrders(orders) {
+  if (!orders.length || !confirm([
+    `Cancel uninvoiced items and record missing shipments on ${orders.length.toLocaleString()} Magento orders marked Closed in the imported N41 report?`,
+    "This includes all pages, regardless of the current search or filters.",
+    "Only invoiced, unshipped quantities will be shipped. Customer shipment emails are off. Magento inventory will be adjusted by shipment creation.",
+    "The imported status is used, including orders closed through consolidation. This cannot be undone through the app.",
+  ].join("\n\n"))) return;
+  const results = [];
+  let stopped = "";
+  mgReconcileProgress = `Processing 0 / ${orders.length.toLocaleString()}`;
+  syncMgN41FlaggedButton();
+  notify({ msg: `Processing ${orders.length.toLocaleString()} N41-closed orders in the background. You can use other app pages; keep this browser tab open. You'll be notified when finished.`, category: "orders" });
+  try {
+    for (let i = 0; i < orders.length; i += 5) {
+      const res = await callMagento("reconcileClosedOrders", { ids: orders.slice(i, i + 5).map(o => o.id) });
+      results.push(...(res?.results ?? []));
+      mgReconcileProgress = `Processing ${results.length.toLocaleString()} / ${orders.length.toLocaleString()}`;
+      syncMgN41FlaggedButton();
+    }
+  } catch (err) {
+    stopped = err.message || "Processing stopped. Refresh before retrying; some changes may already have completed.";
+  } finally {
+    mgReconcileProgress = "";
+    syncMgN41FlaggedButton();
+  }
+  results.filter(r => r.ok).forEach(r => mgOrderSelected.delete(String(r.id)));
+  notify({ msg: ["Magento background processing finished.", describeMgReconcileResults(results), stopped].filter(Boolean).join(" "), type: stopped || results.some(r => !r.ok) ? "error" : "success", category: "orders" });
+  await loadMgOpenOrders();
+  syncMgN41FlaggedButton();
+  if (getCurrentAppView() === "magento" && mgSubview === "orders") {
+    await loadMgSales("orders");
+    loadMgSalesFacets("orders");
   }
 }
 
@@ -314,6 +368,10 @@ async function readMgN41File(file) {
   setAppLoading(true, "Reading the export…");
   try {
     const parsed = parseN41SoRows(await readN41SoFile(file));
+    if (parsed.kind === "summary") {
+      const existing = (await loadN41SoHeaders()).headers;
+      parsed.previewOrders = n41HeaderWebOrders(new Map([...existing, ...parsed.headers]).values());
+    }
     mgN41Pending = { ...parsed, orders: parsed.webOrders, fileName: file.name };
     renderMgN41Import();
     document.getElementById("mgN41ImportOverlay")?.classList.add("open");
@@ -333,25 +391,27 @@ function closeMgN41Import() {
 function renderMgN41Import() {
   const p = mgN41Pending;
   if (!p) return;
-  const orderNos = new Set(p.lines.map(l => l.order_no));
-  const customers = new Set(p.lines.map(l => l.customer));
-  const dates = p.lines.map(l => l.order_date).filter(Boolean).sort();
+  const summary = p.kind === "summary";
+  const records = summary ? [...p.headers.values()] : p.lines;
+  const orderNos = new Set(records.map(l => l.order_no));
+  const customers = new Set(records.map(l => l.customer));
+  const dates = records.map(l => l.order_date).filter(Boolean).sort();
   const range = dates.length ? `${formatMdy(dates[0])} – ${formatMdy(dates[dates.length - 1])}` : "";
   document.getElementById("mgN41ImportIntro").textContent =
-    `${p.fileName} — ${orderNos.size.toLocaleString()} SOs${range ? `, ordered ${range}` : ""}. Saved to N41 Orders, and web orders' status for Magento → Orders; nothing changes in N41 or on Magento.`;
+    `${p.fileName} — ${summary ? "SO Summary (header status)" : "SO Detail (item quantities)"}: ${orderNos.size.toLocaleString()} SOs${range ? `, ordered ${range}` : ""}. ${summary ? "Updates authoritative SO header statuses and Magento order matching." : "Updates detail lines only; header statuses come from SO Summary."} Nothing changes in N41 or on Magento.`;
 
   const web = [...p.orders.values()];
   const closed = web.filter(isMgN41Closed).length;
-  const after = new Map([...mgN41, ...p.orders]);
+  const after = p.previewOrders ?? mgN41;
   const flagged = mgOpenOrders?.filter(o => isMgN41Closed(after.get(mgOrderKey(o.number)))).length;
   const fields = [
     ["Sales orders", orderNos.size.toLocaleString()],
-    ["Order lines", p.lines.length.toLocaleString()],
+    [summary ? "SO headers" : "Order lines", records.length.toLocaleString()],
     ["Customers", customers.size.toLocaleString()],
-    ["Web orders (Magento)", `${web.length.toLocaleString()} · ${closed.toLocaleString()} closed`],
+    ["Web orders (Magento)", summary ? `${web.length.toLocaleString()} · ${closed.toLocaleString()} header-closed` : `${web.length.toLocaleString()} referenced; status unchanged`],
   ];
   if (p.repeated) fields.push(["Repeated lines, skipped", p.repeated.toLocaleString()]);
-  if (flagged !== undefined) fields.push(["Closed on N41, open on Magento", flagged.toLocaleString()]);
+  if (summary && flagged !== undefined) fields.push(["Closed on N41, open on Magento", flagged.toLocaleString()]);
   document.getElementById("mgN41ImportSummary").replaceChildren(...fields.flatMap(([label, value]) => {
     const l = document.createElement("span");
     l.className = "item-pane-label";
@@ -363,9 +423,10 @@ function renderMgN41Import() {
   }));
 
   document.getElementById("mgN41ImportChanges").textContent =
-    "Lines already imported are updated; orders not in this file stay as they are (an export covers a date range).";
+    summary ? "SO Summary updates header statuses. SOs outside this export keep their existing imported header status; SOs without a summary header are excluded from bulk processing." : "Detail lines are updated. This import never overwrites SO Summary header statuses.";
   document.getElementById("mgN41ImportMessage").textContent = "";
   document.getElementById("mgN41ImportSaveBtn").disabled = false;
+  document.getElementById("mgN41ImportSaveBtn").textContent = summary ? "Import SO Summary" : "Import SO Detail";
 }
 
 async function saveMgN41Import() {
@@ -377,15 +438,12 @@ async function saveMgN41Import() {
   message.className = "modal-footer-message";
   message.textContent = "Saving…";
   try {
-    await saveN41SoLines(p.lines, (done, total) => { message.textContent = `Saving lines… ${done.toLocaleString()} / ${total.toLocaleString()}`; });
-    if (p.orders.size) {
-      message.textContent = "Saving web orders…";
-      await saveN41OrderRows(p.orders);
-    }
+    if (p.kind === "summary") await saveN41SoHeaders(p.headers, (done, total) => { message.textContent = `Saving SO headers… ${done.toLocaleString()} / ${total.toLocaleString()}`; });
+    else await saveN41SoLines(p.lines, (done, total) => { message.textContent = `Saving lines… ${done.toLocaleString()} / ${total.toLocaleString()}`; });
     mgN41TableReady = true;
-    const soCount = new Set(p.lines.map(l => l.order_no)).size;
+    const soCount = p.kind === "summary" ? p.headers.size : new Set(p.lines.map(l => l.order_no)).size;
     closeMgN41Import();
-    showIndicator(`N41 Sales Orders imported — ${soCount.toLocaleString()} SOs, ${p.lines.length.toLocaleString()} lines`, "success");
+    showIndicator(`N41 ${p.kind === "summary" ? "SO Summary" : "SO Detail"} imported — ${soCount.toLocaleString()} SOs`, "success");
     refreshN41OrdersAfterImport();
     if (getCurrentAppView() === "magento") {
       await refreshMgN41();

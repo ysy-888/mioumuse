@@ -437,6 +437,7 @@ body { padding-left: var(--sidebar-width); }
 .row-context-menu-item {
   width: 100%;
 }
+.row-context-menu-item:disabled { color: var(--text-muted); cursor: default; opacity: 0.6; }
 
 /* ── Toolbar ── */
 .toolbar {
@@ -7641,6 +7642,8 @@ span.dash-event { cursor: pointer; /* clicking selects the day */ }
 .style-qty-head.sorted-asc .th-filter-hit { mask-image: var(--icon-arrow-up); -webkit-mask-image: var(--icon-arrow-up); }
 .style-qty-head.sorted-desc .th-filter-hit { mask-image: var(--icon-arrow-down); -webkit-mask-image: var(--icon-arrow-down); }
 .styles-table .col-magento     { width: 130px; min-width: 120px; }
+.styles-table :is(.col-magento-qty, .col-magento-ats) { width: 128px; min-width: 128px; }
+#stylesTable thead th:is([data-col="magentoQty"], [data-col="magentoAts"]) { white-space: nowrap; }
 /* Styles and Need to Shoot: only as wide as their columns. Styles sits on
    the left, leaving room for the style pane on the right; Need is centered. */
 #stylesTable { width: max-content; margin: 0; }

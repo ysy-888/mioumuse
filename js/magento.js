@@ -101,7 +101,7 @@ let mgSalableWarned = false;
 let mgTableRenderWaiting = false;
 
 /** The helper version this app expects (HELPER_VERSION in supabase/functions/magento). */
-const MG_HELPER_VERSION = "2026-11-23.2";
+const MG_HELPER_VERSION = "2026-11-24.3";
 
 /** Per action, the last call's timing: { roundTripMs, totalMs, authMs, magentoCalls, magentoMs, slowest… }. */
 const mgTimings = {};

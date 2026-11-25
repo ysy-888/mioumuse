@@ -950,22 +950,37 @@ async function loadMagentoGroupRows() {
  * status }, plus importedAt — or null when the n41_orders table isn't there yet.
  */
 async function loadN41OrderRows() {
+  const { headers, importedAt } = await loadN41SoHeaders();
+  return { orders: n41HeaderWebOrders(headers.values()), importedAt };
+}
+
+/** Header statuses come exclusively from SO Summary, never inferred from detail lines. */
+async function loadN41SoHeaders() {
   const client = requireClient();
-  const orders = new Map();
+  const headers = new Map();
   let importedAt = "";
   for (let from = 0; ; from += 1000) {
-    const res = await client.from("n41_orders").select("*").order("order_no").range(from, from + 999);
+    const res = await client.from("n41_so_headers").select("*").order("order_no").range(from, from + 999);
     if (res.error) {
-      if (from === 0) return null; // the table isn't set up yet
       throw new Error(res.error.message);
     }
     (res.data ?? []).forEach(r => {
-      orders.set(r.order_no, { poNo: r.po_no, soNo: r.so_no ?? "", customer: r.customer, status: r.status });
+      headers.set(r.order_no, r);
       if (r.imported_at > importedAt) importedAt = r.imported_at;
     });
     if ((res.data ?? []).length < 1000) break;
   }
-  return { orders, importedAt };
+  return { headers, importedAt };
+}
+
+async function saveN41SoHeaders(headers, onProgress) {
+  const client = requireClient();
+  const importedAt = new Date().toISOString();
+  const rows = [...headers.values()].map(h => ({ ...h, imported_at: importedAt }));
+  for (let i = 0; i < rows.length; i += 500) {
+    throwIfError(await client.from("n41_so_headers").upsert(rows.slice(i, i + 500), { onConflict: "user_id,order_no" }));
+    onProgress?.(Math.min(i + 500, rows.length), rows.length);
+  }
 }
 
 /** Each report covers a date range, so orders are added or updated, never cleared. */

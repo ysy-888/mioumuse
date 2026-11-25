@@ -68,4 +68,11 @@ function initStyleCopyMenus() {
 function initCopyMenu() {
   closeCopyMenu();
   initStyleCopyMenus();
+  document.addEventListener("pointerdown", e => {
+    if (!e.target.closest("#copyMenu")) closeCopyMenu();
+  });
+  document.addEventListener("keydown", e => {
+    if (e.key === "Escape") closeCopyMenu();
+  });
+  document.addEventListener("scroll", () => closeCopyMenu(), true);
 }

@@ -1073,8 +1073,8 @@ function exportStylesCsv() {
     return;
   }
   downloadCsv(`Styles ${todayYmd()}`,
-    ["Style #", "Color", "Description", "Category", "Season", "N41 Status", "IHD", "Shoot Status"],
-    rows.map(s => [s.styleNo, s.color, s.description, s.category, s.season, s.status, s.ihd, shootStatusText(s.styleNo, s.color)]));
+    ["Style #", "Color", "Description", "Category", "Season", "N41 Status", "Magento Qty", "Magento ATS", "IHD", "Shoot Status"],
+    rows.map(s => [s.styleNo, s.color, s.description, s.category, s.season, s.status, styleMagentoFigure(s, "qty") ?? "", styleMagentoFigure(s, "ats") ?? "", s.ihd, shootStatusText(s.styleNo, s.color)]));
   showIndicator(`Exported ${rows.length.toLocaleString()} styles`, "success");
 }
 

@@ -751,6 +751,15 @@ function styleMgAvailability(style) {
 }
 
 /** For sorting and the column: "Available", "Not available", "Not on Magento" or "". */
+/** Magento inventory Qty or API Salable Quantity, never estimated from N41 or order totals. */
+function styleMagentoFigure(style, field) {
+  const sku = styleMgSku(style);
+  if (!sku || mgDuplicateSkus.has(sku)) return null;
+  const product = mgIndex?.get(sku);
+  if (!product || product.type === "grouped") return null;
+  return numOrNull(field === "ats" ? mgSalable.get(sku) : product.qty);
+}
+
 function styleMgStatusText(style) {
   const { sku, available } = styleMgAvailability(style);
   if (sku === "") return "Not on Magento";
@@ -826,7 +835,7 @@ function ensureStyleMgAvailability() {
 function refreshStyleMgViews({ pane = false } = {}) {
   if (!styleMgStarted) return;
   if (getCurrentAppView() === "styles") {
-    if (styleSortCol === "magento" || styleAtsAvailableOnly || styleAtsUnavailableOnly || styleMagentoNoPhotoOnly) applyStyleFilters({ keepShown: true });
+    if (["magento", "magentoQty", "magentoAts"].includes(styleSortCol) || styleAtsAvailableOnly || styleAtsUnavailableOnly || styleMagentoNoPhotoOnly) applyStyleFilters({ keepShown: true });
     else renderStylesTable();
   }
   const paneEl = document.getElementById("stylePane");

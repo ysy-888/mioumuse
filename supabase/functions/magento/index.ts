@@ -32,6 +32,7 @@
  *   orderFacets                     order counts per status in use
  *   openOrders                      every Pending / Processing order, in brief
  *   cancelOrders { ids }            cancel what isn't invoiced on these orders
+ *   reconcileClosedOrders { ids }  cancel uninvoiced units, ship invoiced units missing shipments (N41 Closed only)
  *   order      { id }               one order: items, totals, addresses,
  *                                   shipments + tracking, comments
  *   customers  { page, pageSize, sort, dir, search, groupId, from,
@@ -91,7 +92,7 @@ import { AsyncLocalStorage } from "node:async_hooks";
  * copy running in Supabase is older than the app expects. Bump it (and
  * MG_HELPER_VERSION in js/magento.js) whenever this file changes.
  */
-const HELPER_VERSION = "2026-11-23.2";
+const HELPER_VERSION = "2026-11-24.3";
 
 /**
  * Where a request's time went: each Magento call is counted and timed, per
@@ -140,6 +141,7 @@ function magentoMessage(body: any) {
 const PERMISSION_NAMES: Record<string, string> = {
   "Magento_Sales::cancel": "Sales → Operations → Orders → Actions → Cancel",
   "Magento_Sales::shipment": "Sales → Operations → Shipments",
+  "Magento_Sales::ship": "Sales → Operations → Orders → Actions → Ship",
   "Magento_Sales::actions_view": "Sales → Operations → Orders → Actions → View",
   "Magento_Sales::sales": "Sales → Operations → Orders",
   "Magento_Customer::group": "Customers → Customer Groups",
@@ -1679,6 +1681,55 @@ async function saveEvent(id: unknown, changes: Record<string, unknown>): Promise
 
 // ── Actions ──────────────────────────────────────────────────────────────────
 
+/** Top-level quantities; virtual items can be canceled but must never be shipped. */
+// deno-lint-ignore no-explicit-any
+function closedOrderQuantities(order: any): Array<{ order_item_id: number; cancel: number; ship: number }> {
+  const items = (order.items ?? []).filter((i: any) => !i.parent_item_id);
+  if (items.some((i: any) => i.product_type === "bundle")) throw new UserError("Bundle shipment needs manual review in Magento.");
+  const qty = (v: unknown) => Math.max(0, Number(v) || 0);
+  return items.map((i: any) => ({
+    order_item_id: Number(i.item_id),
+    cancel: Math.max(0, qty(i.qty_ordered) - qty(i.qty_invoiced) - qty(i.qty_canceled)),
+    ship: Number(i.is_virtual) || ["virtual", "downloadable"].includes(i.product_type) ? 0 : Math.max(0, Math.min(
+      qty(i.qty_invoiced) - qty(i.qty_shipped) - qty(i.qty_refunded),
+      qty(i.qty_ordered) - qty(i.qty_canceled) - qty(i.qty_shipped) - qty(i.qty_refunded),
+    )),
+  }));
+}
+
+/** Find the actual assigned source; never guess a warehouse on a multi-source product. */
+// deno-lint-ignore no-explicit-any
+async function closedOrderShipmentSource(order: any, items: Array<{ order_item_id: number; qty: number }>) {
+  const wanted = new Map<string, number>();
+  for (const item of items) {
+    const row = (order.items ?? []).find((r: any) => Number(r.item_id) === item.order_item_id);
+    const child = row?.product_type === "configurable" ? (order.items ?? []).find((r: any) => Number(r.parent_item_id) === item.order_item_id) : null;
+    const sku = String(child?.sku ?? row?.sku ?? "");
+    if (!sku) throw new UserError(`Missing inventory SKU for order item ${item.order_item_id}.`);
+    wanted.set(sku, (wanted.get(sku) ?? 0) + item.qty);
+  }
+  // deno-lint-ignore no-explicit-any
+  const rows: any[] = [];
+  for (const batch of skuBatches([...wanted.keys()])) {
+    const q = criteria([batch.map(sku => ["sku", sku, "eq"] as Filter)], null, 1, 10000);
+    try {
+      rows.push(...((await mg(`/inventory/source-items?${q}`))?.items ?? []));
+    } catch (err) {
+      if (err instanceof UserError && err.status === 404) return { sourceCode: "", diagnostic: "Legacy inventory (no MSI source endpoint)." };
+      throw err;
+    }
+  }
+  const codes = [...new Set(rows.map(r => String(r.source_code)))].filter(code =>
+    [...wanted.keys()].every(sku => rows.some(r => r.sku === sku && String(r.source_code) === code)));
+  if (codes.length !== 1) throw new UserError(codes.length ? `Items are assigned to multiple inventory sources (${codes.join(", ")}); choose the shipment source in Magento.` : "No single inventory source contains all shipment SKUs; review source assignments in Magento.");
+  const sourceCode = codes[0];
+  const diagnostic = [...wanted].map(([sku, qty]) => {
+    const row = rows.find(r => r.sku === sku && String(r.source_code) === sourceCode);
+    return `${sku}: ship ${qty}, source qty ${Number(row?.quantity ?? 0)}, ${Number(row?.status) === 1 ? "In Stock" : "Out of Stock"}`;
+  }).join("; ");
+  return { sourceCode, diagnostic };
+}
+
 // deno-lint-ignore no-explicit-any
 const actions: Record<string, (p: any) => Promise<unknown>> = {
   async status() {
@@ -1908,6 +1959,62 @@ const actions: Record<string, (p: any) => Promise<unknown>> = {
         // A missing permission stops every order: say so once, plainly.
         if (err instanceof UserError && err.status === 403) throw err;
         return { id, number, ok: false, status: "", error: err instanceof Error ? err.message : String(err) };
+      }
+    });
+    return { results };
+  },
+
+  /** Reconcile only orders confirmed Closed in the signed-in user's imported N41 report. */
+  async reconcileClosedOrders({ ids, _n41Client }) {
+    const list = [...new Set(listParam(ids))];
+    if (!list.length || list.length > 20) throw new UserError("Process 1–20 orders at a time.");
+    const results = await eachLimited(list, 2, async id => {
+      const path = `/orders/${encodeURIComponent(id)}`;
+      let number = "";
+      let status = "";
+      let canceled = 0;
+      let shipmentId = null;
+      try {
+        let order = await mg(path);
+        number = String(order.increment_id ?? "");
+        status = String(order.status ?? "");
+        const key = number.replace(/\D/g, "").replace(/^0+/, "");
+        const report = await _n41Client.from("n41_so_headers").select("status").eq("web_order_key", key);
+        if (report.error) throw new Error(report.error.message);
+        if (!report.data?.length || !report.data.every((h: { status: string }) => String(h.status ?? "").trim().toLowerCase() === "closed")) throw new UserError("Not confirmed Closed by every matching SO Summary header.");
+        if (!["pending", "processing"].includes(status)) return { id, number, status, ok: true, canceled, shipmentId, skipped: true };
+        let quantities = closedOrderQuantities(order);
+        if (quantities.some(i => i.cancel > 0)) {
+          const before = (order.items ?? []).filter((i: any) => !i.parent_item_id).reduce((sum: number, i: any) => sum + Number(i.qty_canceled ?? 0), 0);
+          await mg(`${path}/cancel`, { method: "POST" });
+          order = await mg(path);
+          canceled = Math.max(0, (order.items ?? []).filter((i: any) => !i.parent_item_id).reduce((sum: number, i: any) => sum + Number(i.qty_canceled ?? 0), 0) - before);
+        }
+        // Re-read quantities after cancellation; never ship canceled, refunded or already shipped units.
+        quantities = closedOrderQuantities(order);
+        const items = quantities.filter(i => i.ship > 0).map(i => ({ order_item_id: i.order_item_id, qty: i.ship }));
+        if (items.length) {
+          if (items.some(i => !Number.isSafeInteger(i.order_item_id) || i.order_item_id <= 0)) throw new Error("Missing Magento order item ID.");
+          const source = await closedOrderShipmentSource(order, items);
+          try {
+            shipmentId = await mg(`/order/${encodeURIComponent(id)}/ship`, {
+              method: "POST",
+              body: JSON.stringify({ items, notify: false, appendComment: true,
+                ...(source.sourceCode ? { arguments: { extension_attributes: { source_code: source.sourceCode } } } : {}),
+                comment: { comment: "Shipment recorded from N41 Closed order reconciliation.", is_visible_on_front: 0 } }),
+            });
+          } catch (err) {
+            throw new Error(`${err instanceof Error ? err.message : String(err)} [Source: ${source.sourceCode || "legacy"}. ${source.diagnostic}]`);
+          }
+        }
+        order = await mg(path);
+        status = String(order.status ?? "");
+        const remaining = closedOrderQuantities(order);
+        const error = remaining.some(i => i.cancel > 0 || i.ship > 0) ? "Some uninvoiced or unshipped invoiced quantities remain. Review this order." : "";
+        return { id, number, status, ok: !error, canceled, shipmentId, error };
+      } catch (err) {
+        // Preserve partial successes, so a failed shipment doesn't hide a completed cancellation.
+        return { id, number, status, ok: false, canceled, shipmentId, error: err instanceof Error ? err.message : String(err) };
       }
     });
     return { results };
@@ -2515,7 +2622,7 @@ Deno.serve(async req => {
     const { action, ...params } = await req.json();
     const run = actions[action];
     if (!run) return reply({ error: `Unknown action "${action}".`, timing: timing() }, 400);
-    const data = await timingStore.run(t, () => run(params));
+    const data = await timingStore.run(t, () => run({ ...params, _n41Client: supabase }));
     return reply({ data, timing: timing() });
   } catch (err) {
     const status = err instanceof UserError ? err.status : 500;

@@ -688,10 +688,15 @@ status, style, color, … orderno, sod_id, unit1–15, Bal_unit1–15, Size1–1
 Windows or UTF-8 text). Every line is saved for the **N41 Orders** page
 (`n41_so_lines`, one row per `sod_id`). For this page, only
 `Web:00000061`-style Customer POs count; each is matched to the Magento order number,
-leading zeros aside. An order on several rows is Closed only if every row
-is. A preview shows the counts before **Update N41 Status** saves them
-(`n41_orders`). An export covers a date range: lines and orders not in it
-stay as they are.
+leading zeros aside. Detail-line status is not used to determine master SO
+status. The same import accepts **SO Summary** (`Orderno`, `Status`,
+`CustomerPo`, `so_qty`, `Balance_qty`), saved separately in `n41_so_headers`.
+N41 Orders uses the header status directly. Magento's N41 Status is Closed
+only when every matching summary header is Closed; an order without an
+imported header has unknown status and is excluded from bulk processing.
+Detail imports never overwrite header status. A preview identifies which
+report was selected before saving. Each export covers a date range: records
+outside it keep their previous imported values.
 
 **N41 Orders** (left menu, N41) is a table of SOs, newest first: SO #,
 Customer, Order Date, Type (a colour per type — each channel, and each trade
@@ -726,6 +731,31 @@ reported as such. Import a fresh report after N41's invoices have reached
 Magento: an invoice that hasn't arrived yet looks uninvoiced, and those
 items would be canceled. Needs the integration's **Sales → Operations →
 Orders → Actions → Cancel** permission.
+
+**Cancel & ship Closed on N41** processes every flagged order across all
+pages, regardless of the current search or filters. After confirmation, the
+helper rechecks the imported N41 status, cancels uninvoiced quantities, and
+creates a Magento shipment for invoiced physical quantities that remain
+unshipped (excluding refunded quantities). Shipment emails are off. Magento
+adjusts inventory when recording the shipment; this records fulfillment
+already completed in N41. Closed statuses include consolidated orders and
+are only as current as the imported export. Bundle products require manual
+review. The result reports canceled units, created shipments, final order
+statuses, and failures, including partial success. Retries use fresh Magento
+quantities. This needs the integration's Ship action and Shipments permissions
+as well as Cancel. The selected-orders **Cancel orders** action remains
+cancel-only.
+
+The bulk run is nonblocking: other app pages remain usable, the action button
+shows progress, and completion/failures are saved under Orders in Notifications.
+Keep the browser tab open until completion; closing or refreshing it interrupts
+the client-side batch loop. Shipment requests include the single inventory
+source assigned to all shipped SKUs. Multiple possible sources require manual
+selection in Magento. A shipment failure includes source quantities/statuses
+for diagnosis; inventory is never raised or forced In Stock to make it pass.
+
+Validate this flow without touching live orders with
+`node scripts/test-magento-reconcile.cjs` (Node 22.13+).
 
 **Customers** lists accounts: name, email, group, company, Is Activated,
 orders, location, phone, joined. Orders counts what each placed with their

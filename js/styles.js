@@ -47,6 +47,10 @@ const STYLE_COLUMNS = {
   status: { value: s => s.status },
   // Showing on the webstore (js/magento-availability.js).
   magento: { value: s => styleMgStatusText(s) },
+  magentoQty: { value: s => styleMagentoFigure(s, "qty"), numeric: true,
+    display: s => { const n = styleMagentoFigure(s, "qty"); return n === null ? EMPTY_DISPLAY : n.toLocaleString(); } },
+  magentoAts: { value: s => styleMagentoFigure(s, "ats"), numeric: true,
+    display: s => { const n = styleMagentoFigure(s, "ats"); return n === null ? EMPTY_DISPLAY : n.toLocaleString(); } },
   // Sort by the confirmed IHD displayed beneath the Available month; unconfirmed dates stay blank.
   available: { value: s => ihdSortValue(s), display: s => formatMonYY(s.availableDate) },
   // "YYYY-MM-DD" sorts as a date; blanks on top soonest first, at the bottom latest first.
@@ -997,7 +1001,49 @@ function sortStylesBy(col) {
 
 // ── Init ─────────────────────────────────────────────────────────────────────
 
+/** Row actions stay on Style Master; the product opens in the existing side pane. */
+function openStyleMasterMenu(e, style) {
+  e.preventDefault();
+  e.stopPropagation();
+  closeCopyMenu();
+  const menu = document.createElement("div");
+  menu.id = "copyMenu";
+  menu.className = "row-context-menu copy-menu";
+  menu.setAttribute("role", "menu");
+  const action = (label, run, disabled = false) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "header-menu-item row-context-menu-item";
+    button.setAttribute("role", "menuitem");
+    button.textContent = label;
+    button.disabled = disabled;
+    button.addEventListener("click", () => { closeCopyMenu(); run(); });
+    menu.appendChild(button);
+  };
+  action("Copy Style #", () => copyText(style.styleNo));
+  if (e.target.closest(".set-tag[data-copy-set]")) {
+    action("Copy set", () => copyText(getSetCopyText(style.styleNo)));
+  }
+  const sku = styleMgSku(style);
+  action(sku ? "Open Magento product pane" : sku === null ? "Magento product not loaded yet" : "No linked Magento product", async () => {
+    const opening = openMagentoPane(sku);
+    if (mgPane?.saved.sku === sku) closeStylePane();
+    await opening;
+  }, !sku);
+  document.body.appendChild(menu);
+  const rect = menu.getBoundingClientRect();
+  menu.style.left = `${Math.max(0, Math.min(e.clientX, window.innerWidth - rect.width - 8))}px`;
+  menu.style.top = `${Math.max(0, Math.min(e.clientY, window.innerHeight - rect.height - 8))}px`;
+  menu.querySelector("button:not(:disabled)")?.focus();
+}
+
 function initStylesView() {
+  document.getElementById("stylesTableBody")?.addEventListener("contextmenu", e => {
+    if (e.target.closest("input, textarea, select, [contenteditable='true']")) return;
+    const row = e.target.closest("tr[data-style-no]");
+    const style = row && findStyle(row.dataset.styleNo, row.dataset.color);
+    if (style) openStyleMasterMenu(e, style);
+  });
   stylePageSize = readTablePageSize("stylesTable");
   document.querySelectorAll("#stylesTable thead th[data-col]").forEach(th => {
     if (!STYLE_COLUMNS[th.dataset.col]) th.classList.add("th-no-sort");
