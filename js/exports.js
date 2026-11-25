@@ -1066,6 +1066,90 @@ function exportPoPdf() {
 
 // ── Styles and banners (for the header menu) ─────────────────────────────────
 
+/** Visible Style Master columns, including individual visible N41 quantity subcolumns. */
+function styleMasterPdfColumns(rows, thumbs = []) {
+  const hidden = getTableView("stylesTable")?.hidden ?? [];
+  const photoByRow = new Map(rows.map((row, i) => [row, thumbs[i] ?? ""]));
+  return [...document.querySelectorAll("#stylesTable thead th[data-col]")].flatMap(th => {
+    const col = th.dataset.col;
+    if (col === "select") return [];
+    if (col === "qtys") return STYLE_QTY_FIGURES.filter(f => !hidden.includes(`qtys.${f.col}`)).map(f => ({
+      label: f.label, weight: 0.8, className: "numeric",
+      cell: s => ({ text: styleQtyFigures(s).find(v => v.col === f.col)?.text ?? EMPTY_DISPLAY, className: "numeric" }),
+    }));
+    const label = (th.querySelector(".th-label") ?? th).textContent.trim();
+    if (col === "image") return [{ label: label || "Photo", weight: 1.4, cell: s => ({ className: "photo", html: photoByRow.get(s) ? `<img src="${escapeReportHtml(photoByRow.get(s))}" alt="">` : '<div class="none"></div>' }) }];
+    if (col === "shoot") return [{ label, weight: 1.6, cell: s => ({ text: shootStatusText(s.styleNo, s.color) }) }];
+    if (col === "magento") return [{ label, weight: 1.7, cell: s => ({ html: createStyleMgStatusCell(s).outerHTML }) }];
+    if (col === "available") return [{ label, weight: 1.5, cell: s => ({ html: `<span class="avail-stack">${formatAvailableMonth(s.availableDate) ? `<span class="available-pill${s.availMismatch ? " is-mismatch" : ""}">${escapeReportHtml(formatAvailableMonth(s.availableDate))}</span>` : escapeReportHtml(EMPTY_DISPLAY)}${ihdSortValue(s) ? `<span class="ihd-under">${formatReportDate(ihdSortValue(s))}</span>` : ""}</span>` }) }];
+    const column = STYLE_COLUMNS[col];
+    if (!column) return [];
+    return [{ label, className: column.numeric ? "numeric" : "", weight: col === "description" || col === "notes" ? 2.6 : col === "styleNo" || col === "color" ? 1.6 : 1,
+      bracket: col === "styleNo", cell: s => ({ text: (column.display ?? column.value)(s), className: column.numeric ? "numeric" : col === "notes" ? "notes-cell" : "" }) }];
+  });
+}
+
+async function exportStylesPdf() {
+  const rows = [...filteredStyles];
+  if (!rows.length) { showIndicator("No styles match the current filters to export", "error"); return; }
+  try {
+    showIndicator("Preparing the Style Master PDF…");
+    const imageShown = Boolean(document.querySelector('#stylesTable thead th[data-col="image"]'));
+    const thumbs = imageShown && reportHasPhotos() ? await loadReportThumbs(rows) : [];
+    const columns = styleMasterPdfColumns(rows, thumbs);
+    if (!columns.length) { showIndicator("Show at least one data column to export", "error"); return; }
+    const setOf = new Map();
+    completeStyleSetBlocks(rows).forEach((block, i) => { if (block.length > 1) block.forEach(row => setOf.set(row, String(i))); });
+    const meta = [];
+    const search = document.getElementById("styleSearchInput")?.value.trim();
+    if (search) meta.push(["Search", search]);
+    if (styleShowDeleted) meta.push(["View", "Deleted styles"]);
+    else {
+      if (styleNoPhotosOnly && arePhotosKnown()) meta.push(["Photos", "No photos"]);
+      if (styleAtsAvailableOnly) meta.push(["Magento", "ATS ≤ 0, Available"]);
+      if (styleAtsUnavailableOnly) meta.push(["Magento", "ATS ≥ 6, OH ≥ 6, Not available"]);
+      if (styleMagentoNoPhotoOnly) meta.push(["Magento photo", "None"]);
+      for (const entry of columnFilters.values()) {
+        if (!entry.th.closest("#stylesTable")) continue;
+        const col = entry.th.dataset.col;
+        if (!isColumnFilterActive("stylesTable", col)) continue;
+        const selected = new Set(getColumnFilterSelection("stylesTable", col) ?? []);
+        const labels = entry.options().filter(o => selected.has(o.key)).map(o => o.label);
+        meta.push([(entry.th.querySelector(".th-label") ?? entry.th).textContent.trim(), labels.join(", ") || "None"]);
+      }
+    }
+    const totalWeight = columns.reduce((sum, c) => sum + c.weight, 0);
+    const widths = columns.map((c, i) => `th:nth-child(${i + 1}) { width: ${(c.weight / totalWeight * 100).toFixed(3)}%; }`).join("\n");
+    await printReport({
+      fileTitle: `Style Master ${todayYmd()}`, title: "Style Master", subtitle: "Current table view", rows, columns,
+      photos: false, landscape: false, meta,
+      groupKey: row => setOf.has(row) ? setOf.get(row) : "",
+      setKey: row => setOf.has(row) ? setOf.get(row) : "",
+      extraCss: `
+        @page { size: letter portrait; margin: 0.4in; }
+        table { table-layout: fixed; width: 100%; }
+        th, td { min-width: 0 !important; padding: 4px 3px; overflow-wrap: anywhere; white-space: normal; }
+        th { font-size: ${columns.length > 14 ? 6.5 : 8}px; letter-spacing: 0; }
+        td { font-size: ${columns.length > 14 ? 7 : 9}px; }
+        ${widths}
+        th.numeric, td.numeric { text-align: center; font-variant-numeric: tabular-nums; }
+        td.numeric { white-space: nowrap; overflow-wrap: normal; }
+        td.notes-cell { white-space: pre-wrap; }
+        td.photo { width: auto; padding: 3px; }
+        td.photo img, td.photo .none { width: 100%; max-width: 46px; height: 46px; object-fit: contain; }
+        .meta { display: flex; flex-wrap: wrap; gap: 6px 16px; }
+        .meta div { max-width: 100%; overflow-wrap: anywhere; }
+        .meta span { font-size: 9px; }
+        .mg-avail-pill { display: inline-block; padding: 1px 3px; border-radius: 5px; font-size: inherit; }
+        .mg-avail-pill.is-yes { background: #dff3e6; color: #13703a; }
+        .mg-avail-pill.is-no { background: #eef0f3; color: #6b7280; }
+        .mg-avail-pill.is-ats-mismatch { background: #fee2e2; color: #b91c1c; }
+        .available-pill, .ihd-under { font-size: inherit; }
+      `,
+    });
+  } catch (err) { showIndicator(err.message || "Couldn't export the Style Master PDF", "error"); }
+}
+
 function exportStylesCsv() {
   const rows = filteredStyles.length ? filteredStyles : getAllStyles();
   if (!rows.length) {
@@ -1123,6 +1207,7 @@ function initExports() {
     closeHeaderMenu();
     const view = getCurrentAppView();
     if (view === "needToShoot") exportNeedPdf();
+    else if (view === "styles") exportStylesPdf();
     else if (view === "pos") exportPoPdf();
     else exportBannersPdf();
   });

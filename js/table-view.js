@@ -119,7 +119,11 @@ function normalizeTableView(state, view) {
     const before = known.slice(0, i).reverse().find(c => order.includes(c));
     order.splice(before ? order.indexOf(before) + 1 : 0, 0, col);
   });
-  const hidden = (view?.hidden ?? []).filter(col => order.includes(col));
+  const childKeys = state.columns.flatMap(c => (c.children ?? []).map(child => child.col));
+  const hidden = (view?.hidden ?? []).filter(col => order.includes(col) || childKeys.includes(col));
+  state.columns.forEach(c => {
+    if (hidden.includes(c.col)) (c.children ?? []).forEach(child => { if (!hidden.includes(child.col)) hidden.push(child.col); });
+  });
   return { order, hidden };
 }
 
@@ -142,6 +146,22 @@ function applyTableView(tableId) {
   ];
   headRow.replaceChildren(...shown.map(c => c.th));
   if (colgroup && state.hasCols) colgroup.replaceChildren(...shown.map(c => c.colEl));
+  if (tableId === "stylesTable") {
+    const qtys = byCol.get("qtys");
+    if (qtys) {
+      const visible = (qtys.children ?? []).filter(child => !state.current.hidden.includes(child.col));
+      qtys.th.querySelectorAll(".style-qty-head").forEach(head => {
+        head.style.display = state.current.hidden.includes(`qtys.${head.dataset.col}`) ? "none" : "";
+      });
+      const strip = qtys.th.querySelector(".style-qtys");
+      if (strip) strip.style.gridTemplateColumns = `repeat(${Math.max(1, visible.length)}, 64px)`;
+      if (qtys.colEl) {
+        const width = `${Math.max(1, visible.length) * 66 + 6}px`;
+        qtys.colEl.style.width = width;
+        qtys.colEl.style.minWidth = width;
+      }
+    }
+  }
   fitTableMinWidth(table);
 }
 
@@ -217,12 +237,14 @@ function renderTableViewModal() {
   // is listed, but can't be hidden.
   const picker = document.getElementById("tableViewPicker");
   picker?.replaceChildren(...state.columns.map(({ col, label }) => {
+    const children = state.columns.find(c => c.col === col)?.children ?? [];
     const row = document.createElement("label");
     row.className = "edit-table-picker-option";
     const cb = document.createElement("input");
     cb.type = "checkbox";
     const fixed = TABLE_VIEW_FIXED.has(col);
     cb.checked = fixed || !hidden.has(col);
+    if (children.length) cb.indeterminate = cb.checked && children.some(child => hidden.has(child.col));
     cb.disabled = fixed;
     cb.addEventListener("change", () => {
       if (cb.checked) hidden.delete(col);
@@ -232,12 +254,47 @@ function renderTableViewModal() {
         setTableViewMessage("Keep at least one column.", "error");
         return;
       } else hidden.add(col);
+      children.forEach(child => { if (cb.checked) hidden.delete(child.col); else hidden.add(child.col); });
       setTableViewMessage("");
       renderTableViewModal();
     });
     const text = document.createElement("span");
     text.textContent = label;
     row.append(cb, text);
+    if (children.length) {
+      const group = document.createElement("div");
+      group.className = "edit-table-picker-group";
+      group.setAttribute("role", "group");
+      group.setAttribute("aria-label", label);
+      group.appendChild(row);
+      children.forEach(child => {
+        const nested = document.createElement("label");
+        nested.className = "edit-table-picker-option edit-table-picker-child";
+        const check = document.createElement("input");
+        check.type = "checkbox";
+        check.checked = !hidden.has(col) && !hidden.has(child.col);
+        check.addEventListener("change", () => {
+          if (check.checked) { hidden.delete(col); hidden.delete(child.col); }
+          else {
+            const last = children.every(c => c.col === child.col || hidden.has(c.col));
+            if (last && order.filter(c => !hidden.has(c)).length <= 1) {
+              check.checked = true;
+              setTableViewMessage("Keep at least one column.", "error");
+              return;
+            }
+            hidden.add(child.col);
+            if (last) hidden.add(col);
+          }
+          setTableViewMessage("");
+          renderTableViewModal();
+        });
+        const childLabel = document.createElement("span");
+        childLabel.textContent = child.label;
+        nested.append(check, childLabel);
+        group.appendChild(nested);
+      });
+      return group;
+    }
     return row;
   }));
 
@@ -346,7 +403,8 @@ async function saveTableView() {
   if (!tableViewDraft) return;
   const { tableId, order, hidden } = tableViewDraft;
   const state = tableViewState.get(tableId);
-  const view = { order: [...order], hidden: order.filter(col => hidden.has(col)) };
+  const childKeys = state.columns.flatMap(c => (c.children ?? []).map(child => child.col));
+  const view = { order: [...order], hidden: [...order, ...childKeys].filter(col => hidden.has(col)) };
 
   // The account first, so a failed save leaves the modal open to try again.
   const saveBtn = document.getElementById("tableViewSaveBtn");
@@ -369,8 +427,10 @@ async function saveTableView() {
   closeTableView();
   // A hidden column's header filter would go on filtering out of sight.
   state.current.hidden.forEach(col => {
-    if (isColumnFilterActive(tableId, col)) clearColumnFilter(tableId, col);
+    const filterCol = col.startsWith("qtys.") ? col.slice(5) : col;
+    if (isColumnFilterActive(tableId, filterCol)) clearColumnFilter(tableId, filterCol);
   });
+  if (tableId === "stylesTable" && state.current.hidden.includes(`qtys.${styleSortCol}`)) styleSortCol = null;
   redrawAfterTableView();
   const name = TABLE_VIEW_TABLES.find(t => t.id === tableId)?.label ?? "Table";
   if (tableViewsInAccount) showIndicator(`${name} view saved`, "success");
@@ -406,6 +466,8 @@ function initTableViews() {
     const cols = [...table.querySelectorAll("colgroup col")];
     const columns = ths.map((th, i) => ({
       col: th.dataset.col,
+      children: id === "stylesTable" && th.dataset.col === "qtys"
+        ? STYLE_QTY_FIGURES.map(({ col, label }) => ({ col: `qtys.${col}`, label })) : [],
       // The header's words; the tick-box column has none, and icon-only ones go by their aria-label.
       // data-label names a header made of several (the Styles table's Qty).
       label: th.dataset.col === "select" ? "Select (tick box)" : th.dataset.label || (th.querySelector(".th-label") ?? th).textContent.trim() || th.getAttribute("aria-label") || th.dataset.col,

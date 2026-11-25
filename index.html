@@ -8,7 +8,7 @@
 <link rel="apple-touch-icon" href="favicon.png?v=2" />
 <!-- CodeMirror's own styles (before crm.css, which recolours it); its scripts load when Edit HTML is first opened (js/email.js). -->
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.css" />
-<link rel="stylesheet" href="crm.css?v=20261125-0037" />
+<link rel="stylesheet" href="crm.css?v=20261125-0050" />
 </head>
 <body>
 
@@ -182,7 +182,7 @@
           <svg class="header-menu-item-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5"/><path d="M12 3v12"/></svg>
           <span>Export CSV</span>
         </button>
-        <button type="button" class="header-menu-item" id="headerMenuExportPdf" role="menuitem" data-pages="platforms needToShoot pos">
+        <button type="button" class="header-menu-item" id="headerMenuExportPdf" role="menuitem" data-pages="platforms needToShoot pos styles">
           <svg class="header-menu-item-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9V2h12v7"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><path d="M6 14h12v8H6z"/></svg>
           <span>Export PDF</span>
         </button>
@@ -849,11 +849,11 @@
           <th data-col="show" title="The Style Master's user2: 1, 2 or blank">Show</th>
           <th data-col="status">N41 Status</th>
           <th data-col="magento" title="Showing on the webstore: the colour's Magento item (STYLE#-COLOR) is enabled, in stock, salable qty above 0, and in an available group">Magento Status</th>
-          <th data-col="magentoQty" title="Inventory quantity of the linked Magento product, from the Magento catalog. Unknown or unlinked products show a dash.">Magento Qty</th>
-          <th data-col="magentoAts" title="Salable Quantity returned by Magento's API; not calculated by the app. If multiple stocks are available, the helper uses the highest salable quantity.">Magento ATS</th>
+          <th data-col="magentoQty" title="Inventory quantity of the linked Magento product, from the Magento catalog. Unknown or unlinked products show a dash.">QTY (M)</th>
+          <th data-col="magentoAts" title="Salable Quantity returned by Magento's API; not calculated by the app. If multiple stocks are available, the helper uses the highest salable quantity.">ATS (M)</th>
           <th data-col="available" title="N41 available date">Available</th>
           <!-- One column, a sub-header per figure — each sorts and filters (js/styles.js). -->
-          <th data-col="qtys" class="th-qtys" data-label="Qty (OH / WIP / OO / ATS / Received / Invoiced)"><span class="style-qtys style-qtys-head">
+          <th data-col="qtys" class="th-qtys" data-label="N41 quantities"><span class="style-qtys style-qtys-head">
             <span class="style-qty-head" data-col="oh" title="On hand, from N41's ATS report (Import N41 Data)">OH</span>
             <span class="style-qty-head" data-col="wip" title="Work in progress, from N41's ATS report">WIP</span>
             <span class="style-qty-head" data-col="oo" title="On order, from N41's ATS report">OO</span>
@@ -2528,61 +2528,61 @@
   </div>
 </div>
 
-<script src="js/config.js?v=20261125-0037"></script>
+<script src="js/config.js?v=20261125-0050"></script>
 <!-- Needs SUPABASE_URL/KEY from config.js and the CDN client above. -->
-<script src="js/auth.js?v=20261125-0037"></script>
-<script src="js/util.js?v=20261125-0037"></script>
-<script src="js/notifications.js?v=20261125-0037"></script>
-<script src="js/dates.js?v=20261125-0037"></script>
-<script src="js/store.js?v=20261125-0037"></script>
-<script src="js/tasks.js?v=20261125-0037"></script>
-<script src="js/app-shell.js?v=20261125-0037"></script>
-<script src="js/table-pager.js?v=20261125-0037"></script>
-<script src="js/record-list.js?v=20261125-0037"></script>
-<script src="js/item-pane.js?v=20261125-0037"></script>
-<script src="js/campaign-form.js?v=20261125-0037"></script>
-<script src="js/trade-show-form.js?v=20261125-0037"></script>
-<script src="js/banners.js?v=20261125-0037"></script>
-<script src="js/banner-form.js?v=20261125-0037"></script>
-<script src="js/mailchimp.js?v=20261125-0037"></script>
-<script src="js/style-import.js?v=20261125-0037"></script>
-<script src="js/column-filter.js?v=20261125-0037"></script>
-<script src="js/styles.js?v=20261125-0037"></script>
-<script src="js/style-images.js?v=20261125-0037"></script>
-<script src="js/sample-photos.js?v=20261125-0037"></script>
-<script src="js/photoshoots.js?v=20261125-0037"></script>
-<script src="js/complete.js?v=20261125-0037"></script>
-<script src="js/photoshoot-form.js?v=20261125-0037"></script>
-<script src="js/purchase-orders.js?v=20261125-0037"></script>
-<script src="js/production-import.js?v=20261125-0037"></script>
-<script src="js/ats-import.js?v=20261125-0037"></script>
-<script src="js/n41-import.js?v=20261125-0037"></script>
-<script src="js/style-pane.js?v=20261125-0037"></script>
-<script src="js/magento.js?v=20261125-0037"></script>
-<script src="js/magento-availability.js?v=20261125-0037"></script>
-<script src="js/magento-photos.js?v=20261125-0037"></script>
-<script src="js/magento-group-order.js?v=20261125-0037"></script>
-<script src="js/magento-sales.js?v=20261125-0037"></script>
-<script src="js/magento-n41.js?v=20261125-0037"></script>
-<script src="js/magento-events.js?v=20261125-0037"></script>
-<script src="js/trade-show-import.js?v=20261125-0037"></script>
-<script src="js/magento-groups.js?v=20261125-0037"></script>
-<script src="js/table-view.js?v=20261125-0037"></script>
-<script src="js/exports.js?v=20261125-0037"></script>
-<script src="js/copy-menu.js?v=20261125-0037"></script>
-<script src="js/row-quick-select.js?v=20261125-0037"></script>
-<script src="js/pane-dismiss.js?v=20261125-0037"></script>
-<script src="js/shortcuts.js?v=20261125-0037"></script>
-<script src="js/header-search.js?v=20261125-0037"></script>
-<script src="js/calendar.js?v=20261125-0037"></script>
-<script src="js/holidays.js?v=20261125-0037"></script>
-<script src="js/email.js?v=20261125-0037"></script>
-<script src="js/po-detail.js?v=20261125-0037"></script>
-<script src="js/chat.js?v=20261125-0037"></script>
-<script src="js/activity.js?v=20261125-0037"></script>
-<script src="js/n41-orders.js?v=20261125-0037"></script>
-<script src="js/home.js?v=20261125-0037"></script>
-<script src="js/sales.js?v=20261125-0037"></script>
-<script src="js/main.js?v=20261125-0037"></script>
+<script src="js/auth.js?v=20261125-0050"></script>
+<script src="js/util.js?v=20261125-0050"></script>
+<script src="js/notifications.js?v=20261125-0050"></script>
+<script src="js/dates.js?v=20261125-0050"></script>
+<script src="js/store.js?v=20261125-0050"></script>
+<script src="js/tasks.js?v=20261125-0050"></script>
+<script src="js/app-shell.js?v=20261125-0050"></script>
+<script src="js/table-pager.js?v=20261125-0050"></script>
+<script src="js/record-list.js?v=20261125-0050"></script>
+<script src="js/item-pane.js?v=20261125-0050"></script>
+<script src="js/campaign-form.js?v=20261125-0050"></script>
+<script src="js/trade-show-form.js?v=20261125-0050"></script>
+<script src="js/banners.js?v=20261125-0050"></script>
+<script src="js/banner-form.js?v=20261125-0050"></script>
+<script src="js/mailchimp.js?v=20261125-0050"></script>
+<script src="js/style-import.js?v=20261125-0050"></script>
+<script src="js/column-filter.js?v=20261125-0050"></script>
+<script src="js/styles.js?v=20261125-0050"></script>
+<script src="js/style-images.js?v=20261125-0050"></script>
+<script src="js/sample-photos.js?v=20261125-0050"></script>
+<script src="js/photoshoots.js?v=20261125-0050"></script>
+<script src="js/complete.js?v=20261125-0050"></script>
+<script src="js/photoshoot-form.js?v=20261125-0050"></script>
+<script src="js/purchase-orders.js?v=20261125-0050"></script>
+<script src="js/production-import.js?v=20261125-0050"></script>
+<script src="js/ats-import.js?v=20261125-0050"></script>
+<script src="js/n41-import.js?v=20261125-0050"></script>
+<script src="js/style-pane.js?v=20261125-0050"></script>
+<script src="js/magento.js?v=20261125-0050"></script>
+<script src="js/magento-availability.js?v=20261125-0050"></script>
+<script src="js/magento-photos.js?v=20261125-0050"></script>
+<script src="js/magento-group-order.js?v=20261125-0050"></script>
+<script src="js/magento-sales.js?v=20261125-0050"></script>
+<script src="js/magento-n41.js?v=20261125-0050"></script>
+<script src="js/magento-events.js?v=20261125-0050"></script>
+<script src="js/trade-show-import.js?v=20261125-0050"></script>
+<script src="js/magento-groups.js?v=20261125-0050"></script>
+<script src="js/table-view.js?v=20261125-0050"></script>
+<script src="js/exports.js?v=20261125-0050"></script>
+<script src="js/copy-menu.js?v=20261125-0050"></script>
+<script src="js/row-quick-select.js?v=20261125-0050"></script>
+<script src="js/pane-dismiss.js?v=20261125-0050"></script>
+<script src="js/shortcuts.js?v=20261125-0050"></script>
+<script src="js/header-search.js?v=20261125-0050"></script>
+<script src="js/calendar.js?v=20261125-0050"></script>
+<script src="js/holidays.js?v=20261125-0050"></script>
+<script src="js/email.js?v=20261125-0050"></script>
+<script src="js/po-detail.js?v=20261125-0050"></script>
+<script src="js/chat.js?v=20261125-0050"></script>
+<script src="js/activity.js?v=20261125-0050"></script>
+<script src="js/n41-orders.js?v=20261125-0050"></script>
+<script src="js/home.js?v=20261125-0050"></script>
+<script src="js/sales.js?v=20261125-0050"></script>
+<script src="js/main.js?v=20261125-0050"></script>
 </body>
 </html>

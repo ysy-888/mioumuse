@@ -86,7 +86,10 @@ function styleQtyFigures(style) {
 function createStyleQtyStrip(style) {
   const strip = document.createElement("span");
   strip.className = "style-qtys";
-  styleQtyFigures(style).forEach(({ col, text, tone }) => {
+  const hidden = getTableView("stylesTable")?.hidden ?? [];
+  const figures = styleQtyFigures(style).filter(({ col }) => !hidden.includes(`qtys.${col}`));
+  strip.style.gridTemplateColumns = `repeat(${Math.max(1, figures.length)}, 64px)`;
+  figures.forEach(({ col, text, tone }) => {
     const v = document.createElement("span");
     v.className = "style-qty" + (tone ? ` is-${tone}` : "");
     v.dataset.col = col;

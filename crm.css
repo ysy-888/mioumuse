@@ -1816,6 +1816,8 @@ th.th-menu.filter-active.sorted-desc .th-filter-hit { color: #fff; }
 .edit-table-picker-option:hover {
   background: var(--surface-hover, #f8fafc);
 }
+.edit-table-picker-group { grid-column: 1 / -1; }
+.edit-table-picker-group .edit-table-picker-child { padding-left: 30px; }
 
 .edit-table-picker-option input[type="checkbox"] {
   flex-shrink: 0;
@@ -7642,7 +7644,8 @@ span.dash-event { cursor: pointer; /* clicking selects the day */ }
 .style-qty-head.sorted-asc .th-filter-hit { mask-image: var(--icon-arrow-up); -webkit-mask-image: var(--icon-arrow-up); }
 .style-qty-head.sorted-desc .th-filter-hit { mask-image: var(--icon-arrow-down); -webkit-mask-image: var(--icon-arrow-down); }
 .styles-table .col-magento     { width: 130px; min-width: 120px; }
-.styles-table :is(.col-magento-qty, .col-magento-ats) { width: 128px; min-width: 128px; }
+.styles-table :is(.col-magento-qty, .col-magento-ats) { width: 88px; min-width: 88px; }
+#stylesTable :is(th, td):is([data-col="magentoQty"], [data-col="magentoAts"]) { padding-left: 6px; padding-right: 6px; }
 #stylesTable thead th:is([data-col="magentoQty"], [data-col="magentoAts"]) { white-space: nowrap; }
 /* Styles and Need to Shoot: only as wide as their columns. Styles sits on
    the left, leaving room for the style pane on the right; Need is centered. */
